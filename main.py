@@ -39,12 +39,15 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command, CommandObject
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     BufferedInputFile,
+    CallbackQuery,
     ChatJoinRequest,
     ChatMemberUpdated,
     InlineKeyboardButton,
@@ -159,6 +162,120 @@ async def increment_stat(field: str) -> None:
         stats = load_stats()
         stats[field] = stats.get(field, 0) + 1
         STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
+
+
+# حالت‌های گفت‌وگوی «ارسال پیام همگانی» — وقتی ادمین دکمه‌ی «ارسال
+# پیام همگانی» را می‌زند، ربات منتظر می‌ماند متن پیام را بفرستد،
+# سپس یک پیش‌نمایش با دکمه‌ی تایید/انصراف نشان می‌دهد.
+class BroadcastStates(StatesGroup):
+    waiting_for_text = State()
+    confirming = State()
+
+
+def collect_form_user_ids() -> set[int]:
+    """آیدی عددی همه‌ی کسانی که تا الان فرم را پر کرده‌اند."""
+    user_ids: set[int] = set()
+    if not DATA_FILE.exists():
+        return user_ids
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                user_ids.add(int(record["user_id"]))
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+    return user_ids
+
+
+async def build_stats_text() -> str:
+    try:
+        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+    except Exception as e:
+        logger.warning("گرفتن تعداد اعضا ممکن نشد: %s", e)
+        member_count = "نامشخص"
+
+    form_count = 0
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            form_count = sum(1 for line in f if line.strip())
+
+    stats = load_stats()
+    total_joined = stats.get("total_joined", 0)
+    total_left = stats.get("total_left", 0)
+    leave_rate = (total_left / total_joined * 100) if total_joined else 0
+
+    return (
+        "📊 <b>آمار گروه</b>\n\n"
+        f"👥 تعداد اعضای فعلی: <b>{member_count}</b>\n"
+        f"📝 تعداد فرم‌های تکمیل‌شده: <b>{form_count}</b>\n"
+        f"➕ کل ورودهای ثبت‌شده: <b>{total_joined}</b>\n"
+        f"➖ کل خروج‌های ثبت‌شده: <b>{total_left}</b>\n"
+        f"📉 نرخ ترک گروه: <b>{leave_rate:.1f}٪</b>\n\n"
+        "<i>توجه: شمارش ورود/خروج فقط از زمانی که این نسخه از ربات فعال "
+        "شده حساب می‌شود، نه از ابتدای عمر گروه.</i>"
+    )
+
+
+def build_export_file() -> BufferedInputFile | None:
+    """فایل اکسل خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
+    if not DATA_FILE.exists():
+        return None
+
+    records: list[dict] = []
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    if not records:
+        return None
+
+    # هدر ستون‌ها از اجتماع تمام کلیدهای موجود در همه‌ی رکوردها ساخته می‌شود
+    headers: list[str] = []
+    for record in records:
+        for key in record.keys():
+            if key not in headers:
+                headers.append(key)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "submissions"
+    sheet.append(headers)
+    for record in records:
+        sheet.append([str(record.get(h, "")) for h in headers])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return BufferedInputFile(buffer.read(), filename="submissions.xlsx")
+
+
+# --------------------------------------------------------------
+# صفحه‌کلیدهای شیشه‌ای (Inline) پنل مدیریت
+# --------------------------------------------------------------
+def admin_panel_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="📄 خروجی اکسل فرم‌ها", callback_data="admin:export")],
+            [InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="admin:broadcast")],
+            [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
+        ]
+    )
+
+
+def admin_back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")]]
+    )
 
 
 # --------------------------------------------------------------
@@ -343,88 +460,37 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
 
 
 # --------------------------------------------------------------
-# ۳.۳) پنل ادمین ساده — فقط برای آیدی‌های داخل ADMIN_IDS
+# ۳.۳) پنل مدیریت شیشه‌ای — فقط برای آیدی‌های داخل ADMIN_IDS
+#      با /admin باز می‌شود؛ همچنین /stats، /export و /broadcast
+#      به‌عنوان میان‌بر مستقیم هم نگه داشته شده‌اند.
 # --------------------------------------------------------------
+@dp.message(Command("admin"))
+async def handle_admin_panel(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+    await message.answer(
+        "🛠 <b>پنل مدیریت</b>\nیکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=admin_panel_keyboard(),
+    )
+
+
 @dp.message(Command("stats"))
 async def handle_stats(message: Message):
     if not is_admin(message.from_user.id):
-        return  # کاربر عادی — بی‌سروصدا نادیده گرفته می‌شود
-
-    try:
-        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-    except Exception as e:
-        logger.warning("گرفتن تعداد اعضا ممکن نشد: %s", e)
-        member_count = "نامشخص"
-
-    form_count = 0
-    if DATA_FILE.exists():
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            form_count = sum(1 for line in f if line.strip())
-
-    stats = load_stats()
-    total_joined = stats.get("total_joined", 0)
-    total_left = stats.get("total_left", 0)
-    leave_rate = (total_left / total_joined * 100) if total_joined else 0
-
-    await message.answer(
-        "📊 <b>آمار گروه</b>\n\n"
-        f"👥 تعداد اعضای فعلی: <b>{member_count}</b>\n"
-        f"📝 تعداد فرم‌های تکمیل‌شده: <b>{form_count}</b>\n"
-        f"➕ کل ورودهای ثبت‌شده: <b>{total_joined}</b>\n"
-        f"➖ کل خروج‌های ثبت‌شده: <b>{total_left}</b>\n"
-        f"📉 نرخ ترک گروه: <b>{leave_rate:.1f}٪</b>\n\n"
-        "<i>توجه: شمارش ورود/خروج فقط از زمانی که این نسخه از ربات فعال "
-        "شده حساب می‌شود، نه از ابتدای عمر گروه.</i>"
-    )
+        return
+    await message.answer(await build_stats_text())
 
 
 @dp.message(Command("export"))
 async def handle_export(message: Message):
     if not is_admin(message.from_user.id):
         return
-
-    if not DATA_FILE.exists():
+    file = build_export_file()
+    if file is None:
         await message.answer("هنوز هیچ فرمی ثبت نشده است.")
         return
-
-    records: list[dict] = []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-
-    if not records:
-        await message.answer("هنوز هیچ فرمی ثبت نشده است.")
-        return
-
-    # هدر ستون‌ها از اجتماع تمام کلیدهای موجود در همه‌ی رکوردها ساخته می‌شود
-    # (چون ممکن است فرم در طول زمان فیلد جدید گرفته باشد)
-    headers: list[str] = []
-    for record in records:
-        for key in record.keys():
-            if key not in headers:
-                headers.append(key)
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "submissions"
-    sheet.append(headers)
-    for record in records:
-        sheet.append([str(record.get(h, "")) for h in headers])
-
-    buffer = BytesIO()
-    workbook.save(buffer)
-    buffer.seek(0)
-
-    file = BufferedInputFile(buffer.read(), filename="submissions.xlsx")
-    await message.answer_document(
-        file, caption=f"📄 خروجی اکسل — {len(records)} فرم ثبت‌شده"
-    )
+    await message.answer_document(file, caption="📄 خروجی اکسل فرم‌های ثبت‌شده")
 
 
 @dp.message(Command("broadcast"))
@@ -435,34 +501,25 @@ async def handle_broadcast(message: Message, command: CommandObject):
     text = (command.args or "").strip()
     if not text:
         await message.answer(
-            "برای ارسال پیام همگانی به همه‌ی کسانی که فرم را تکمیل کرده‌اند، "
-            "به این شکل دستور را بفرستید:\n"
-            "<code>/broadcast متن پیام شما</code>"
+            "برای ارسال پیام همگانی به این شکل دستور را بفرستید:\n"
+            "<code>/broadcast متن پیام شما</code>\n\n"
+            "یا از پنل شیشه‌ای با دستور /admin استفاده کنید."
         )
         return
 
-    if not DATA_FILE.exists():
-        await message.answer("هنوز هیچ فرمی ثبت نشده، کاربری برای ارسال وجود ندارد.")
-        return
-
-    user_ids: set[int] = set()
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-                user_ids.add(int(record["user_id"]))
-            except (json.JSONDecodeError, KeyError, ValueError):
-                continue
-
+    user_ids = collect_form_user_ids()
     if not user_ids:
         await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
         return
 
     await message.answer(f"⏳ در حال ارسال پیام به {len(user_ids)} نفر...")
+    sent, failed = await send_broadcast(text, user_ids)
+    await message.answer(
+        f"✅ ارسال همگانی تمام شد.\nموفق: <b>{sent}</b>\nناموفق: <b>{failed}</b>"
+    )
 
+
+async def send_broadcast(text: str, user_ids: set[int]) -> tuple[int, int]:
     sent, failed = 0, 0
     for user_id in user_ids:
         try:
@@ -472,12 +529,142 @@ async def handle_broadcast(message: Message, command: CommandObject):
             failed += 1
         # فاصله‌ی کوتاه بین ارسال‌ها تا به محدودیت نرخ ارسال تلگرام نخوریم
         await asyncio.sleep(0.05)
+    return sent, failed
 
-    await message.answer(
-        f"✅ ارسال همگانی تمام شد.\n"
-        f"موفق: <b>{sent}</b>\n"
-        f"ناموفق (بلاک کرده/هرگز /start نزده و ...): <b>{failed}</b>"
+
+# ---------- دکمه‌های پنل ----------
+
+@dp.callback_query(F.data == "admin:menu")
+async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    await callback.message.edit_text(
+        "🛠 <b>پنل مدیریت</b>\nیکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=admin_panel_keyboard(),
     )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "admin:close")
+async def cb_admin_close(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "admin:stats")
+async def cb_admin_stats(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
+
+
+@dp.callback_query(F.data == "admin:export")
+async def cb_admin_export(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await callback.answer("⏳ در حال ساخت فایل اکسل...")
+    file = build_export_file()
+    if file is None:
+        await callback.message.answer("هنوز هیچ فرمی ثبت نشده است.")
+        return
+    await callback.message.answer_document(file, caption="📄 خروجی اکسل فرم‌های ثبت‌شده")
+
+
+@dp.callback_query(F.data == "admin:broadcast")
+async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(BroadcastStates.waiting_for_text)
+    await callback.message.edit_text(
+        "📢 متن پیامی که می‌خواهید برای همه‌ی کسانی که فرم را پر کرده‌اند "
+        "ارسال شود را همین‌جا بفرستید.\n\n"
+        "برای انصراف، دستور /cancel را بفرستید.",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(BroadcastStates.waiting_for_text)
+async def handle_broadcast_text_input(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    raw_text = (message.text or "").strip()
+    if raw_text.startswith("/"):
+        await state.clear()
+        await message.answer(
+            "ارسال پیام همگانی لغو شد. برای اجرای دستور جدید، دوباره بفرستیدش.",
+            reply_markup=admin_panel_keyboard(),
+        )
+        return
+
+    text = message.html_text or message.text or ""
+    if not text.strip():
+        await message.answer("لطفاً یک پیام متنی بفرستید (یا /cancel برای انصراف).")
+        return
+
+    user_ids = collect_form_user_ids()
+    await state.update_data(broadcast_text=text)
+    await state.set_state(BroadcastStates.confirming)
+
+    confirm_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:broadcast_cancel")],
+        ]
+    )
+    await message.answer(
+        f"پیش‌نمایش پیام شما:\n\n{text}\n\n"
+        f"این پیام برای <b>{len(user_ids)}</b> نفر ارسال می‌شود. مطمئنید؟",
+        reply_markup=confirm_keyboard,
+    )
+
+
+@dp.callback_query(F.data == "admin:broadcast_confirm", BroadcastStates.confirming)
+async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+
+    data = await state.get_data()
+    text = data.get("broadcast_text", "")
+    await state.clear()
+
+    if not text:
+        await callback.answer()
+        await callback.message.edit_text("متنی برای ارسال پیدا نشد.", reply_markup=admin_back_keyboard())
+        return
+
+    await callback.answer("⏳ در حال ارسال...")
+    user_ids = collect_form_user_ids()
+    sent, failed = await send_broadcast(text, user_ids)
+    await callback.message.edit_text(
+        f"✅ ارسال همگانی تمام شد.\nموفق: <b>{sent}</b>\nناموفق: <b>{failed}</b>",
+        reply_markup=admin_back_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == "admin:broadcast_cancel", BroadcastStates.confirming)
+async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    await callback.answer()
+    await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
 
 
 # --------------------------------------------------------------
@@ -592,6 +779,7 @@ async def on_startup(app: web.Application):
             "chat_join_request",
             "chat_member",
             "poll_answer",
+            "callback_query",
         ],
     )
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
