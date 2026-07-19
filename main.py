@@ -990,7 +990,7 @@ async def on_startup(app: web.Application):
     # دکمه‌ی کنار جعبه‌ی پیام (Menu Button) را روی لینک مینی‌اپ تنظیم می‌کنیم
     # تا کاربر بدون نیاز به دیدن پیام درخواست عضویت هم بتواند فرم را باز کند.
     await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(text="فرم عضویت", web_app=WebAppInfo(url=WEBAPP_URL))
+        menu_button=MenuButtonWebApp(text="form", web_app=WebAppInfo(url=WEBAPP_URL))
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
