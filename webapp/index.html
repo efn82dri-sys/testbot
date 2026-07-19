@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>فرم پذیرش عضویت</title>
+
+  <!-- کتابخانه رسمی تلگرام برای WebApp — این خط الزامی است -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app">
+
+    <!-- هدر -->
+    <header class="app-header">
+      <div class="logo-badge">🏛️</div>
+      <div>
+        <h1>مرجع فایل‌های معماری و عمران</h1>
+        <p>برای عضویت، این فرم کوتاه را تکمیل کنید</p>
+      </div>
+    </header>
+
+    <!-- نوار پیشرفت -->
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="step-label" id="stepLabel">مرحله ۱ از ۳</div>
+
+    <!-- مرحله ۱: مقطع تحصیلی -->
+    <section class="step active" data-step="1">
+      <h2>مقطع تحصیلی شما چیست؟</h2>
+      <div class="select-wrap">
+        <select id="education">
+          <option value="" disabled selected>یک گزینه را انتخاب کنید</option>
+          <option value="diploma">دیپلم / پیش‌دانشگاهی</option>
+          <option value="associate">کاردانی</option>
+          <option value="bachelor">کارشناسی</option>
+          <option value="master">کارشناسی ارشد</option>
+          <option value="phd">دکتری</option>
+          <option value="other">سایر</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- مرحله ۲: نحوه آشنایی -->
+    <section class="step" data-step="2">
+      <h2>چطور با ما آشنا شدید؟</h2>
+      <div class="radio-list" id="referralList">
+        <label class="radio-card">
+          <input type="radio" name="referral" value="instagram" />
+          <span class="radio-icon">📷</span>
+          <span>اینستاگرام</span>
+        </label>
+        <label class="radio-card">
+          <input type="radio" name="referral" value="friends" />
+          <span class="radio-icon">👥</span>
+          <span>معرفی دوستان</span>
+        </label>
+        <label class="radio-card">
+          <input type="radio" name="referral" value="other_groups" />
+          <span class="radio-icon">💬</span>
+          <span>سایر گروه‌ها و کانال‌ها</span>
+        </label>
+        <label class="radio-card">
+          <input type="radio" name="referral" value="search" />
+          <span class="radio-icon">🔍</span>
+          <span>جستجوی اینترنتی</span>
+        </label>
+        <label class="radio-card">
+          <input type="radio" name="referral" value="other" />
+          <span class="radio-icon">✨</span>
+          <span>سایر موارد</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- مرحله ۳: علایق -->
+    <section class="step" data-step="3">
+      <h2>علایق خود را انتخاب کنید</h2>
+      <p class="hint">حداکثر ۳ مورد را انتخاب کنید</p>
+      <div class="chip-grid" id="interestsGrid">
+        <!-- با جاوااسکریپت پر می‌شود -->
+      </div>
+    </section>
+
+    <!-- ناوبری بین مراحل -->
+    <div class="nav-buttons">
+      <button type="button" id="backBtn" class="btn-secondary" style="visibility:hidden">بازگشت</button>
+      <button type="button" id="nextBtn" class="btn-primary">ادامه</button>
+    </div>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
