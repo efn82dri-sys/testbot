@@ -35,14 +35,16 @@ import json
 import logging
 import os
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import (
+    BufferedInputFile,
     ChatJoinRequest,
     ChatMemberUpdated,
     InlineKeyboardButton,
@@ -54,6 +56,7 @@ from aiogram.types import (
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from openpyxl import Workbook
 
 # --------------------------------------------------------------
 # ۱) تنظیمات — این مقادیر را از متغیرهای محیطی (Environment
@@ -72,6 +75,13 @@ GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")  # لینک عموم
 # گزارش‌ها اصلاً ارسال نمی‌شوند.
 NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
 
+# آیدی عددی کسانی که اجازه‌ی استفاده از دستورات مدیریتی
+# (/stats ،/export ،/broadcast) را دارند — با ویرگول جدا از هم،
+# مثل: 111111111,222222222
+ADMIN_IDS = {
+    int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x
+}
+
 # آدرس عمومی سایت شما بعد از دیپلوی روی Render، مثل:
 # https://my-bot.onrender.com
 WEBHOOK_HOST = os.environ["WEBHOOK_HOST"].rstrip("/")
@@ -86,6 +96,9 @@ PORT = int(os.environ.get("PORT", 8080))
 # مسیر فایلی که پاسخ‌های فرم در آن ذخیره می‌شود
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
+
+# مسیر فایلی که آمار ساده‌ی ورود/خروج اعضا برای دستور /stats در آن نگه‌داری می‌شود
+STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -125,6 +138,27 @@ LEAVE_REASONS: list[tuple[str, str]] = [
         "بهتر بشیم 🙏",
     ),
 ]
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
+
+def load_stats() -> dict:
+    """آمار ساده‌ی تعداد کل ورودها/خروج‌ها را می‌خواند (از زمانی که این قابلیت فعال شده)."""
+    if not STATS_FILE.exists():
+        return {"total_joined": 0, "total_left": 0}
+    try:
+        return json.loads(STATS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"total_joined": 0, "total_left": 0}
+
+
+async def increment_stat(field: str) -> None:
+    async with _write_lock:
+        stats = load_stats()
+        stats[field] = stats.get(field, 0) + 1
+        STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
 
 
 # --------------------------------------------------------------
@@ -208,6 +242,7 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
     # طریق لینک دعوت مستقیم)
     became_member = new_status == ChatMemberStatus.MEMBER and old_status != ChatMemberStatus.MEMBER
     if became_member:
+        await increment_stat("total_joined")
         await notify_new_member(user)
         return
 
@@ -217,6 +252,7 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
         and new_status in (ChatMemberStatus.LEFT, ChatMemberStatus.KICKED)
     )
     if left_group:
+        await increment_stat("total_left")
         await handle_member_left(user)
 
 
@@ -304,6 +340,144 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
         await bot.send_message(chat_id=user_id, text=reply_text)
     except Exception as e:
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
+
+
+# --------------------------------------------------------------
+# ۳.۳) پنل ادمین ساده — فقط برای آیدی‌های داخل ADMIN_IDS
+# --------------------------------------------------------------
+@dp.message(Command("stats"))
+async def handle_stats(message: Message):
+    if not is_admin(message.from_user.id):
+        return  # کاربر عادی — بی‌سروصدا نادیده گرفته می‌شود
+
+    try:
+        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+    except Exception as e:
+        logger.warning("گرفتن تعداد اعضا ممکن نشد: %s", e)
+        member_count = "نامشخص"
+
+    form_count = 0
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            form_count = sum(1 for line in f if line.strip())
+
+    stats = load_stats()
+    total_joined = stats.get("total_joined", 0)
+    total_left = stats.get("total_left", 0)
+    leave_rate = (total_left / total_joined * 100) if total_joined else 0
+
+    await message.answer(
+        "📊 <b>آمار گروه</b>\n\n"
+        f"👥 تعداد اعضای فعلی: <b>{member_count}</b>\n"
+        f"📝 تعداد فرم‌های تکمیل‌شده: <b>{form_count}</b>\n"
+        f"➕ کل ورودهای ثبت‌شده: <b>{total_joined}</b>\n"
+        f"➖ کل خروج‌های ثبت‌شده: <b>{total_left}</b>\n"
+        f"📉 نرخ ترک گروه: <b>{leave_rate:.1f}٪</b>\n\n"
+        "<i>توجه: شمارش ورود/خروج فقط از زمانی که این نسخه از ربات فعال "
+        "شده حساب می‌شود، نه از ابتدای عمر گروه.</i>"
+    )
+
+
+@dp.message(Command("export"))
+async def handle_export(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    if not DATA_FILE.exists():
+        await message.answer("هنوز هیچ فرمی ثبت نشده است.")
+        return
+
+    records: list[dict] = []
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    if not records:
+        await message.answer("هنوز هیچ فرمی ثبت نشده است.")
+        return
+
+    # هدر ستون‌ها از اجتماع تمام کلیدهای موجود در همه‌ی رکوردها ساخته می‌شود
+    # (چون ممکن است فرم در طول زمان فیلد جدید گرفته باشد)
+    headers: list[str] = []
+    for record in records:
+        for key in record.keys():
+            if key not in headers:
+                headers.append(key)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "submissions"
+    sheet.append(headers)
+    for record in records:
+        sheet.append([str(record.get(h, "")) for h in headers])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+
+    file = BufferedInputFile(buffer.read(), filename="submissions.xlsx")
+    await message.answer_document(
+        file, caption=f"📄 خروجی اکسل — {len(records)} فرم ثبت‌شده"
+    )
+
+
+@dp.message(Command("broadcast"))
+async def handle_broadcast(message: Message, command: CommandObject):
+    if not is_admin(message.from_user.id):
+        return
+
+    text = (command.args or "").strip()
+    if not text:
+        await message.answer(
+            "برای ارسال پیام همگانی به همه‌ی کسانی که فرم را تکمیل کرده‌اند، "
+            "به این شکل دستور را بفرستید:\n"
+            "<code>/broadcast متن پیام شما</code>"
+        )
+        return
+
+    if not DATA_FILE.exists():
+        await message.answer("هنوز هیچ فرمی ثبت نشده، کاربری برای ارسال وجود ندارد.")
+        return
+
+    user_ids: set[int] = set()
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                user_ids.add(int(record["user_id"]))
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+
+    if not user_ids:
+        await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
+        return
+
+    await message.answer(f"⏳ در حال ارسال پیام به {len(user_ids)} نفر...")
+
+    sent, failed = 0, 0
+    for user_id in user_ids:
+        try:
+            await bot.send_message(chat_id=user_id, text=text)
+            sent += 1
+        except Exception:
+            failed += 1
+        # فاصله‌ی کوتاه بین ارسال‌ها تا به محدودیت نرخ ارسال تلگرام نخوریم
+        await asyncio.sleep(0.05)
+
+    await message.answer(
+        f"✅ ارسال همگانی تمام شد.\n"
+        f"موفق: <b>{sent}</b>\n"
+        f"ناموفق (بلاک کرده/هرگز /start نزده و ...): <b>{failed}</b>"
+    )
 
 
 # --------------------------------------------------------------
