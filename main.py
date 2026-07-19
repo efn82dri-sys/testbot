@@ -52,14 +52,19 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     MenuButtonWebApp,
     Message,
     PollAnswer,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
     WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
 # ۱) تنظیمات — این مقادیر را از متغیرهای محیطی (Environment
@@ -102,6 +107,21 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 
 # مسیر فایلی که آمار ساده‌ی ورود/خروج اعضا برای دستور /stats در آن نگه‌داری می‌شود
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
+
+# مسیر فایلی که شماره تلفنِ تاییدشده‌ی هر کاربر (بعد از احراز هویت با
+# دکمه‌ی «اشتراک‌گذاری شماره تلفن») در آن نگه‌داری می‌شود. کلید = آیدی
+# عددی کاربر (به‌صورت رشته)، مقدار = شماره تلفن.
+PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
+
+# برای نمایش خواناتر ستون «نحوه آشنایی» در خروجی اکسل — چون در فرم فقط
+# کدِ گزینه (instagram, friends, ...) ذخیره می‌شود، نه متن فارسی‌اش.
+REFERRAL_LABELS = {
+    "instagram": "اینستاگرام",
+    "friends": "معرفی دوستان",
+    "other_groups": "سایر گروه‌ها و کانال‌ها",
+    "search": "جستجوی اینترنتی",
+    "other": "سایر موارد",
+}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -164,6 +184,27 @@ async def increment_stat(field: str) -> None:
         STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
 
 
+def load_phones() -> dict:
+    """شماره‌تلفن‌های تاییدشده را می‌خواند: {"123456789": "+98912...", ...}"""
+    if not PHONES_FILE.exists():
+        return {}
+    try:
+        return json.loads(PHONES_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+async def save_phone(user_id: int, phone: str) -> None:
+    async with _write_lock:
+        phones = load_phones()
+        phones[str(user_id)] = phone
+        PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
+
+
+def get_saved_phone(user_id: int) -> str:
+    return load_phones().get(str(user_id), "")
+
+
 # حالت‌های گفت‌وگوی «ارسال پیام همگانی» — وقتی ادمین دکمه‌ی «ارسال
 # پیام همگانی» را می‌زند، ربات منتظر می‌ماند متن پیام را بفرستد،
 # سپس یک پیش‌نمایش با دکمه‌ی تایید/انصراف نشان می‌دهد.
@@ -220,7 +261,7 @@ async def build_stats_text() -> str:
 
 
 def build_export_file() -> BufferedInputFile | None:
-    """فایل اکسل خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
+    """فایل اکسل مرتب خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
     if not DATA_FILE.exists():
         return None
 
@@ -238,24 +279,78 @@ def build_export_file() -> BufferedInputFile | None:
     if not records:
         return None
 
-    # هدر ستون‌ها از اجتماع تمام کلیدهای موجود در همه‌ی رکوردها ساخته می‌شود
-    headers: list[str] = []
+    # جدیدترین فرم‌ها بالای لیست باشند (مرور راحت‌تر برای ادمین)
+    records.sort(key=lambda r: r.get("submitted_at", ""), reverse=True)
+
+    phones = load_phones()
+
+    headers = [
+        "آیدی عددی", "نام کاربری", "نام کامل", "شماره تلفن",
+        "تاریخ و ساعت ثبت (UTC)", "مقطع تحصیلی", "نحوه آشنایی", "علایق انتخاب‌شده",
+    ]
+
+    def format_date(raw: str) -> str:
+        try:
+            dt = datetime.fromisoformat(raw)
+            return dt.strftime("%Y-%m-%d  %H:%M")
+        except (ValueError, TypeError):
+            return raw or "-"
+
+    def format_interests(value) -> str:
+        if isinstance(value, list):
+            return "، ".join(value) if value else "-"
+        return str(value) if value else "-"
+
+    rows = []
     for record in records:
-        for key in record.keys():
-            if key not in headers:
-                headers.append(key)
+        user_id = record.get("user_id", "")
+        username = record.get("username")
+        rows.append([
+            user_id,
+            f"@{username}" if username else "-",
+            record.get("full_name") or "-",
+            phones.get(str(user_id), "-"),
+            format_date(record.get("submitted_at", "")),
+            record.get("education_label") or record.get("education") or "-",
+            REFERRAL_LABELS.get(record.get("referral"), record.get("referral") or "-"),
+            format_interests(record.get("interests")),
+        ])
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "submissions"
+    sheet.title = "فرم‌های ثبت‌شده"
+    sheet.sheet_view.rightToLeft = True
+
     sheet.append(headers)
-    for record in records:
-        sheet.append([str(record.get(h, "")) for h in headers])
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="14532F", end_color="14532F", fill_type="solid")
+    for cell in sheet[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row in rows:
+        sheet.append(row)
+
+    for row_cells in sheet.iter_rows(min_row=2):
+        for cell in row_cells:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # عرض هر ستون را متناسب با بلندترین محتوایش تنظیم کن
+    for col_index, header in enumerate(headers, start=1):
+        max_len = len(str(header))
+        for row in rows:
+            cell_value = row[col_index - 1]
+            max_len = max(max_len, len(str(cell_value)))
+        sheet.column_dimensions[get_column_letter(col_index)].width = min(max_len + 4, 42)
+
+    sheet.freeze_panes = "A2"
+    sheet.row_dimensions[1].height = 22
 
     buffer = BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
-    return BufferedInputFile(buffer.read(), filename="submissions.xlsx")
+    return BufferedInputFile(buffer.read(), filename="فرم‌های عضویت.xlsx")
 
 
 # --------------------------------------------------------------
@@ -298,14 +393,16 @@ async def handle_start(message: Message):
 #    (این حالت وقتی فعال است که در تنظیمات گروه، گزینه‌ی
 #     «تایید اعضای جدید توسط مدیر» روشن باشد)
 # --------------------------------------------------------------
-@dp.chat_join_request()
-async def handle_join_request(join_request: ChatJoinRequest):
-    if join_request.chat.id != GROUP_CHAT_ID:
-        return  # این گروه، همان گروهی نیست که ربات برایش تنظیم شده
+def phone_request_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
-    user = join_request.from_user
-    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
 
+async def send_webapp_form_message(user) -> None:
+    """پیام «تکمیل فرم پذیرش» را برای کاربری که شماره‌اش تایید شده ارسال می‌کند."""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -316,6 +413,32 @@ async def handle_join_request(join_request: ChatJoinRequest):
             ]
         ]
     )
+    try:
+        await bot.send_message(
+            chat_id=user.id,
+            text=(
+                "✅ شماره‌ی شما تایید شد.\n\n"
+                "برای تکمیل عضویت، لطفاً فرم کوتاه زیر را پر کنید. این فرم "
+                "کمتر از یک دقیقه زمان می‌برد."
+            ),
+            reply_markup=keyboard,
+        )
+    except Exception as e:
+        logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
+
+
+@dp.chat_join_request()
+async def handle_join_request(join_request: ChatJoinRequest):
+    if join_request.chat.id != GROUP_CHAT_ID:
+        return  # این گروه، همان گروهی نیست که ربات برایش تنظیم شده
+
+    user = join_request.from_user
+    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
+
+    # اگر قبلاً یک‌بار شماره‌اش را تایید کرده، مستقیم فرم را بفرست
+    if get_saved_phone(user.id):
+        await send_webapp_form_message(user)
+        return
 
     try:
         await bot.send_message(
@@ -323,15 +446,37 @@ async def handle_join_request(join_request: ChatJoinRequest):
             text=(
                 f"سلام {user.first_name} عزیز 👋\n\n"
                 "درخواست عضویت شما در «مرجع فایل‌های معماری و عمران» ثبت شد.\n"
-                "برای تکمیل عضویت، لطفاً فرم کوتاه زیر را پر کنید. این فرم "
-                "کمتر از یک دقیقه زمان می‌برد."
+                "قبل از تکمیل فرم، برای احراز هویت لازم است شماره تلفن‌تان را با "
+                "دکمه‌ی زیر (فقط شماره‌ی خودتان) به اشتراک بگذارید."
             ),
-            reply_markup=keyboard,
+            reply_markup=phone_request_keyboard(),
         )
     except Exception as e:
         # اگر کاربر قبلاً /start را به ربات نزده باشد، تلگرام ممکن است
         # اجازه نده پیام خصوصی بفرستیم. در این حالت فقط لاگ می‌کنیم.
         logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
+
+
+# --------------------------------------------------------------
+# ۳.۰) دریافت شماره تلفن اشتراک‌گذاشته‌شده — این همان مرحله‌ی
+#      احراز هویت است که باید قبل از باز شدن فرم (مینی‌اپ) طی شود.
+# --------------------------------------------------------------
+@dp.message(F.contact)
+async def handle_contact_shared(message: Message):
+    contact = message.contact
+    user = message.from_user
+
+    # فقط شماره‌ی خودِ همان کاربر پذیرفته می‌شود، نه یک مخاطب فوروارد‌شده
+    if contact.user_id != user.id:
+        await message.answer(
+            "لطفاً فقط شماره تلفن خودتان را با دکمه‌ی زیر به اشتراک بگذارید.",
+            reply_markup=phone_request_keyboard(),
+        )
+        return
+
+    await save_phone(user.id, contact.phone_number)
+    await message.answer("شماره‌ی شما ذخیره شد ✅", reply_markup=ReplyKeyboardRemove())
+    await send_webapp_form_message(user)
 
 
 # --------------------------------------------------------------
@@ -719,6 +864,7 @@ async def handle_submit(request: web.Request) -> web.Response:
         "user_id": user_id,
         "username": user.get("username"),
         "full_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
+        "phone": get_saved_phone(user_id),
         "submitted_at": datetime.utcnow().isoformat(),
         **form_data,
     }
