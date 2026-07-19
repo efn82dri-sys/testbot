@@ -40,13 +40,16 @@ from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command
 from aiogram.types import (
     ChatJoinRequest,
+    ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    MenuButtonWebApp,
     Message,
+    PollAnswer,
     WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -61,6 +64,13 @@ from aiohttp import web
 BOT_TOKEN = os.environ["BOT_TOKEN"]                 # توکن ربات از BotFather
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])    # آیدی عددی گروه (منفی، با - شروع می‌شود)
 GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")  # لینک عمومی گروه (برای دکمه بازگشت)
+
+# آیدی عددی کانال یا آیدی عددی خود مالک/ادمین که گزارش‌های عضویت
+# (عضو جدید / ترک عضو) برایش ارسال می‌شود. اگر کانال است باید ربات
+# در آن ادمین با دسترسی ارسال پیام باشد؛ اگر آیدی شخصی است باید آن
+# شخص قبلاً یک بار به ربات /start زده باشد. اگر خالی بماند، این
+# گزارش‌ها اصلاً ارسال نمی‌شوند.
+NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
 
 # آدرس عمومی سایت شما بعد از دیپلوی روی Render، مثل:
 # https://my-bot.onrender.com
@@ -85,6 +95,36 @@ dp = Dispatcher()
 
 # قفل ساده برای اینکه چند نفر همزمان با هم فایل داده را خراب نکنند
 _write_lock = asyncio.Lock()
+
+# نگاشت poll_id -> user_id برای نظرسنجی‌های «دلیل ترک گروه» که هنوز
+# پاسخی به آن‌ها داده نشده — تا وقتی کاربر گزینه‌ای را انتخاب کند،
+# بتوانیم بفهمیم پاسخ مربوط به کدام کاربر است.
+_pending_leave_polls: dict[str, int] = {}
+
+# گزینه‌های نظرسنجی «چرا گروه را ترک کردید؟» به همراه پاسخ متناسب
+# با هر گزینه که بعد از رأی کاربر برایش فرستاده می‌شود.
+LEAVE_REASONS: list[tuple[str, str]] = [
+    (
+        "فایل‌ها و محتوای گروه به‌دردم نخورد",
+        "دقیقاً دنبال چه فایلی بودید؟ اگر جواب بدید به ادمین‌ها اطلاع می‌دم "
+        "تا در اولین فرصت تهیه‌اش کنند 🙏",
+    ),
+    (
+        "پیام‌های زیاد گروه رو شلوغ می‌کرد",
+        "می‌تونید گروه رو در حالت Mute بذارید و فقط پیام‌های Pin‌شده "
+        "(فایل‌های مهم) رو دنبال کنید، بدون شلوغی اعلان‌ها 🔕",
+    ),
+    (
+        "فعلاً به این موضوع نیاز ندارم",
+        "کاملاً قابل درک‌ه؛ هر وقت دوباره نیاز داشتید، درهای گروه همیشه "
+        "به‌رویتون بازه 🙌",
+    ),
+    (
+        "دلیل دیگه‌ای دارم",
+        "ممنون میشیم دلیلش رو مستقیم با ادمین در میون بذارید تا بتونیم "
+        "بهتر بشیم 🙏",
+    ),
+]
 
 
 # --------------------------------------------------------------
@@ -141,6 +181,129 @@ async def handle_join_request(join_request: ChatJoinRequest):
         # اگر کاربر قبلاً /start را به ربات نزده باشد، تلگرام ممکن است
         # اجازه نده پیام خصوصی بفرستیم. در این حالت فقط لاگ می‌کنیم.
         logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
+
+
+# --------------------------------------------------------------
+# ۳.۱) وقتی وضعیت عضویت کسی داخل گروه تغییر می‌کند (عضو جدید، ترک
+#      گروه، اخراج و ...). از همین یک هندلر هم برای اطلاع‌رسانیِ
+#      «عضو جدید» به مالک/کانال استفاده می‌کنیم و هم برای شروع
+#      فرآیند «چرا ترک کردید؟» وقتی کسی گروه را ترک می‌کند.
+#      نکته: برای اینکه این آپدیت‌ها اصلاً به ربات برسند، باید در
+#      on_startup مقدار allowed_updates را صریحاً شامل chat_member
+#      کنیم (پایین‌تر انجام شده).
+# --------------------------------------------------------------
+@dp.chat_member()
+async def handle_chat_member_update(update: ChatMemberUpdated):
+    if update.chat.id != GROUP_CHAT_ID:
+        return
+
+    old_status = update.old_chat_member.status
+    new_status = update.new_chat_member.status
+    user = update.new_chat_member.user
+
+    if user.is_bot:
+        return  # تغییر وضعیت خودِ ربات‌ها (از جمله خودمان) را نادیده می‌گیریم
+
+    # حالت ۱: کاربر تازه عضو گروه شده (چه از طریق تایید فرم، چه از
+    # طریق لینک دعوت مستقیم)
+    became_member = new_status == ChatMemberStatus.MEMBER and old_status != ChatMemberStatus.MEMBER
+    if became_member:
+        await notify_new_member(user)
+        return
+
+    # حالت ۲: کاربر گروه را ترک کرده یا اخراج شده
+    left_group = (
+        old_status == ChatMemberStatus.MEMBER
+        and new_status in (ChatMemberStatus.LEFT, ChatMemberStatus.KICKED)
+    )
+    if left_group:
+        await handle_member_left(user)
+
+
+async def notify_new_member(user) -> None:
+    """به کانال یا پیوی مالک، خبر عضویت موفق یک عضو جدید را می‌دهد."""
+    if not NOTIFY_CHAT_ID:
+        return
+    username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
+    try:
+        await bot.send_message(
+            chat_id=NOTIFY_CHAT_ID,
+            text=(
+                f"✅ عضو جدید به گروه پیوست:\n"
+                f"👤 {user.full_name} ({username_part})"
+            ),
+        )
+    except Exception as e:
+        logger.warning("ارسال گزارش عضو جدید ممکن نشد: %s", e)
+
+
+async def handle_member_left(user) -> None:
+    """وقتی کاربری گروه را ترک می‌کند: پیام + نظرسنجی دلیل ترک + تلاش برای بازگرداندنش."""
+    # به مالک/کانال اطلاع بده
+    if NOTIFY_CHAT_ID:
+        username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
+        try:
+            await bot.send_message(
+                chat_id=NOTIFY_CHAT_ID,
+                text=f"🚪 یک عضو گروه را ترک کرد:\n👤 {user.full_name} ({username_part})",
+            )
+        except Exception as e:
+            logger.warning("ارسال گزارش ترک عضو ممکن نشد: %s", e)
+
+    # به خودِ کاربر پیام بده (اگر چت خصوصی با ربات باز باشد)
+    try:
+        await bot.send_message(
+            chat_id=user.id,
+            text=(
+                f"سلام {user.first_name} 👋\n"
+                "متوجه شدیم گروه «مرجع فایل‌های معماری و عمران» رو ترک کردید. "
+                "خوشحال می‌شیم بدونیم دلیلش چی بوده تا اگه لازمه گروه رو بهتر کنیم:"
+            ),
+        )
+
+        sent_poll = await bot.send_poll(
+            chat_id=user.id,
+            question="چرا گروه رو ترک کردید؟",
+            options=[reason for reason, _ in LEAVE_REASONS],
+            is_anonymous=False,
+        )
+        _pending_leave_polls[sent_poll.poll.id] = user.id
+
+        keyboard = None
+        if GROUP_INVITE_LINK:
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="بازگشت به گروه ↩️", url=GROUP_INVITE_LINK)]
+                ]
+            )
+        await bot.send_message(
+            chat_id=user.id,
+            text="دلمون براتون تنگ می‌شه! هر وقت خواستید، از دکمه‌ی زیر دوباره بهمون ملحق بشید 👇",
+            reply_markup=keyboard,
+        )
+    except Exception as e:
+        # کاربر ربات را بلاک کرده یا هرگز /start نزده — کاری از دستمان برنمی‌آید
+        logger.warning("نمی‌توان به کاربر خارج‌شده %s پیام داد: %s", user.id, e)
+
+
+# --------------------------------------------------------------
+# ۳.۲) پاسخ کاربر به نظرسنجی «چرا گروه رو ترک کردید؟»
+# --------------------------------------------------------------
+@dp.poll_answer()
+async def handle_leave_poll_answer(poll_answer: PollAnswer):
+    user_id = _pending_leave_polls.pop(poll_answer.poll_id, None)
+    if user_id is None or not poll_answer.option_ids:
+        return
+
+    option_index = poll_answer.option_ids[0]
+    if option_index >= len(LEAVE_REASONS):
+        return
+
+    _, reply_text = LEAVE_REASONS[option_index]
+    try:
+        await bot.send_message(chat_id=user_id, text=reply_text)
+    except Exception as e:
+        logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
 
 # --------------------------------------------------------------
@@ -247,8 +410,24 @@ async def handle_submit(request: web.Request) -> web.Response:
 # ۶) راه‌اندازی وب‌سرور: هم Webhook ربات، هم فایل‌های WebApp
 # --------------------------------------------------------------
 async def on_startup(app: web.Application):
-    await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
+    await bot.set_webhook(
+        WEBHOOK_URL,
+        drop_pending_updates=True,
+        allowed_updates=[
+            "message",
+            "chat_join_request",
+            "chat_member",
+            "poll_answer",
+        ],
+    )
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
+
+    # دکمه‌ی کنار جعبه‌ی پیام (Menu Button) را روی لینک مینی‌اپ تنظیم می‌کنیم
+    # تا کاربر بدون نیاز به دیدن پیام درخواست عضویت هم بتواند فرم را باز کند.
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(text="فرم عضویت", web_app=WebAppInfo(url=WEBAPP_URL))
+    )
+    logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
 
 def create_app() -> web.Application:
