@@ -151,7 +151,7 @@ function showStep(n) {
     stepLabel.textContent = `سوال ${toFarsiDigits(n)} از ${toFarsiDigits(FORM_STEPS)}`;
   }
   backBtn.style.visibility = n === 1 ? "hidden" : "visible";
-  nextBtn.textContent = n === FORM_STEPS ? "ثبت نهایی" : "ادامه";
+  nextBtn.textContent = n === FORM_STEPS ? "ثبت و پیوستن به رواق" : "گامِ بعدی ←";
   if (!isResultStep) validateCurrentStep();
 }
 
@@ -229,8 +229,8 @@ async function submitForm() {
       resultBadge.textContent = "✓";
       resultBadge.classList.remove("error");
       resultBadge.classList.add("celebrate");
-      resultTitle.textContent = "به رواق خوش آمدی 🏛";
-      resultText.textContent = "اکنون به جمعِ معماران این مرجع پیوسته‌ای. فایل‌ها در انتظارِ تو هستند.";
+      resultTitle.textContent = "🏛 عضویت‌ات به امضا رسید!";
+      resultText.textContent = "هویت‌ات در این رواق ثبت شد. همین حالا می‌توانی به گروه برگردی و فایل‌ها را ورق بزنی — درگاه، به رویِ تو گشوده شد.";
     } else {
       throw new Error(data.error || "unknown");
     }
