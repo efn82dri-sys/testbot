@@ -73,13 +73,20 @@ const nextBtn = document.getElementById("nextBtn");
 const backBtn = document.getElementById("backBtn");
 const educationSelect = document.getElementById("education");
 
+const FORM_STEPS = 3; // مرحله ۴ صفحه‌ی نتیجه است، نه یک قدم فرم
+
 function showStep(n) {
   steps.forEach((s) => s.classList.toggle("active", Number(s.dataset.step) === n));
-  progressFill.style.width = `${(n / totalSteps) * 100}%`;
-  stepLabel.textContent = `مرحله ${toFarsiDigits(n)} از ${toFarsiDigits(totalSteps)}`;
+  const isResultStep = n > FORM_STEPS;
+  document.querySelector(".progress-track").style.display = isResultStep ? "none" : "block";
+  stepLabel.style.display = isResultStep ? "none" : "block";
+  if (!isResultStep) {
+    progressFill.style.width = `${(n / FORM_STEPS) * 100}%`;
+    stepLabel.textContent = `مرحله ${toFarsiDigits(n)} از ${toFarsiDigits(FORM_STEPS)}`;
+  }
   backBtn.style.visibility = n === 1 ? "hidden" : "visible";
-  nextBtn.textContent = n === totalSteps ? "ثبت نهایی" : "ادامه";
-  validateCurrentStep();
+  nextBtn.textContent = n === FORM_STEPS ? "ثبت نهایی" : "ادامه";
+  if (!isResultStep) validateCurrentStep();
 }
 
 function toFarsiDigits(num) {
@@ -111,7 +118,7 @@ backBtn.addEventListener("click", () => {
 
 nextBtn.addEventListener("click", () => {
   if (nextBtn.disabled) return;
-  if (currentStep < totalSteps) {
+  if (currentStep < FORM_STEPS) {
     currentStep += 1;
     showStep(currentStep);
   } else {
@@ -119,23 +126,61 @@ nextBtn.addEventListener("click", () => {
   }
 });
 
-// ---------- ارسال نهایی داده به ربات ----------
-function submitForm() {
+// ---------- ارسال نهایی داده به سرور ----------
+// نکته: تابع tg.sendData فقط برای مینی‌اپ‌هایی کار می‌کند که از
+// «Keyboard Button» باز شده باشند. چون این مینی‌اپ از دکمه‌ی زیر پیام
+// (Inline Button) باز می‌شود، داده را با fetch مستقیم به بک‌اند خودمان
+// می‌فرستیم و tg.initData را هم همراهش می‌فرستیم تا هویت کاربر تایید شود.
+const navButtons = document.getElementById("navButtons");
+const resultBadge = document.getElementById("resultBadge");
+const resultTitle = document.getElementById("resultTitle");
+const resultText = document.getElementById("resultText");
+
+async function submitForm() {
   nextBtn.disabled = true;
   nextBtn.textContent = "در حال ارسال...";
 
   const referralEl = document.querySelector('input[name="referral"]:checked');
 
-  const payload = {
+  const formPayload = {
     education: educationSelect.value,
     education_label: educationSelect.options[educationSelect.selectedIndex].text,
     referral: referralEl.value,
     interests: Array.from(selectedInterests),
   };
 
-  // این خط، داده را برای ربات (main.py) می‌فرستد و WebApp را می‌بندد
-  tg.sendData(JSON.stringify(payload));
-  tg.close();
+  currentStep = 4;
+  showStep(4);
+  navButtons.style.display = "none";
+
+  try {
+    const res = await fetch("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initData: tg.initData,
+        form: formPayload,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      resultBadge.textContent = "✓";
+      resultBadge.classList.remove("error");
+      resultTitle.textContent = "شما تایید شدید ✅";
+      resultText.textContent = "خوش آمدید به مرجع فایل‌های معماری و عمران.";
+    } else {
+      throw new Error(data.error || "unknown");
+    }
+  } catch (err) {
+    resultBadge.textContent = "!";
+    resultBadge.classList.add("error");
+    resultTitle.textContent = "مشکلی پیش آمد";
+    resultText.textContent = "لطفاً دوباره تلاش کنید یا با ادمین گروه تماس بگیرید.";
+  }
+
+  // بعد از چند ثانیه، مینی‌اپ را ببند تا کاربر داخل چت گروه/ربات برگردد
+  setTimeout(() => tg.close(), 2200);
 }
 
 // شروع از مرحله ۱

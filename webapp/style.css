@@ -217,6 +217,34 @@ select {
   pointer-events: none;
 }
 
+/* ---------- نتیجه نهایی (بعد از ثبت فرم) ---------- */
+.result-box {
+  text-align: center;
+  padding: 40px 10px 10px;
+}
+.result-badge {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-soft);
+  animation: popIn 0.4s ease;
+}
+.result-badge.error {
+  background: #b3413a;
+}
+@keyframes popIn {
+  from { transform: scale(0.6); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.result-box h2 { margin-bottom: 6px; }
+
 /* ---------- دکمه‌های ناوبری ---------- */
 .nav-buttons {
   position: fixed;

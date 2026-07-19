@@ -9,11 +9,17 @@
    خصوصی برایش پیام می‌دهد و دکمه‌ی «تکمیل فرم پذیرش» (WebApp) را نشان
    می‌دهد.
 ۲) کاربر داخل WebApp فرم را پر می‌کند و دکمه «ثبت نهایی» را می‌زند.
-۳) تلگرام داده‌های فرم را به صورت یک پیام مخصوص (web_app_data) برای
-   ربات می‌فرستد.
-۴) ربات داده را در فایل data/submissions.jsonl ذخیره می‌کند، درخواست
-   عضویت کاربر را تایید (Approve) می‌کند و پیام «شما تایید شدید»
-   همراه با دکمه بازگشت به گروه برایش می‌فرستد.
+۳) صفحه‌ی فرم (script.js) داده را مستقیماً با یک درخواست HTTP به آدرس
+   /api/submit روی همین سرور می‌فرستد (به‌همراه Telegram.WebApp.initData
+   برای اثبات هویت کاربر).
+   نکته فنی: تابع Telegram.WebApp.sendData فقط برای مینی‌اپ‌هایی کار
+   می‌کند که از «Keyboard Button» باز شده باشند، نه از دکمه‌ی زیر پیام
+   (Inline Button) که در این پروژه استفاده شده — برای همین به‌جایش از
+   یک درخواست HTTP معمولی استفاده می‌کنیم.
+۴) ربات امضای initData را با استفاده از توکن ربات بررسی می‌کند (تا
+   مطمئن شود درخواست واقعاً از تلگرام آمده)، داده را در
+   data/submissions.jsonl ذخیره می‌کند، درخواست عضویت کاربر را تایید
+   (Approve) می‌کند و پیام «شما تایید شدید» را برایش می‌فرستد.
 
 نکته مهم: این فایل هم «ربات» است و هم یک وب‌سرور کوچک که فایل‌های
 پوشه‌ی webapp/ (صفحه فرم) را روی اینترنت در دسترس می‌گذارد؛ چون
@@ -23,13 +29,16 @@ Telegram WebApp حتماً باید روی یک آدرس HTTPS واقعی باز
 """
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import parse_qsl
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
@@ -135,24 +144,57 @@ async def handle_join_request(join_request: ChatJoinRequest):
 
 
 # --------------------------------------------------------------
-# ۴) وقتی کاربر داخل WebApp دکمه «ثبت نهایی» را می‌زند
-#    داده‌ی فرم از طریق Telegram.WebApp.sendData() به این‌جا می‌رسد
+# ۴) بررسی امضای initData — تایید می‌کند که درخواست واقعاً از داخل
+#    مینی‌اپِ همین ربات آمده و کسی آن را جعل نکرده است.
+#    (روش رسمی تلگرام: core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)
 # --------------------------------------------------------------
-@dp.message(F.web_app_data)
-async def handle_webapp_data(message: Message):
-    user = message.from_user
-    raw = message.web_app_data.data  # این یک رشته JSON است که در script.js ساختیم
-
+def validate_init_data(init_data: str):
     try:
-        form_data = json.loads(raw)
+        pairs = dict(parse_qsl(init_data, strict_parsing=True))
+    except ValueError:
+        return None
+
+    received_hash = pairs.pop("hash", None)
+    if not received_hash:
+        return None
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return None
+
+    user_raw = pairs.get("user")
+    if not user_raw:
+        return None
+    return json.loads(user_raw)
+
+
+# --------------------------------------------------------------
+# ۵) وقتی کاربر داخل WebApp دکمه «ثبت نهایی» را می‌زند
+#    داده‌ی فرم از طریق یک درخواست HTTP (fetch) به این‌جا می‌رسد
+# --------------------------------------------------------------
+async def handle_submit(request: web.Request) -> web.Response:
+    try:
+        payload = await request.json()
     except json.JSONDecodeError:
-        await message.answer("متاسفانه در دریافت اطلاعات فرم مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
-        return
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
+
+    init_data = payload.get("initData", "")
+    form_data = payload.get("form", {})
+
+    user = validate_init_data(init_data)
+    if user is None:
+        logger.warning("initData نامعتبر بود — درخواست رد شد.")
+        return web.json_response({"ok": False, "error": "invalid_init_data"}, status=403)
+
+    user_id = user["id"]
 
     record = {
-        "user_id": user.id,
-        "username": user.username,
-        "full_name": user.full_name,
+        "user_id": user_id,
+        "username": user.get("username"),
+        "full_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
         "submitted_at": datetime.utcnow().isoformat(),
         **form_data,
     }
@@ -162,17 +204,18 @@ async def handle_webapp_data(message: Message):
         with open(DATA_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    logger.info("فرم کاربر %s ذخیره شد.", user.id)
+    logger.info("فرم کاربر %s ذخیره شد.", user_id)
 
     # تایید درخواست عضویت کاربر در گروه
     approved = False
     try:
-        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
+        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
         approved = True
     except Exception as e:
-        logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user.id, e)
+        logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user_id, e)
 
-    if approved:
+    # یک پیام تاییدیه هم داخل چت خصوصی با ربات بفرست (جدا از خودِ WebApp)
+    try:
         keyboard = None
         if GROUP_INVITE_LINK:
             keyboard = InlineKeyboardMarkup(
@@ -180,19 +223,28 @@ async def handle_webapp_data(message: Message):
                     [InlineKeyboardButton(text="ورود به گروه ↩️", url=GROUP_INVITE_LINK)]
                 ]
             )
-        await message.answer(
-            "✅ عضویت شما تایید شد!\nخوش آمدید به «مرجع فایل‌های معماری و عمران».",
-            reply_markup=keyboard,
-        )
-    else:
-        await message.answer(
-            "اطلاعات شما ثبت شد، اما در تایید خودکار عضویت مشکلی پیش آمد. "
-            "لطفاً کمی صبر کنید یا با ادمین گروه تماس بگیرید."
-        )
+        if approved:
+            await bot.send_message(
+                chat_id=user_id,
+                text="✅ عضویت شما تایید شد!\nخوش آمدید به «مرجع فایل‌های معماری و عمران».",
+                reply_markup=keyboard,
+            )
+        else:
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "اطلاعات شما ثبت شد، اما در تایید خودکار عضویت مشکلی پیش آمد. "
+                    "لطفاً کمی صبر کنید یا با ادمین گروه تماس بگیرید."
+                ),
+            )
+    except Exception as e:
+        logger.warning("ارسال پیام تاییدیه به کاربر %s ممکن نشد: %s", user_id, e)
+
+    return web.json_response({"ok": approved})
 
 
 # --------------------------------------------------------------
-# ۵) راه‌اندازی وب‌سرور: هم Webhook ربات، هم فایل‌های WebApp
+# ۶) راه‌اندازی وب‌سرور: هم Webhook ربات، هم فایل‌های WebApp
 # --------------------------------------------------------------
 async def on_startup(app: web.Application):
     await bot.set_webhook(WEBHOOK_URL, drop_pending_updates=True)
@@ -205,6 +257,9 @@ def create_app() -> web.Application:
     # فایل‌های estatic صفحه فرم (index.html / style.css / script.js / فونت‌ها)
     webapp_dir = Path(__file__).parent / "webapp"
     app.router.add_static("/webapp/", path=str(webapp_dir), show_index=False)
+
+    # مسیر دریافتی که فرم برای ثبت نهایی صدا می‌زند
+    app.router.add_post("/api/submit", handle_submit)
 
     # مسیر دریافت پیام‌های تلگرام (Webhook)
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
