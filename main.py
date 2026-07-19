@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ====================================================================
- ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
+ ربات تلگرام «تایید عضویت» — رواق | مرجع فایل‌های معماری
 ====================================================================
 این فایل قلب پروژه است. کارهایی که انجام می‌دهد:
 
@@ -20,6 +20,12 @@
    مطمئن شود درخواست واقعاً از تلگرام آمده)، داده را در
    data/submissions.jsonl ذخیره می‌کند، درخواست عضویت کاربر را تایید
    (Approve) می‌کند و پیام «شما تایید شدید» را برایش می‌فرستد.
+۵) «ارتباط با ادمین»: هر کاربر با دستور /contact (یا با انتخاب گزینه‌ی
+   «دلیل دیگه‌ای دارم» در نظرسنجی ترک گروه) می‌تواند یک پیام متنی
+   بفرستد که مستقیماً برای مالک (NOTIFY_CHAT_ID) و همه‌ی ادمین‌ها
+   (ADMIN_IDS) فوروارد می‌شود. ادمین‌ها با «ریپلای زدن» روی همان پیامِ
+   فوروارد‌شده، می‌توانند مستقیماً برای همان کاربر پاسخ بفرستند — بدون
+   نیاز به دانستن آیدی یا یوزرنیم کاربر.
 
 نکته مهم: این فایل هم «ربات» است و هم یک وب‌سرور کوچک که فایل‌های
 پوشه‌ی webapp/ (صفحه فرم) را روی اینترنت در دسترس می‌گذارد؛ چون
@@ -35,6 +41,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -45,6 +52,7 @@ from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -52,19 +60,14 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
     MenuButtonWebApp,
     Message,
     PollAnswer,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
 # ۱) تنظیمات — این مقادیر را از متغیرهای محیطی (Environment
@@ -108,20 +111,11 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 # مسیر فایلی که آمار ساده‌ی ورود/خروج اعضا برای دستور /stats در آن نگه‌داری می‌شود
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 
-# مسیر فایلی که شماره تلفنِ تاییدشده‌ی هر کاربر (بعد از احراز هویت با
-# دکمه‌ی «اشتراک‌گذاری شماره تلفن») در آن نگه‌داری می‌شود. کلید = آیدی
-# عددی کاربر (به‌صورت رشته)، مقدار = شماره تلفن.
-PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
-
-# برای نمایش خواناتر ستون «نحوه آشنایی» در خروجی اکسل — چون در فرم فقط
-# کدِ گزینه (instagram, friends, ...) ذخیره می‌شود، نه متن فارسی‌اش.
-REFERRAL_LABELS = {
-    "instagram": "اینستاگرام",
-    "friends": "معرفی دوستان",
-    "other_groups": "سایر گروه‌ها و کانال‌ها",
-    "search": "جستجوی اینترنتی",
-    "other": "سایر موارد",
-}
+# مسیر فایلی که نگاشت «کدام پیامِ فوروارد‌شده به ادمین، مربوط به کدام
+# کاربر است» را نگه می‌دارد — تا وقتی ادمین روی آن پیام ریپلای زد،
+# بدانیم پاسخ باید برای چه کسی ارسال شود. کلید هر رکورد به‌صورت
+# "chat_id:message_id" است.
+CONTACT_MAP_FILE = Path(__file__).parent / "data" / "contact_messages.json"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -142,7 +136,7 @@ _pending_leave_polls: dict[str, int] = {}
 LEAVE_REASONS: list[tuple[str, str]] = [
     (
         "فایل‌ها و محتوای گروه به‌دردم نخورد",
-        "دقیقاً دنبال چه فایلی بودید؟ اگر جواب بدید به ادمین‌ها اطلاع می‌دم "
+        "دقیقاً دنبال چه فایلی بودید؟ اگر جواب بدید به ادمین‌های رواق اطلاع می‌دم "
         "تا در اولین فرصت تهیه‌اش کنند 🙏",
     ),
     (
@@ -152,13 +146,14 @@ LEAVE_REASONS: list[tuple[str, str]] = [
     ),
     (
         "فعلاً به این موضوع نیاز ندارم",
-        "کاملاً قابل درک‌ه؛ هر وقت دوباره نیاز داشتید، درهای گروه همیشه "
+        "کاملاً قابل درک‌ه؛ هر وقت دوباره نیاز داشتید، درِ رواق همیشه "
         "به‌رویتون بازه 🙌",
     ),
     (
         "دلیل دیگه‌ای دارم",
-        "ممنون میشیم دلیلش رو مستقیم با ادمین در میون بذارید تا بتونیم "
-        "بهتر بشیم 🙏",
+        "ممنون بابت راست‌گویی 🙏 لطفاً همین‌جا و همین الان دلیلش رو برام "
+        "بنویسید؛ پیامتون مستقیم دست ادمین و مالک رواق می‌رسه و از همون‌جا "
+        "بهتون پاسخ می‌دن.",
     ),
 ]
 
@@ -184,33 +179,77 @@ async def increment_stat(field: str) -> None:
         STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
 
 
-def load_phones() -> dict:
-    """شماره‌تلفن‌های تاییدشده را می‌خواند: {"123456789": "+98912...", ...}"""
-    if not PHONES_FILE.exists():
-        return {}
-    try:
-        return json.loads(PHONES_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-async def save_phone(user_id: int, phone: str) -> None:
-    async with _write_lock:
-        phones = load_phones()
-        phones[str(user_id)] = phone
-        PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
-
-
-def get_saved_phone(user_id: int) -> str:
-    return load_phones().get(str(user_id), "")
-
-
 # حالت‌های گفت‌وگوی «ارسال پیام همگانی» — وقتی ادمین دکمه‌ی «ارسال
 # پیام همگانی» را می‌زند، ربات منتظر می‌ماند متن پیام را بفرستد،
 # سپس یک پیش‌نمایش با دکمه‌ی تایید/انصراف نشان می‌دهد.
 class BroadcastStates(StatesGroup):
     waiting_for_text = State()
     confirming = State()
+
+
+# حالت گفت‌وگوی «ارتباط با ادمین» — از دستور /contact یا از گزینه‌ی
+# «دلیل دیگه‌ای دارم» در نظرسنجی ترک گروه شروع می‌شود؛ ربات منتظر
+# می‌ماند کاربر متن انتقاد/پیشنهادش را بفرستد و آن را برای ادمین و
+# مالک فوروارد می‌کند.
+class ContactStates(StatesGroup):
+    waiting_for_message = State()
+
+
+def get_private_fsm_context(user_id: int) -> FSMContext:
+    """FSMContext مربوط به چت خصوصیِ یک کاربر را می‌سازد — حتی از داخل
+    هندلرهایی مثل poll_answer که خودشان FSMContext ندارند. چون چت
+    خصوصی هر کاربر در تلگرام همیشه با آیدی خودِ همان کاربر یکی است،
+    ساخت دستی کلید با chat_id=user_id همیشه معتبر است."""
+    return FSMContext(storage=dp.storage, key=StorageKey(bot_id=bot.id, chat_id=user_id, user_id=user_id))
+
+
+def load_contact_map() -> dict[str, int]:
+    """نگاشت «کدام پیامِ فوروارد‌شده مال کدام کاربر است» را می‌خواند."""
+    if not CONTACT_MAP_FILE.exists():
+        return {}
+    try:
+        return json.loads(CONTACT_MAP_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+async def remember_contact_message(chat_id: int, message_id: int, user_id: int) -> None:
+    async with _write_lock:
+        mapping = load_contact_map()
+        mapping[f"{chat_id}:{message_id}"] = user_id
+        CONTACT_MAP_FILE.write_text(json.dumps(mapping, ensure_ascii=False), encoding="utf-8")
+
+
+async def forward_contact_message_to_admins(user, text: str) -> bool:
+    """پیام انتقاد/پیشنهاد کاربر را برای مالک (NOTIFY_CHAT_ID) و همه‌ی
+    ادمین‌ها (ADMIN_IDS) می‌فرستد و آیدیِ پیامِ ارسالی را برای هر مقصد
+    ذخیره می‌کند تا بعداً بشود با ریپلای روی همان پیام، به کاربر پاسخ داد.
+    اگر حداقل یک مقصد موفق شود True برمی‌گرداند."""
+    username_part = f"@{user.username}" if user.username else f"آیدی عددی: <code>{user.id}</code>"
+    forward_text = (
+        "📩 <b>پیام تازه از یکی از اعضای رواق</b>\n"
+        f"👤 {html_escape(user.full_name)} ({username_part})\n\n"
+        f"{html_escape(text)}\n\n"
+        "برای پاسخ به همین عضو، فقط روی همین پیام «ریپلای» بزنید؛ پاسخ‌تون "
+        "مستقیم و بدون نیاز به دونستن آیدی، براش ارسال می‌شه."
+    )
+
+    targets: set[int] = set(ADMIN_IDS)
+    if NOTIFY_CHAT_ID:
+        try:
+            targets.add(int(NOTIFY_CHAT_ID))
+        except ValueError:
+            pass
+
+    delivered = False
+    for chat_id in targets:
+        try:
+            sent = await bot.send_message(chat_id=chat_id, text=forward_text)
+            await remember_contact_message(chat_id, sent.message_id, user.id)
+            delivered = True
+        except Exception as e:
+            logger.warning("ارسال پیام کاربر %s به مقصد %s ممکن نشد: %s", user.id, chat_id, e)
+    return delivered
 
 
 def collect_form_user_ids() -> set[int]:
@@ -261,7 +300,7 @@ async def build_stats_text() -> str:
 
 
 def build_export_file() -> BufferedInputFile | None:
-    """فایل اکسل مرتب خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
+    """فایل اکسل خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
     if not DATA_FILE.exists():
         return None
 
@@ -279,78 +318,24 @@ def build_export_file() -> BufferedInputFile | None:
     if not records:
         return None
 
-    # جدیدترین فرم‌ها بالای لیست باشند (مرور راحت‌تر برای ادمین)
-    records.sort(key=lambda r: r.get("submitted_at", ""), reverse=True)
-
-    phones = load_phones()
-
-    headers = [
-        "آیدی عددی", "نام کاربری", "نام کامل", "شماره تلفن",
-        "تاریخ و ساعت ثبت (UTC)", "مقطع تحصیلی", "نحوه آشنایی", "علایق انتخاب‌شده",
-    ]
-
-    def format_date(raw: str) -> str:
-        try:
-            dt = datetime.fromisoformat(raw)
-            return dt.strftime("%Y-%m-%d  %H:%M")
-        except (ValueError, TypeError):
-            return raw or "-"
-
-    def format_interests(value) -> str:
-        if isinstance(value, list):
-            return "، ".join(value) if value else "-"
-        return str(value) if value else "-"
-
-    rows = []
+    # هدر ستون‌ها از اجتماع تمام کلیدهای موجود در همه‌ی رکوردها ساخته می‌شود
+    headers: list[str] = []
     for record in records:
-        user_id = record.get("user_id", "")
-        username = record.get("username")
-        rows.append([
-            user_id,
-            f"@{username}" if username else "-",
-            record.get("full_name") or "-",
-            phones.get(str(user_id), "-"),
-            format_date(record.get("submitted_at", "")),
-            record.get("education_label") or record.get("education") or "-",
-            REFERRAL_LABELS.get(record.get("referral"), record.get("referral") or "-"),
-            format_interests(record.get("interests")),
-        ])
+        for key in record.keys():
+            if key not in headers:
+                headers.append(key)
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "فرم‌های ثبت‌شده"
-    sheet.sheet_view.rightToLeft = True
-
+    sheet.title = "submissions"
     sheet.append(headers)
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="14532F", end_color="14532F", fill_type="solid")
-    for cell in sheet[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    for row in rows:
-        sheet.append(row)
-
-    for row_cells in sheet.iter_rows(min_row=2):
-        for cell in row_cells:
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    # عرض هر ستون را متناسب با بلندترین محتوایش تنظیم کن
-    for col_index, header in enumerate(headers, start=1):
-        max_len = len(str(header))
-        for row in rows:
-            cell_value = row[col_index - 1]
-            max_len = max(max_len, len(str(cell_value)))
-        sheet.column_dimensions[get_column_letter(col_index)].width = min(max_len + 4, 42)
-
-    sheet.freeze_panes = "A2"
-    sheet.row_dimensions[1].height = 22
+    for record in records:
+        sheet.append([str(record.get(h, "")) for h in headers])
 
     buffer = BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
-    return BufferedInputFile(buffer.read(), filename="فرم‌های عضویت.xlsx")
+    return BufferedInputFile(buffer.read(), filename="submissions.xlsx")
 
 
 # --------------------------------------------------------------
@@ -382,9 +367,10 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
 async def handle_start(message: Message):
     await message.answer(
         "سلام 👋\n"
-        "برای عضویت در «مرجع فایل‌های معماری و عمران» ابتدا باید درخواست "
-        "عضویت در گروه را ثبت کنید. بعد از ثبت درخواست، من به صورت خودکار "
-        "فرم پذیرش را برایتان می‌فرستم."
+        "به «رواق | مرجع فایل‌های معماری» خوش اومدید؛ خونه‌ی آرشیو و "
+        "نوستالژی معماری. برای ورود زیر این رواق، اول باید درخواست عضویت "
+        "در گروه رو ثبت کنید. به‌محض ثبت درخواست، من به‌صورت خودکار فرم "
+        "پذیرش رو براتون می‌فرستم."
     )
 
 
@@ -393,16 +379,14 @@ async def handle_start(message: Message):
 #    (این حالت وقتی فعال است که در تنظیمات گروه، گزینه‌ی
 #     «تایید اعضای جدید توسط مدیر» روشن باشد)
 # --------------------------------------------------------------
-def phone_request_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
+@dp.chat_join_request()
+async def handle_join_request(join_request: ChatJoinRequest):
+    if join_request.chat.id != GROUP_CHAT_ID:
+        return  # این گروه، همان گروهی نیست که ربات برایش تنظیم شده
 
+    user = join_request.from_user
+    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
 
-async def send_webapp_form_message(user) -> None:
-    """پیام «تکمیل فرم پذیرش» را برای کاربری که شماره‌اش تایید شده ارسال می‌کند."""
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -413,70 +397,23 @@ async def send_webapp_form_message(user) -> None:
             ]
         ]
     )
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                "✅ شماره‌ی شما تایید شد.\n\n"
-                "برای تکمیل عضویت، لطفاً فرم کوتاه زیر را پر کنید. این فرم "
-                "کمتر از یک دقیقه زمان می‌برد."
-            ),
-            reply_markup=keyboard,
-        )
-    except Exception as e:
-        logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
-
-
-@dp.chat_join_request()
-async def handle_join_request(join_request: ChatJoinRequest):
-    if join_request.chat.id != GROUP_CHAT_ID:
-        return  # این گروه، همان گروهی نیست که ربات برایش تنظیم شده
-
-    user = join_request.from_user
-    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
-
-    # اگر قبلاً یک‌بار شماره‌اش را تایید کرده، مستقیم فرم را بفرست
-    if get_saved_phone(user.id):
-        await send_webapp_form_message(user)
-        return
 
     try:
         await bot.send_message(
             chat_id=user.id,
             text=(
                 f"سلام {user.first_name} عزیز 👋\n\n"
-                "درخواست عضویت شما در «مرجع فایل‌های معماری و عمران» ثبت شد.\n"
-                "قبل از تکمیل فرم، برای احراز هویت لازم است شماره تلفن‌تان را با "
-                "دکمه‌ی زیر (فقط شماره‌ی خودتان) به اشتراک بگذارید."
+                "درخواست عضویت شما برای ورود زیر «رواق | مرجع فایل‌های معماری» "
+                "ثبت شد.\n"
+                "برای تکمیل عضویت، لطفاً فرم کوتاه پذیرش زیر را پر کنید؛ کمتر "
+                "از یک دقیقه وقتتان را می‌گیرد."
             ),
-            reply_markup=phone_request_keyboard(),
+            reply_markup=keyboard,
         )
     except Exception as e:
         # اگر کاربر قبلاً /start را به ربات نزده باشد، تلگرام ممکن است
         # اجازه نده پیام خصوصی بفرستیم. در این حالت فقط لاگ می‌کنیم.
         logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
-
-
-# --------------------------------------------------------------
-# ۳.۰) دریافت شماره تلفن اشتراک‌گذاشته‌شده — این همان مرحله‌ی
-#      احراز هویت است که باید قبل از باز شدن فرم (مینی‌اپ) طی شود.
-# --------------------------------------------------------------
-@dp.message(F.contact)
-async def handle_contact_shared(message: Message):
-    contact = message.contact
-    user = message.from_user
-
-    # فقط شماره‌ی خودِ همان کاربر پذیرفته می‌شود، نه یک مخاطب فوروارد‌شده
-    if contact.user_id != user.id:
-        await message.answer(
-            "لطفاً فقط شماره تلفن خودتان را با دکمه‌ی زیر به اشتراک بگذارید.",
-            reply_markup=phone_request_keyboard(),
-        )
-        return
-
-    await save_phone(user.id, contact.phone_number)
-    await message.answer("شماره‌ی شما ذخیره شد ✅", reply_markup=ReplyKeyboardRemove())
-    await send_webapp_form_message(user)
 
 
 # --------------------------------------------------------------
@@ -554,8 +491,9 @@ async def handle_member_left(user) -> None:
             chat_id=user.id,
             text=(
                 f"سلام {user.first_name} 👋\n"
-                "متوجه شدیم گروه «مرجع فایل‌های معماری و عمران» رو ترک کردید. "
-                "خوشحال می‌شیم بدونیم دلیلش چی بوده تا اگه لازمه گروه رو بهتر کنیم:"
+                "متوجه شدیم از زیر «رواق | مرجع فایل‌های معماری» رفتید. "
+                "خوشحال می‌شیم بدونیم دلیلش چی بوده تا اگه لازمه، فضا رو "
+                "براتون بهتر کنیم:"
             ),
         )
 
@@ -576,7 +514,8 @@ async def handle_member_left(user) -> None:
             )
         await bot.send_message(
             chat_id=user.id,
-            text="دلمون براتون تنگ می‌شه! هر وقت خواستید، از دکمه‌ی زیر دوباره بهمون ملحق بشید 👇",
+            text="دلمون براتون تنگ می‌شه زیر این رواق! هر وقت خواستید، از دکمه‌ی "
+            "زیر دوباره بهمون ملحق بشید 👇",
             reply_markup=keyboard,
         )
     except Exception as e:
@@ -602,10 +541,84 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
         await bot.send_message(chat_id=user_id, text=reply_text)
     except Exception as e:
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
+        return
+
+    # اگر گزینه‌ی «دلیل دیگه‌ای دارم» (آخرین گزینه) را انتخاب کرده، منتظر
+    # می‌مانیم پیام بعدی‌اش را بفرستد تا برای ادمین/مالک فوروارد شود.
+    is_other_reason = option_index == len(LEAVE_REASONS) - 1
+    if is_other_reason:
+        await get_private_fsm_context(user_id).set_state(ContactStates.waiting_for_message)
 
 
 # --------------------------------------------------------------
-# ۳.۳) پنل مدیریت شیشه‌ای — فقط برای آیدی‌های داخل ADMIN_IDS
+# ۳.۳) ارتباط با ادمین — هر عضو با /contact (یا از داخل نظرسنجیِ ترک
+#      گروه) می‌تواند انتقاد/پیشنهادش را مستقیم برای ادمین و مالک
+#      رواق بفرستد؛ ادمین هم با ریپلای‌زدن روی همان پیام، مستقیم به
+#      همان کاربر پاسخ می‌دهد.
+# --------------------------------------------------------------
+@dp.message(Command("contact"))
+async def handle_contact_command(message: Message, state: FSMContext):
+    await state.set_state(ContactStates.waiting_for_message)
+    await message.answer(
+        "🖋 هر حرفی دارید — انتقاد، پیشنهاد یا سوال — همین‌جا بنویسید. "
+        "پیامتون مستقیم دست ادمین و مالک رواق می‌رسه و از همون‌جا بهتون "
+        "پاسخ می‌دن.\n\nبرای انصراف، دستور /cancel را بفرستید."
+    )
+
+
+@dp.message(ContactStates.waiting_for_message)
+async def handle_contact_message_input(message: Message, state: FSMContext):
+    raw_text = (message.text or "").strip()
+    if raw_text.startswith("/"):
+        await state.clear()
+        await message.answer("ارسال پیام به ادمین لغو شد. هر وقت خواستید، دوباره /contact را بزنید.")
+        return
+
+    text = message.html_text or message.text or ""
+    if not text.strip():
+        await message.answer("لطفاً پیامتون رو به‌صورت متنی بفرستید (یا /cancel برای انصراف).")
+        return
+
+    await state.clear()
+    delivered = await forward_contact_message_to_admins(message.from_user, text)
+    if delivered:
+        await message.answer("✅ پیامتون برای ادمین و مالک رواق ارسال شد. به‌زودی پاسخ می‌گیرید.")
+    else:
+        await message.answer(
+            "⚠️ الان امکان ارسال پیامتون فراهم نشد. لطفاً کمی بعد دوباره تلاش کنید."
+        )
+
+
+@dp.message(F.reply_to_message, F.from_user.id.in_(ADMIN_IDS))
+async def handle_admin_reply_to_contact(message: Message):
+    # نکته: این هندلر فقط روی پیام‌هایی که واقعاً «ریپلای» هستند فعال
+    # می‌شود، پس با ورودی متنی سایر جریان‌های ادمین (مثل نوشتن متن
+    # پیام همگانی) تداخلی ندارد — مگر در حالت نادری که ادمین همزمان
+    # با نوشتن پیام همگانی، روی پیام دیگری هم ریپلای بزند.
+    mapping = load_contact_map()
+    key = f"{message.chat.id}:{message.reply_to_message.message_id}"
+    target_user_id = mapping.get(key)
+    if target_user_id is None:
+        return  # این ریپلای مربوط به پیامِ فوروارد‌شده‌ی هیچ عضوی نبود
+
+    reply_text = message.html_text or message.text or ""
+    if not reply_text.strip():
+        await message.reply("برای پاسخ، لطفاً یک پیام متنی بفرستید.")
+        return
+
+    try:
+        await bot.send_message(
+            chat_id=target_user_id,
+            text=f"📬 <b>پاسخ ادمین رواق:</b>\n\n{reply_text}",
+        )
+        await message.reply("✅ پاسخ شما برای همون عضو ارسال شد.")
+    except Exception as e:
+        logger.warning("ارسال پاسخ ادمین به کاربر %s ممکن نشد: %s", target_user_id, e)
+        await message.reply("⚠️ ارسال پاسخ به این کاربر ممکن نشد؛ شاید ربات را بلاک کرده باشد.")
+
+
+# --------------------------------------------------------------
+# ۳.۴) پنل مدیریت شیشه‌ای — فقط برای آیدی‌های داخل ADMIN_IDS
 #      با /admin باز می‌شود؛ همچنین /stats، /export و /broadcast
 #      به‌عنوان میان‌بر مستقیم هم نگه داشته شده‌اند.
 # --------------------------------------------------------------
@@ -864,7 +877,6 @@ async def handle_submit(request: web.Request) -> web.Response:
         "user_id": user_id,
         "username": user.get("username"),
         "full_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
-        "phone": get_saved_phone(user_id),
         "submitted_at": datetime.utcnow().isoformat(),
         **form_data,
     }
@@ -896,7 +908,7 @@ async def handle_submit(request: web.Request) -> web.Response:
         if approved:
             await bot.send_message(
                 chat_id=user_id,
-                text="✅ عضویت شما تایید شد!\nخوش آمدید به «مرجع فایل‌های معماری و عمران».",
+                text="✅ عضویت شما تایید شد!\nبه «رواق | مرجع فایل‌های معماری» خوش اومدید 🏛",
                 reply_markup=keyboard,
             )
         else:

@@ -229,7 +229,7 @@ async function submitForm() {
       resultBadge.textContent = "✓";
       resultBadge.classList.remove("error");
       resultTitle.textContent = "شما تایید شدید ✅";
-      resultText.textContent = "خوش آمدید به مرجع فایل‌های معماری و عمران.";
+      resultText.textContent = "به رواق | مرجع فایل‌های معماری خوش آمدید.";
     } else {
       throw new Error(data.error || "unknown");
     }
