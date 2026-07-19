@@ -266,6 +266,65 @@ async def build_stats_text() -> str:
     )
 
 
+async def build_stats_detail_text() -> str:
+    """جمع‌بندیِ زنده‌ی کسانی که احرازِ هویت (پرکردنِ فرم) را کامل کرده‌اند:
+    تفکیک بر اساسِ مقطعِ تحصیلی، نحوه‌ی آشنایی و علایقِ انتخاب‌شده."""
+    if not DATA_FILE.exists():
+        return "هنوز هیچ فرمی ثبت نشده است."
+
+    educations: dict[str, int] = {}
+    referrals: dict[str, int] = {}
+    interests: dict[str, int] = {}
+    form_count = 0
+
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            form_count += 1
+
+            edu_label = record.get("education_label") or record.get("education") or "نامشخص"
+            educations[edu_label] = educations.get(edu_label, 0) + 1
+
+            ref = record.get("referral") or "نامشخص"
+            ref_label = REFERRAL_LABELS.get(ref, ref)
+            referrals[ref_label] = referrals.get(ref_label, 0) + 1
+
+            for interest in record.get("interests") or []:
+                interests[interest] = interests.get(interest, 0) + 1
+
+    if form_count == 0:
+        return "هنوز هیچ فرمی ثبت نشده است."
+
+    lines = [
+        f"📊 <b>آمارِ تفصیلیِ ساکنانِ رواق</b>\n"
+        f"از میانِ <b>{form_count}</b> نفری که احرازِ هویت را کامل کرده‌اند:\n"
+    ]
+
+    lines.append("<b>مقطعِ تحصیلی:</b>")
+    for label, count in sorted(educations.items(), key=lambda x: -x[1]):
+        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+
+    lines.append("\n<b>نحوه‌ی آشنایی:</b>")
+    for label, count in sorted(referrals.items(), key=lambda x: -x[1]):
+        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+
+    lines.append("\n<b>علایق:</b>")
+    if interests:
+        for label, count in sorted(interests.items(), key=lambda x: -x[1]):
+            lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+    else:
+        lines.append("هنوز کسی علایقش را ثبت نکرده.")
+
+    return "\n".join(lines)
+
+
 def build_export_file() -> BufferedInputFile | None:
     """فایل اکسل مرتب خروجی فرم‌ها را می‌سازد، یا None اگر هنوز فرمی ثبت نشده باشد."""
     if not DATA_FILE.exists():
@@ -366,6 +425,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="📈 آمار تفصیلیِ فرم‌ها", callback_data="admin:stats_detail")],
             [InlineKeyboardButton(text="📄 خروجی اکسل فرم‌ها", callback_data="admin:export")],
             [InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="admin:broadcast")],
             [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
@@ -635,6 +695,13 @@ async def handle_stats(message: Message):
     await message.answer(await build_stats_text())
 
 
+@dp.message(Command("stats_detail"))
+async def handle_stats_detail(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    await message.answer(await build_stats_detail_text())
+
+
 @dp.message(Command("export"))
 async def handle_export(message: Message):
     if not is_admin(message.from_user.id):
@@ -720,6 +787,15 @@ async def cb_admin_stats(callback: CallbackQuery):
         return
     await callback.answer()
     await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
+
+
+@dp.callback_query(F.data == "admin:stats_detail")
+async def cb_admin_stats_detail(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.edit_text(await build_stats_detail_text(), reply_markup=admin_back_keyboard())
 
 
 @dp.callback_query(F.data == "admin:export")
