@@ -18,20 +18,31 @@
   font-weight: 700;
   font-display: swap;
 }
+/* اگر فونت کلمه هنوز روی سرور بارگذاری نشده باشد، این فونت وب
+   جایگزین می‌شود تا صفحه هیچ‌وقت با فونت پیش‌فرض زشت نمایش داده نشود. */
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/vazirmatn-font-face.css');
 
 :root {
-  /* پالت رنگی خنثی و مدرن، با حس «معماری» */
-  --bg: #f4f3f0;
-  --surface: #ffffff;
-  --ink: #21201c;
-  --ink-soft: #6b6a65;
-  --line: #e6e4df;
-  --accent: #2f4034;      /* سبز خاکی تیره — حس مصالح و طبیعت */
-  --accent-soft: #e7ede9;
-  --radius-lg: 22px;
-  --radius-md: 14px;
-  --shadow-soft: 0 8px 24px rgba(33, 32, 28, 0.08);
-  --shadow-press: 0 2px 8px rgba(33, 32, 28, 0.10);
+  /* پالت «نقشه‌ی معماری» — سبزهای عمیق برند گروه + کاغذ شطرنجی */
+  --g-deep:    #0c2a1a;
+  --g-mid:     #14532f;
+  --g-bright:  #2f8f4e;
+  --g-lime:    #8fc23f;
+
+  --ink:       #ffffff;
+  --ink-soft:  rgba(255, 255, 255, 0.68);
+  --ink-faint: rgba(255, 255, 255, 0.45);
+
+  --glass:        rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.14);
+  --glass-border: rgba(255, 255, 255, 0.16);
+
+  --paper:      #f4efe4;
+  --paper-ink:  #1c2b21;
+
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --shadow-soft: 0 10px 30px rgba(6, 20, 12, 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -39,16 +50,37 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
+  min-height: 100vh;
   color: var(--ink);
-  font-family: 'Kalameh', Tahoma, 'Segoe UI', sans-serif;
+  font-family: 'Kalameh', 'Vazirmatn', Tahoma, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  background:
+    radial-gradient(120% 90% at 15% -10%, rgba(143, 194, 63, 0.35), transparent 60%),
+    linear-gradient(165deg, var(--g-deep) 0%, var(--g-mid) 45%, var(--g-bright) 78%, var(--g-lime) 100%);
+  background-attachment: fixed;
+}
+
+/* ---------- بافت زمینه: خطوط شطرنجی نقشه‌کشی (سیگنیچر معماری) ---------- */
+.bp-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(120% 80% at 50% 0%, black 40%, transparent 90%);
+  -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, black 40%, transparent 90%);
 }
 
 .app {
+  position: relative;
+  z-index: 1;
   max-width: 480px;
   margin: 0 auto;
-  padding: 20px 18px 100px;
+  padding: 22px 18px 110px;
   min-height: 100vh;
 }
 
@@ -60,50 +92,65 @@ html, body {
   margin-bottom: 22px;
 }
 .logo-badge {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
-  background: var(--accent);
+  width: 50px;
+  height: 50px;
+  border-radius: 15px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
-  box-shadow: var(--shadow-soft);
   flex-shrink: 0;
 }
 .app-header h1 {
-  font-size: 16px;
-  margin: 0 0 2px;
+  font-size: 15.5px;
+  margin: 0 0 3px;
   font-weight: 700;
+  line-height: 1.4;
 }
 .app-header p {
-  font-size: 12.5px;
+  font-size: 12px;
   margin: 0;
   color: var(--ink-soft);
 }
 
-/* ---------- نوار پیشرفت ---------- */
-.progress-track {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--line);
-  overflow: hidden;
+/* ---------- نوار پیشرفت (خطی، شبیه نوار درصد پروژه) ---------- */
+.progress-bar-container {
+  display: flex;
+  gap: 6px;
+  width: 100%;
   margin-bottom: 8px;
 }
-.progress-fill {
-  height: 100%;
-  width: 33%;
-  background: var(--accent);
-  border-radius: 999px;
-  transition: width 0.35s ease;
+.progress-line {
+  height: 4px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
 }
+.progress-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--g-lime), var(--ink));
+  transform: scaleX(0);
+  transform-origin: right center;
+  transition: transform 0.4s ease;
+}
+.progress-line.filled::after { transform: scaleX(1); }
+
 .step-label {
   font-size: 12px;
   color: var(--ink-soft);
   margin-bottom: 20px;
+  font-weight: 700;
 }
 
-/* ---------- مراحل فرم ---------- */
+/* ---------- کارت شیشه‌ای دور هر مرحله ---------- */
 .step {
   display: none;
   animation: fadeSlideIn 0.35s ease;
@@ -111,80 +158,82 @@ html, body {
 .step.active { display: block; }
 
 @keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .step h2 {
   font-size: 18px;
-  margin: 6px 0 4px;
+  line-height: 1.6;
+  margin: 4px 0 16px;
+  font-weight: 700;
 }
 .hint {
   font-size: 12.5px;
   color: var(--ink-soft);
-  margin: 0 0 16px;
+  margin: -8px 0 16px;
 }
 
-/* ---------- انتخاب مقطع تحصیلی ---------- */
-.select-wrap {
-  background: var(--surface);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft);
-  padding: 4px;
-  margin-top: 14px;
-}
-select {
-  width: 100%;
-  padding: 16px 14px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  font-family: inherit;
-  font-size: 15px;
-  color: var(--ink);
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-/* ---------- نحوه آشنایی (رادیو کارت) ---------- */
-.radio-list {
+/* ---------- کارت‌های انتخابی (مقطع تحصیلی + نحوه آشنایی) ---------- */
+.option-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 14px;
 }
-.radio-card {
+.option-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--surface);
+  background: var(--glass);
+  border: 1.5px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-radius: var(--radius-md);
-  padding: 14px 16px;
-  box-shadow: var(--shadow-soft);
+  padding: 15px 16px;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
   font-size: 14.5px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.radio-card:active { transform: scale(0.98); }
-.radio-card input { display: none; }
-.radio-icon {
-  font-size: 18px;
+.option-item:active { transform: scale(0.98); }
+.option-item span:first-of-type:not(.option-icon) { flex: 1; }
+.option-icon {
+  font-size: 17px;
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  background: var(--accent-soft);
+  background: rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.radio-card:has(input:checked) {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: var(--shadow-press);
+.option-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+  transition: all 0.15s ease;
 }
-.radio-card:has(input:checked) .radio-icon {
-  background: rgba(255,255,255,0.18);
+.option-item.selected {
+  background: rgba(143, 194, 63, 0.22);
+  border-color: var(--g-lime);
+}
+.option-item.selected .option-check {
+  background: var(--g-lime);
+  border-color: var(--g-lime);
+  position: relative;
+}
+.option-item.selected .option-check::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--g-deep);
+  font-weight: 700;
 }
 
 /* ---------- علایق (چیپ‌ها) ---------- */
@@ -192,58 +241,56 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 8px;
 }
 .chip {
-  background: var(--surface);
-  border-radius: 999px;
-  padding: 12px 14px;
+  background: var(--glass);
+  border: 1.5px solid var(--glass-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 14px;
+  padding: 13px 12px;
   text-align: center;
-  font-size: 13px;
-  box-shadow: var(--shadow-soft);
+  font-size: 12.5px;
   cursor: pointer;
   user-select: none;
-  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
-  border: 1.5px solid transparent;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 .chip:active { transform: scale(0.97); }
 .chip.selected {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  background: rgba(143, 194, 63, 0.25);
+  border-color: var(--g-lime);
+  font-weight: 700;
 }
 .chip.disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   pointer-events: none;
 }
 
-/* ---------- نتیجه نهایی (بعد از ثبت فرم) ---------- */
+/* ---------- نتیجه نهایی ---------- */
 .result-box {
   text-align: center;
-  padding: 40px 10px 10px;
+  padding: 60px 10px 10px;
 }
 .result-badge {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 20px;
+  width: 74px;
+  height: 74px;
+  margin: 0 auto 22px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--glass-strong);
+  border: 1.5px solid var(--g-lime);
   color: #fff;
   font-size: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-soft);
   animation: popIn 0.4s ease;
 }
-.result-badge.error {
-  background: #b3413a;
-}
+.result-badge.error { border-color: #e2665a; }
 @keyframes popIn {
   from { transform: scale(0.6); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
-.result-box h2 { margin-bottom: 6px; }
+.result-box h2 { margin-bottom: 8px; font-size: 18px; }
 
 /* ---------- دکمه‌های ناوبری ---------- */
 .nav-buttons {
@@ -253,25 +300,26 @@ select {
   left: 0;
   max-width: 480px;
   margin: 0 auto;
+  z-index: 2;
   display: flex;
   gap: 10px;
   padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--bg) 60%, rgba(244,243,240,0));
+  background: linear-gradient(to top, var(--g-deep) 55%, rgba(12, 42, 26, 0));
 }
-.btn-primary, .btn-secondary {
+.btn-primary, .btn-secondary, .btn-ghost {
   flex: 1;
   padding: 15px;
   border-radius: 999px;
   border: none;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
+  background: #ffffff;
+  color: var(--g-mid);
   box-shadow: var(--shadow-soft);
 }
 .btn-primary:active { transform: scale(0.97); }
@@ -280,8 +328,127 @@ select {
   pointer-events: none;
 }
 .btn-secondary {
-  background: var(--surface);
+  background: var(--glass);
+  border: 1.5px solid var(--glass-border);
   color: var(--ink);
-  flex: 0 0 90px;
+  flex: 0 0 92px;
 }
 .btn-secondary:active { transform: scale(0.97); }
+
+/* ==========================================================
+   پاپ‌آپ قوانین گروه — همیشه هنگام باز شدن مینی‌اپ نمایش داده می‌شود
+   ========================================================== */
+.rules-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(6, 16, 10, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 14px;
+  animation: overlayIn 0.25s ease;
+}
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.rules-overlay.hidden { display: none; }
+
+.rules-sheet {
+  width: 100%;
+  max-width: 460px;
+  background: var(--paper);
+  color: var(--paper-ink);
+  border-radius: 26px;
+  padding: 14px 22px 22px;
+  text-align: center;
+  box-shadow: 0 -12px 40px rgba(0,0,0,0.4);
+  animation: sheetUp 0.32s cubic-bezier(.2,.9,.3,1);
+}
+@keyframes sheetUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.rules-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 3px;
+  background: rgba(28, 43, 33, 0.2);
+  margin: 6px auto 14px;
+}
+.rules-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 12px;
+  border-radius: 16px;
+  background: rgba(20, 83, 47, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.rules-sheet h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.rules-sheet p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(28, 43, 33, 0.75);
+  margin: 0 0 18px;
+}
+.agree-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-bottom: 18px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+.agree-box {
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  border: 2px solid var(--g-mid);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.agree-row.checked .agree-box {
+  background: var(--g-mid);
+  position: relative;
+}
+.agree-row.checked .agree-box::after {
+  content: '✓';
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.rules-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rules-actions .btn-primary {
+  background: var(--g-mid);
+  color: #fff;
+}
+.rules-actions .btn-primary:disabled { opacity: 0.35; }
+.btn-ghost {
+  background: transparent;
+  color: rgba(28, 43, 33, 0.6);
+}
+
+/* وقتی پاپ‌آپ باز است، فرم پشتش قفل و غیرقابل لمس بماند */
+body.rules-locked .app {
+  filter: blur(2px);
+  pointer-events: none;
+}

@@ -12,11 +12,37 @@
 </head>
 <body>
 
-  <div class="app">
+  <!-- ===================== پاپ‌آپ قوانین گروه ===================== -->
+  <!-- تا وقتی کاربر تیک "موافقم" را نزند و روی «شروع» نزند، فرم دیده
+       نمی‌شود. این پاپ‌آپ همیشه هنگام باز شدن مینی‌اپ نمایش داده می‌شود. -->
+  <div class="rules-overlay" id="rulesOverlay">
+    <div class="rules-sheet">
+      <div class="rules-handle"></div>
+      <div class="rules-icon">📐</div>
+      <h3>قوانین گروه</h3>
+      <p>
+        «مرجع فایل‌های معماری و عمران» با این ربات اعضای جدید را تایید می‌کند.
+        برای ورود به گروه، لطفاً فرم کوتاه زیر را با اطلاعات درست تکمیل کنید
+        و با قوانین گروه (احترام متقابل، عدم تبلیغ و اسپم) موافقت کنید.
+      </p>
+      <label class="agree-row" id="agreeRow">
+        <span class="agree-box" id="agreeBox"></span>
+        <span>با قوانین گروه موافقم</span>
+      </label>
+      <div class="rules-actions">
+        <button type="button" class="btn-primary" id="rulesStartBtn" disabled>شروع فرم</button>
+        <button type="button" class="btn-ghost" id="rulesCancelBtn">انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bp-grid"></div>
+
+  <div class="app" id="appRoot">
 
     <!-- هدر -->
     <header class="app-header">
-      <div class="logo-badge">🏛️</div>
+      <div class="logo-badge">📐</div>
       <div>
         <h1>مرجع فایل‌های معماری و عمران</h1>
         <p>برای عضویت، این فرم کوتاه را تکمیل کنید</p>
@@ -24,63 +50,80 @@
     </header>
 
     <!-- نوار پیشرفت -->
-    <div class="progress-track">
-      <div class="progress-fill" id="progressFill"></div>
+    <div class="progress-bar-container" id="progressBarContainer">
+      <div class="progress-line" data-line="1"></div>
+      <div class="progress-line" data-line="2"></div>
+      <div class="progress-line" data-line="3"></div>
     </div>
-    <div class="step-label" id="stepLabel">مرحله ۱ از ۳</div>
+    <div class="step-label" id="stepLabel">سوال ۱ از ۳</div>
 
     <!-- مرحله ۱: مقطع تحصیلی -->
     <section class="step active" data-step="1">
-      <h2>مقطع تحصیلی شما چیست؟</h2>
-      <div class="select-wrap">
-        <select id="education">
-          <option value="" disabled selected>یک گزینه را انتخاب کنید</option>
-          <option value="diploma">دیپلم / پیش‌دانشگاهی</option>
-          <option value="associate">کاردانی</option>
-          <option value="bachelor">کارشناسی</option>
-          <option value="master">کارشناسی ارشد</option>
-          <option value="phd">دکتری</option>
-          <option value="other">سایر</option>
-        </select>
+      <h2>مقطع تحصیلی یا حوزه فعالیت شما چیست؟</h2>
+      <div class="option-list" id="educationList">
+        <div class="option-item" data-value="diploma" data-label="دیپلم / پیش‌دانشگاهی">
+          <span>دیپلم / پیش‌دانشگاهی</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="associate" data-label="کاردانی">
+          <span>کاردانی</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="bachelor" data-label="کارشناسی">
+          <span>کارشناسی</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="master" data-label="کارشناسی ارشد">
+          <span>کارشناسی ارشد</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="phd" data-label="دکتری">
+          <span>دکتری</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="other" data-label="سایر">
+          <span>سایر</span>
+          <span class="option-check"></span>
+        </div>
       </div>
     </section>
 
     <!-- مرحله ۲: نحوه آشنایی -->
     <section class="step" data-step="2">
       <h2>چطور با ما آشنا شدید؟</h2>
-      <div class="radio-list" id="referralList">
-        <label class="radio-card">
-          <input type="radio" name="referral" value="instagram" />
-          <span class="radio-icon">📷</span>
+      <div class="option-list" id="referralList">
+        <div class="option-item" data-value="instagram">
+          <span class="option-icon">📷</span>
           <span>اینستاگرام</span>
-        </label>
-        <label class="radio-card">
-          <input type="radio" name="referral" value="friends" />
-          <span class="radio-icon">👥</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="friends">
+          <span class="option-icon">👥</span>
           <span>معرفی دوستان</span>
-        </label>
-        <label class="radio-card">
-          <input type="radio" name="referral" value="other_groups" />
-          <span class="radio-icon">💬</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="other_groups">
+          <span class="option-icon">💬</span>
           <span>سایر گروه‌ها و کانال‌ها</span>
-        </label>
-        <label class="radio-card">
-          <input type="radio" name="referral" value="search" />
-          <span class="radio-icon">🔍</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="search">
+          <span class="option-icon">🔍</span>
           <span>جستجوی اینترنتی</span>
-        </label>
-        <label class="radio-card">
-          <input type="radio" name="referral" value="other" />
-          <span class="radio-icon">✨</span>
+          <span class="option-check"></span>
+        </div>
+        <div class="option-item" data-value="other">
+          <span class="option-icon">✨</span>
           <span>سایر موارد</span>
-        </label>
+          <span class="option-check"></span>
+        </div>
       </div>
     </section>
 
     <!-- مرحله ۳: علایق -->
     <section class="step" data-step="3">
       <h2>علایق خود را انتخاب کنید</h2>
-      <p class="hint">حداکثر ۳ مورد را انتخاب کنید</p>
+      <p class="hint" id="interestsHint">حداکثر ۳ مورد را انتخاب کنید</p>
       <div class="chip-grid" id="interestsGrid">
         <!-- با جاوااسکریپت پر می‌شود -->
       </div>
@@ -98,7 +141,7 @@
     <!-- ناوبری بین مراحل -->
     <div class="nav-buttons" id="navButtons">
       <button type="button" id="backBtn" class="btn-secondary" style="visibility:hidden">بازگشت</button>
-      <button type="button" id="nextBtn" class="btn-primary">ادامه</button>
+      <button type="button" id="nextBtn" class="btn-primary" disabled>ادامه</button>
     </div>
 
   </div>
