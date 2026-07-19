@@ -201,7 +201,7 @@ const resultText = document.getElementById("resultText");
 
 async function submitForm() {
   nextBtn.disabled = true;
-  nextBtn.textContent = "در حال ارسال...";
+  nextBtn.textContent = "⏳ در حال ارسال...";
 
   const formPayload = {
     education: selectedEducation.value,
@@ -228,20 +228,22 @@ async function submitForm() {
     if (data.ok) {
       resultBadge.textContent = "✓";
       resultBadge.classList.remove("error");
-      resultTitle.textContent = "شما تایید شدید ✅";
-      resultText.textContent = "به رواق | مرجع فایل‌های معماری خوش آمدید.";
+      resultBadge.classList.add("celebrate");
+      resultTitle.textContent = "به رواق خوش آمدی 🏛";
+      resultText.textContent = "اکنون به جمعِ معماران این مرجع پیوسته‌ای. فایل‌ها در انتظارِ تو هستند.";
     } else {
       throw new Error(data.error || "unknown");
     }
   } catch (err) {
     resultBadge.textContent = "!";
     resultBadge.classList.add("error");
+    resultBadge.classList.remove("celebrate");
     resultTitle.textContent = "مشکلی پیش آمد";
-    resultText.textContent = "لطفاً دوباره تلاش کنید یا با ادمین گروه تماس بگیرید.";
+    resultText.textContent = "متأسفانه در ثبتِ فرم مشکلی پیش آمد. لطفاً دوباره تلاش کن یا از طریقِ گروه با ادمین در میان بگذار.";
   }
 
   // بعد از چند ثانیه، مینی‌اپ را ببند تا کاربر داخل چت گروه/ربات برگردد
-  setTimeout(() => tg.close(), 2200);
+  setTimeout(() => tg.close(), 2600);
 }
 
 // شروع از مرحله ۱
