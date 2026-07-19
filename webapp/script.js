@@ -17,7 +17,7 @@ try {
 }
 
 // ==========================================================
-// ۰) پاپ‌آپ قوانین گروه — باید حتماً قبل از فرم تایید شود
+// ۰) پاپ‌آپ آدابِ رواق — باید حتماً قبل از فرم تایید شود
 // ==========================================================
 const rulesOverlay = document.getElementById("rulesOverlay");
 const agreeRow = document.getElementById("agreeRow");
@@ -41,7 +41,7 @@ rulesStartBtn.addEventListener("click", () => {
 });
 
 rulesCancelBtn.addEventListener("click", () => {
-  // کاربر با قوانین موافقت نکرده؛ نمی‌تواند فرم را ادامه دهد
+  // کاربر با آدابِ رواق موافقت نکرده؛ نمی‌تواند فرم را ادامه دهد
   tg.close();
 });
 

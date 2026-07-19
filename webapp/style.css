@@ -399,7 +399,14 @@ html, body {
   font-size: 13px;
   line-height: 1.9;
   color: rgba(28, 43, 33, 0.75);
-  margin: 0 0 18px;
+  margin: 0 0 10px;
+  text-align: right;
+}
+.rules-sheet p.rules-note {
+  text-align: center;
+  font-weight: 700;
+  color: var(--paper-ink);
+  margin: 4px 0 18px;
 }
 .agree-row {
   display: flex;
