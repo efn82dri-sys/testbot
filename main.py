@@ -61,7 +61,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import ClientSession, ClientTimeout, web
+from aiohttp import web
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -101,15 +101,10 @@ WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/index.html"
 
 PORT = int(os.environ.get("PORT", 8080))
 
-# هر چند دقیقه یک‌بار سرویس به آدرس خودش (health-check) پینگ بزند تا
-# Render آن را خواب نکند (نسخه‌ی رایگان Render بعد از ۱۵ دقیقه بدون
-# درخواست HTTP ورودی، سرویس را می‌خواباند).
-PING_INTERVAL_MINUTES = int(os.environ.get("PING_INTERVAL_MINUTES", "10"))
-
-# اختیاری: اگر "true" باشد و NOTIFY_CHAT_ID هم تنظیم شده باشد، هر بار
-# که پینگ زده می‌شود یک پیام کوتاه «رواق بیداره ✅» هم برای مالک
-# فرستاده می‌شود. پیش‌فرض خاموش است تا هر ۱۰ دقیقه چت مالک شلوغ نشود.
-ENABLE_HEARTBEAT = os.environ.get("ENABLE_HEARTBEAT", "false").strip().lower() == "true"
+# فاصله‌ی زمانیِ پینگِ خودکار به خودِ سرویس (برحسب ثانیه) تا رندر به‌خاطرِ
+# بی‌فعالیتی سرویس را نخوابانَد. رندرِ رایگان معمولاً بعد از ۱۵ دقیقه بدونِ
+# ترافیک، سرویس را می‌خوابانَد؛ برای اطمینان، هر ۱۰ دقیقه پینگ می‌زنیم.
+PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
 
 # مسیر فایلی که پاسخ‌های فرم در آن ذخیره می‌شود
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
@@ -133,20 +128,6 @@ REFERRAL_LABELS = {
     "other": "سایر موارد",
 }
 
-# نام برند ربات — جدا از نام گروه اصلی. فقط ربات «رواق» نام دارد؛
-# گروه همچنان با نام کامل «مرجع فایل‌های معماری و عمران» شناخته می‌شود.
-BOT_BRAND_NAME = "رواق"
-
-# متن خلاصه‌ی قوانین که به‌صورت پاپ‌آپ (Alert) بومی تلگرام نمایش داده
-# می‌شود — عمداً کوتاه نگه داشته شده چون تلگرام برای این نوع پاپ‌آپ
-# سقفی حدود ۲۰۰ کاراکتر دارد و متن بلندتر با خطا رد می‌شود.
-RULES_POPUP_TEXT = (
-    "📜 سه قانون رواق:\n"
-    "۱) هویت معمارانه: اسم خوانا و آواتار مناسب، فیک راه نداره\n"
-    "۲) وایب مثبت: نقد سازنده، بی توهین و حاشیه\n"
-    "۳) بی‌اسپم: لینک/تبلیغ/مزاحمت پی‌وی ممنوع"
-)
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -166,22 +147,21 @@ _pending_leave_polls: dict[str, int] = {}
 LEAVE_REASONS: list[tuple[str, str]] = [
     (
         "فایل‌ها و محتوای گروه به‌دردم نخورد",
-        "دقیقاً دنبال چه فایلی بودید؟ اگر جواب بدید به ادمین‌ها اطلاع می‌دم "
-        "تا در اولین فرصت تهیه‌اش کنند 🙏",
+        "دقیقاً دنبالِ چه فایلی بودی؟ اگر بگویی، به ادمین‌ها اطلاع می‌دهم "
+        "تا در اولین فرصت آماده‌اش کنند 🙏",
     ),
     (
         "پیام‌های زیاد گروه رو شلوغ می‌کرد",
-        "می‌تونید گروه رو در حالت Mute بذارید و فقط پیام‌های Pin‌شده "
-        "(فایل‌های مهم) رو دنبال کنید، بدون شلوغی اعلان‌ها 🔕",
+        "می‌تونی گروه رو در حالتِ سکوت بذاری و فقط پیام‌های سنجاق‌شده "
+        "(فایل‌های مهم) رو دنبال کنی، بدون شلوغیِ اعلان‌ها 🔕",
     ),
     (
         "فعلاً به این موضوع نیاز ندارم",
-        "کاملاً قابل درک‌ه؛ هر وقت دوباره نیاز داشتید، درهای گروه همیشه "
-        "به‌رویتون بازه 🙌",
+        "کاملاً قابلِ درکه؛ هر وقت دوباره خواستی، طاق‌های رواق همون‌جان 🙌",
     ),
     (
         "دلیل دیگه‌ای دارم",
-        "ممنون میشیم دلیلش رو مستقیم با ادمین در میون بذارید تا بتونیم "
+        "ممنون می‌شیم دلیلش رو مستقیم با ادمین در میون بذاری تا بتونیم "
         "بهتر بشیم 🙏",
     ),
 ]
@@ -235,19 +215,6 @@ def get_saved_phone(user_id: int) -> str:
 class BroadcastStates(StatesGroup):
     waiting_for_text = State()
     confirming = State()
-
-
-# حالت گفت‌وگوی «ارتباط با ادمین» — وقتی کاربر دکمه‌ی «🗣 ارتباط با
-# ادمین» را می‌زند، ربات منتظر متن پیامش می‌ماند و آن را برای ادمین
-# می‌فرستد.
-class FeedbackStates(StatesGroup):
-    waiting_for_text = State()
-
-
-# نگاشت (chat_id, message_id) پیامی که برای ادمین فوروارد شده -> آیدی
-# عددی کاربری که پیام از او بوده. وقتی ادمین با ریپلای‌زدن روی همان
-# پیام جواب می‌دهد، از همین نگاشت می‌فهمیم پاسخ باید برای چه کسی برود.
-_pending_feedback_replies: dict[tuple[int, int], int] = {}
 
 
 def collect_form_user_ids() -> set[int]:
@@ -411,24 +378,6 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
 
 
 # --------------------------------------------------------------
-# دکمه‌های همیشگیِ برند رواق — «قوانین» (پاپ‌آپ) و «ارتباط با ادمین».
-# این دو دکمه کنار پیام‌های اصلی ربات (خوش‌آمد، درخواست عضویت، فرم،
-# تایید نهایی، ترک گروه) تکرار می‌شوند تا کاربر همیشه بهشان دسترسی
-# داشته باشد؛ چون دیزاین مینی‌اپ نباید تغییر کند، این دکمه‌ها فقط در
-# پیام‌های خودِ ربات (نه داخل WebApp) اضافه شده‌اند.
-# --------------------------------------------------------------
-def brand_buttons_row() -> list[InlineKeyboardButton]:
-    return [
-        InlineKeyboardButton(text="📜 قوانین رواق", callback_data="rules:show"),
-        InlineKeyboardButton(text="🗣 ارتباط با ادمین", callback_data="feedback:start"),
-    ]
-
-
-def brand_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[brand_buttons_row()])
-
-
-# --------------------------------------------------------------
 # ۲) وقتی کاربر روی /start کلیک می‌کند
 #    (این فقط یک پیام خوش‌آمد است؛ فرآیند اصلی از طریق درخواست
 #     عضویت در گروه شروع می‌شود — مرحله ۳)
@@ -437,11 +386,9 @@ def brand_keyboard() -> InlineKeyboardMarkup:
 async def handle_start(message: Message):
     await message.answer(
         "سلام 👋\n\n"
-        "من «رواق»‌ام؛ همون دالانی که به آتلیه‌ی «مرجع فایل‌های معماری و "
-        "عمران» می‌رسه 🏛\n"
-        "برای عضویت، اول باید درخواست ورود به گروه رو ثبت کنید؛ همین که "
-        "ثبتش کردید، من خودم فرم پذیرش رو براتون می‌فرستم.",
-        reply_markup=brand_keyboard(),
+        "به رواق خوش آمدی — درگاهِ ورود به «مرجع فایل‌های معماری و عمران».\n"
+        "برای قدم‌گذاشتن به این فضا، ابتدا باید درخواستِ عضویت در گروه را ثبت "
+        "کنی. به‌محضِ ثبتِ درخواست، خودم مسیرِ ادامه را برایت می‌فرستم."
     )
 
 
@@ -467,17 +414,16 @@ async def send_webapp_form_message(user) -> None:
                     text="📝 تکمیل فرم پذیرش",
                     web_app=WebAppInfo(url=WEBAPP_URL),
                 )
-            ],
-            brand_buttons_row(),
+            ]
         ]
     )
     try:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                "✅ شماره‌تون تایید شد.\n\n"
-                "یه قدم تا رسیدن به رواق مونده؛ فرم کوتاه زیر رو پر کنید، "
-                "کمتر از یک دقیقه وقت می‌بره."
+                "مسیر باز شد ✅\n\n"
+                "حالا نوبتِ یک فرمِ کوتاه است — کمتر از یک دقیقه زمان می‌برد، "
+                "و پس از آن به جمعِ معماران این رواق می‌پیوندی."
             ),
             reply_markup=keyboard,
         )
@@ -501,17 +447,12 @@ async def handle_join_request(join_request: ChatJoinRequest):
     try:
         await bot.send_message(
             chat_id=user.id,
-            text="🏛 قبل از هر چیز، این دو دکمه همیشه دم دستتونه:",
-            reply_markup=brand_keyboard(),
-        )
-        await bot.send_message(
-            chat_id=user.id,
             text=(
-                f"سلام {user.first_name} عزیز 👋\n\n"
-                "درخواست عضویتتون تو «مرجع فایل‌های معماری و عمران» ثبت شد؛ "
-                "خوش اومدید به رواق 🏛\n"
-                "قبل از تکمیل فرم، برای احراز هویت لازمه شماره تلفنتون رو "
-                "(فقط شماره‌ی خودتون) با دکمه‌ی زیر به اشتراک بذارید."
+                f"قدم به رواق بگذار، {user.first_name} عزیز 👋\n\n"
+                "درگاهِ «مرجع فایل‌های معماری و عمران» است. درخواستِ ورودت ثبت شد.\n"
+                "پیش از آن‌که این فضا برایت باز شود، یک کلید لازم است: شماره‌ات "
+                "را با دکمه‌ی زیر (فقط شماره‌ی خودت) به اشتراک بگذار تا مسیر "
+                "ادامه پیدا کند."
             ),
             reply_markup=phone_request_keyboard(),
         )
@@ -533,13 +474,14 @@ async def handle_contact_shared(message: Message):
     # فقط شماره‌ی خودِ همان کاربر پذیرفته می‌شود، نه یک مخاطب فوروارد‌شده
     if contact.user_id != user.id:
         await message.answer(
-            "لطفاً فقط شماره تلفن خودتان را با دکمه‌ی زیر به اشتراک بگذارید.",
+            "این‌جا فقط شماره‌ی خودت کلیدِ ورود است. لطفاً با همان دکمه، "
+            "شماره‌ی خودت را به اشتراک بگذار.",
             reply_markup=phone_request_keyboard(),
         )
         return
 
     await save_phone(user.id, contact.phone_number)
-    await message.answer("شماره‌ی شما ذخیره شد ✅", reply_markup=ReplyKeyboardRemove())
+    await message.answer("مسیر باز شد ✅", reply_markup=ReplyKeyboardRemove())
     await send_webapp_form_message(user)
 
 
@@ -618,9 +560,8 @@ async def handle_member_left(user) -> None:
             chat_id=user.id,
             text=(
                 f"سلام {user.first_name} 👋\n"
-                "دیدیم از «مرجع فایل‌های معماری و عمران» رفتید؛ جای خالیتون "
-                "تو رواق حس می‌شه.\n"
-                "اگه دوست دارید بگید چی شد، بی‌تعارف بگید تا بهتر بشیم:"
+                "متوجه شدیم از رواق فاصله گرفتی. اگر لحظه‌ای برایمان بگویی چرا، "
+                "برایمان ارزشمند است — شاید جایی برای بهتر شدن داشته باشیم:"
             ),
         )
 
@@ -632,14 +573,17 @@ async def handle_member_left(user) -> None:
         )
         _pending_leave_polls[sent_poll.poll.id] = user.id
 
-        rows = []
+        keyboard = None
         if GROUP_INVITE_LINK:
-            rows.append([InlineKeyboardButton(text="بازگشت به گروه ↩️", url=GROUP_INVITE_LINK)])
-        rows.append(brand_buttons_row())
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="بازگشت به گروه ↩️", url=GROUP_INVITE_LINK)]
+                ]
+            )
         await bot.send_message(
             chat_id=user.id,
-            text="درای رواق همیشه بازه؛ هر وقت خواستید از دکمه‌ی زیر دوباره بهمون ملحق بشید 👇",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            text="هرگاه خواستی، طاق‌ها هنوز پابرجایند — درِ رواق باز است 🏛",
+            reply_markup=keyboard,
         )
     except Exception as e:
         # کاربر ربات را بلاک کرده یا هرگز /start نزده — کاری از دستمان برنمی‌آید
@@ -820,7 +764,7 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
 
     text = message.html_text or message.text or ""
     if not text.strip():
-        await message.answer("لطفاً یک پیام متنی بفرستید (یا /cancel برای انصراف).")
+        await message.answer("یک پیامِ متنی برایمان بفرست تا مسیر ادامه پیدا کند (یا /cancel برای انصراف).")
         return
 
     user_ids = collect_form_user_ids()
@@ -872,106 +816,6 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
-
-
-# --------------------------------------------------------------
-# ۳.۴) دکمه‌ی «📜 قوانین رواق» — قوانین خلاصه را به‌صورت پاپ‌آپ بومی
-#      تلگرام (Alert) نشان می‌دهد، بدون این‌که چیدمان پیام به‌هم بریزد.
-# --------------------------------------------------------------
-@dp.callback_query(F.data == "rules:show")
-async def cb_show_rules(callback: CallbackQuery):
-    await callback.answer(RULES_POPUP_TEXT, show_alert=True)
-
-
-# --------------------------------------------------------------
-# ۳.۵) دکمه‌ی «🗣 ارتباط با ادمین» — پیام کاربر را برای همه‌ی
-#      ADMIN_IDS (یا در نبودشان NOTIFY_CHAT_ID) می‌فرستد. وقتی ادمین
-#      با ریپلای‌زدن روی همان پیام جواب بدهد، ربات پاسخ را مستقیم
-#      برای همان کاربر می‌فرستد.
-# --------------------------------------------------------------
-@dp.callback_query(F.data == "feedback:start")
-async def cb_feedback_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(FeedbackStates.waiting_for_text)
-    await callback.answer()
-    await callback.message.answer(
-        "🗣 هر حرف، پیشنهاد یا انتقادی دارید همین‌جا برای رواق بنویسید؛ "
-        "مستقیم دست ادمین می‌رسه.\n"
-        "برای انصراف /cancel رو بفرستید."
-    )
-
-
-@dp.message(FeedbackStates.waiting_for_text)
-async def handle_feedback_text(message: Message, state: FSMContext):
-    raw_text = (message.text or "").strip()
-    if raw_text.startswith("/"):
-        await state.clear()
-        await message.answer("ارسال پیام به ادمین لغو شد.")
-        return
-
-    text = message.html_text or message.text or ""
-    if not text.strip():
-        await message.answer("لطفاً پیام‌تون رو به‌صورت متن بفرستید (یا /cancel برای انصراف).")
-        return
-
-    await state.clear()
-
-    targets: list[int] = list(ADMIN_IDS) if ADMIN_IDS else (
-        [int(NOTIFY_CHAT_ID)] if NOTIFY_CHAT_ID else []
-    )
-    if not targets:
-        await message.answer(
-            "متأسفانه در حال حاضر آدمینی برای دریافت پیام تنظیم نشده؛ "
-            "لطفاً از راه دیگری با ادمین گروه در ارتباط باشید."
-        )
-        return
-
-    user = message.from_user
-    username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
-    header = (
-        "🗣 <b>پیام جدید برای ادمین رواق</b>\n"
-        f"👤 {user.full_name} ({username_part})\n\n"
-        f"{text}\n\n"
-        "<i>برای پاسخ، روی همین پیام ریپلای بزنید.</i>"
-    )
-
-    sent_any = False
-    for chat_id in targets:
-        try:
-            sent = await bot.send_message(chat_id=chat_id, text=header)
-            _pending_feedback_replies[(sent.chat.id, sent.message_id)] = user.id
-            sent_any = True
-        except Exception as e:
-            logger.warning("ارسال پیام کاربر به ادمین %s ممکن نشد: %s", chat_id, e)
-
-    if sent_any:
-        await message.answer("✅ پیامتون برای ادمین رواق ارسال شد؛ به‌زودی پاسخ می‌گیرید.")
-    else:
-        await message.answer("متأسفانه ارسال پیام ممکن نشد؛ کمی بعد دوباره امتحان کنید.")
-
-
-@dp.message(F.reply_to_message)
-async def handle_admin_reply_to_feedback(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-
-    key = (message.chat.id, message.reply_to_message.message_id)
-    user_id = _pending_feedback_replies.get(key)
-    if user_id is None:
-        return
-
-    reply_text = message.html_text or message.text or ""
-    if not reply_text.strip():
-        return
-
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"🏛 <b>پاسخ ادمین رواق:</b>\n\n{reply_text}",
-        )
-        await message.reply("✅ پاسخ برای کاربر ارسال شد.")
-    except Exception as e:
-        logger.warning("ارسال پاسخ ادمین به کاربر %s ممکن نشد: %s", user_id, e)
-        await message.reply("❌ ارسال پاسخ به کاربر ممکن نشد (احتمالاً ربات را بلاک کرده).")
 
 
 # --------------------------------------------------------------
@@ -1048,30 +892,26 @@ async def handle_submit(request: web.Request) -> web.Response:
 
     # یک پیام تاییدیه هم داخل چت خصوصی با ربات بفرست (جدا از خودِ WebApp)
     try:
-        rows = []
+        keyboard = None
         if GROUP_INVITE_LINK:
-            rows.append([InlineKeyboardButton(text="ورود به گروه ↩️", url=GROUP_INVITE_LINK)])
-        rows.append(brand_buttons_row())
-        keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
-
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="ورود به گروه ↩️", url=GROUP_INVITE_LINK)]
+                ]
+            )
         if approved:
             await bot.send_message(
                 chat_id=user_id,
-                text=(
-                    "✅ عضویت شما تایید شد!\n"
-                    "به رواق خوش اومدید؛ از این به بعد اهل «مرجع فایل‌های "
-                    "معماری و عمران»‌این 🏛"
-                ),
+                text="به رواق خوش آمدی 🏛\nحالا می‌توانی از فهرستِ فایل‌ها دیدن کنی — هرچه در این گروه هست، پیشِ رویت است.",
                 reply_markup=keyboard,
             )
         else:
             await bot.send_message(
                 chat_id=user_id,
                 text=(
-                    "اطلاعات شما ثبت شد، اما در تایید خودکار عضویت مشکلی پیش آمد. "
-                    "لطفاً کمی صبر کنید یا با ادمین گروه تماس بگیرید."
+                    "اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد. "
+                    "کمی صبر کن، یا از طریقِ گروه با ادمین در میان بگذار."
                 ),
-                reply_markup=brand_keyboard(),
             )
     except Exception as e:
         logger.warning("ارسال پیام تاییدیه به کاربر %s ممکن نشد: %s", user_id, e)
@@ -1080,36 +920,47 @@ async def handle_submit(request: web.Request) -> web.Response:
 
 
 # --------------------------------------------------------------
-# ۵.۱) جلوگیری از خواب رفتن سرویس رایگان Render
-#      نکته‌ی مهم: صرفاً فرستادن پیام از طرف ربات (که یک درخواست
-#      خروجی به سرورهای تلگرام است) تایمر خواب Render را ریست
-#      نمی‌کند، چون آن اصلاً یک درخواست HTTP ورودی به آدرس عمومی خودِ
-#      این سرویس نیست. راه‌حل واقعی این است که خودِ سرویس هر چند
-#      دقیقه یک‌بار به آدرس عمومی خودش (health-check) درخواست بزند —
-#      دقیقاً همین کاری که این تابع انجام می‌دهد.
+# ۵.۵) نگه‌داشتنِ سرویس بیدار روی رندر — رندرِ رایگان بعد از مدتی
+#      بی‌فعالیتیِ HTTP، سرویس را می‌خوابانَد. برای جلوگیری از این
+#      اتفاق، یک مسیرِ سبکِ سلامت (/health) می‌سازیم و از داخلِ خودِ
+#      برنامه هر PING_INTERVAL_SECONDS ثانیه یک درخواست به همان مسیر
+#      می‌فرستیم تا رندر همیشه ترافیک ببیند و سرویس را فعال نگه دارد.
+#      نکته: این کار فقط از «خوابیدنِ سرویس» جلوگیری می‌کند؛ اگر روی
+#      رندر دیسکِ پایدار (Persistent Disk) وصل نکرده باشید، فایل‌های
+#      data/ (submissions.jsonl ،phones.json و ...) با هر دیپلوی یا
+#      ری‌استارتِ سرویس همچنان از بین می‌روند — پینگ به‌تنهایی مشکلِ
+#      ذخیره‌سازیِ غیرپایدار را حل نمی‌کند.
 # --------------------------------------------------------------
 async def handle_health(request: web.Request) -> web.Response:
-    return web.Response(text="OK")
+    return web.json_response({"ok": True})
 
 
-async def keep_alive_loop() -> None:
-    interval = max(PING_INTERVAL_MINUTES, 1) * 60
-    health_url = f"{WEBHOOK_HOST}/health"
+async def self_ping_loop(app: web.Application) -> None:
+    import aiohttp
 
-    while True:
-        await asyncio.sleep(interval)
-        try:
-            async with ClientSession() as session:
-                async with session.get(health_url, timeout=ClientTimeout(total=15)) as resp:
-                    logger.info("Keep-alive ping به %s: %s", health_url, resp.status)
-        except Exception as e:
-            logger.warning("Keep-alive ping ممکن نشد: %s", e)
-
-        if ENABLE_HEARTBEAT and NOTIFY_CHAT_ID:
+    ping_url = f"{WEBHOOK_HOST}/health"
+    async with aiohttp.ClientSession() as session:
+        while True:
+            await asyncio.sleep(PING_INTERVAL_SECONDS)
             try:
-                await bot.send_message(chat_id=NOTIFY_CHAT_ID, text="🏛 رواق بیداره و زنده‌ست ✅")
+                async with session.get(ping_url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    logger.info("پینگِ خودکار به %s — کدِ پاسخ: %s", ping_url, resp.status)
             except Exception as e:
-                logger.warning("ارسال heartbeat به مالک ممکن نشد: %s", e)
+                logger.warning("پینگِ خودکار ناموفق بود: %s", e)
+
+
+async def start_self_ping(app: web.Application) -> None:
+    app["self_ping_task"] = asyncio.create_task(self_ping_loop(app))
+
+
+async def stop_self_ping(app: web.Application) -> None:
+    task = app.get("self_ping_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 # --------------------------------------------------------------
@@ -1136,9 +987,6 @@ async def on_startup(app: web.Application):
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
-    asyncio.create_task(keep_alive_loop())
-    logger.info("Keep-alive loop هر %s دقیقه اجرا می‌شود.", PING_INTERVAL_MINUTES)
-
 
 def create_app() -> web.Application:
     app = web.Application()
@@ -1150,7 +998,8 @@ def create_app() -> web.Application:
     # مسیر دریافتی که فرم برای ثبت نهایی صدا می‌زند
     app.router.add_post("/api/submit", handle_submit)
 
-    # مسیر سبک health-check برای پینگ دوره‌ای (جلوگیری از خواب Render)
+    # مسیرِ سبکِ سلامت — هم برای پینگِ خودکارِ خودمان و هم برای هر ابزارِ
+    # مانیتورینگِ بیرونی (مثل UptimeRobot) قابلِ استفاده است.
     app.router.add_get("/health", handle_health)
 
     # مسیر دریافت پیام‌های تلگرام (Webhook)
@@ -1158,6 +1007,8 @@ def create_app() -> web.Application:
 
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
+    app.on_startup.append(start_self_ping)
+    app.on_cleanup.append(stop_self_ping)
     return app
 
 
