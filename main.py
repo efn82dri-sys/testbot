@@ -35,6 +35,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -42,7 +43,7 @@ from urllib.parse import parse_qsl
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -141,6 +142,19 @@ _write_lock = asyncio.Lock()
 # پاسخی به آن‌ها داده نشده — تا وقتی کاربر گزینه‌ای را انتخاب کند،
 # بتوانیم بفهمیم پاسخ مربوط به کدام کاربر است.
 _pending_leave_polls: dict[str, int] = {}
+
+# نگاشت message_id (پیامی که برای ادمین در NOTIFY_CHAT_ID فرستاده‌ایم) ->
+# user_id (عضوی که پیام اصلی را فرستاده). وقتی ادمین روی همان پیام
+# «ریپلای» بزند، از این نگاشت می‌فهمیم پاسخ باید برای چه کسی برود.
+_pending_admin_replies: dict[int, int] = {}
+
+# نسخه‌ی عددیِ NOTIFY_CHAT_ID (اگر آیدیِ شخصی/گروهی باشد، نه یوزرنیمِ
+# کانال) — برای تشخیصِ اینکه پیامِ ریپلای‌شده‌ی ادمین دقیقاً در همان چتی
+# فرستاده شده که گزارش‌ها به آن می‌روند.
+try:
+    NOTIFY_CHAT_ID_INT = int(NOTIFY_CHAT_ID) if NOTIFY_CHAT_ID else None
+except ValueError:
+    NOTIFY_CHAT_ID_INT = None
 
 # گزینه‌های نظرسنجی «چرا گروه را ترک کردید؟» به همراه پاسخ متناسب
 # با هر گزینه که بعد از رأی کاربر برایش فرستاده می‌شود.
@@ -574,6 +588,7 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
     if became_member:
         await increment_stat("total_joined")
         await notify_new_member(user)
+        await send_welcome_to_group(user)
         return
 
     # حالت ۲: کاربر گروه را ترک کرده یا اخراج شده
@@ -601,6 +616,33 @@ async def notify_new_member(user) -> None:
         )
     except Exception as e:
         logger.warning("ارسال گزارش عضو جدید ممکن نشد: %s", e)
+
+
+async def send_welcome_to_group(user) -> None:
+    """ارسال پیام خوش‌آمدگویی در گروه برای عضو جدید.
+
+    نکته: منشن با فرمتِ tg://user?id={id} کار می‌کند حتی برای کاربرانی که
+    یوزرنیمِ عمومی ندارند یا در تنظیماتِ حریمِ خصوصی، افزوده‌شدن به گروه‌ها
+    توسطِ لینک را محدود کرده‌اند؛ چون این نوع منشن اصلاً به @username وابسته
+    نیست و مستقیماً از آیدیِ عددیِ کاربر استفاده می‌کند. پس نیازی به حالتِ
+    جداگانه برای کاربرانِ بدونِ یوزرنیم نیست — همین یک روش برای همه کار
+    می‌کند. تنها نکته‌ی مهم، escape کردنِ نام است؛ چون نام‌های تلگرامی
+    می‌توانند کاراکترهای HTML (مثل < یا &) داشته باشند که بدونِ escape
+    می‌توانند پیام را خراب کنند یا رفتارِ غیرمنتظره ایجاد کنند."""
+    display_name = html_escape(user.full_name or user.first_name or "کاربر")
+    user_mention = f"<a href='tg://user?id={user.id}'>{display_name}</a>"
+    try:
+        await bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=(
+                f"🏛 به رواق خوش آمدی {user_mention}!\n"
+                "امیدواریم این فضا، مرجع همیشگیِ مسیر حرفه‌ای‌ات باشد.\n"
+                "📌 لطفاً خودت را در گروه معرفی کن و بگو در چه حوزه‌ای فعالی."
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        logger.warning("ارسال پیام خوش‌آمدگویی به گروه ممکن نشد: %s", e)
 
 
 async def handle_member_left(user) -> None:
@@ -894,6 +936,76 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
+
+
+# --------------------------------------------------------------
+# ۳.۵) صندوقِ پیامِ اعضا: هر پیامِ خصوصیِ آزادی که یک عضوِ عادی برای ربات
+#      می‌فرستد (و به هیچ‌کدام از جریان‌های بالا مربوط نیست)، عیناً برای
+#      ادمین در NOTIFY_CHAT_ID فرستاده می‌شود. اگر ادمین روی همان پیام
+#      «ریپلای» بزند، پاسخش مستقیم و بدونِ نیاز به دونستنِ آیدیِ عضو،
+#      برایش ارسال می‌شود.
+# --------------------------------------------------------------
+async def relay_message_to_admin(user, text: str) -> None:
+    if not NOTIFY_CHAT_ID:
+        return
+
+    display_name = html_escape(user.full_name or user.first_name or "یک عضو")
+    username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
+
+    try:
+        sent = await bot.send_message(
+            chat_id=NOTIFY_CHAT_ID,
+            text=(
+                "📩 پیامِ تازه از یکی از اعضای رواق\n"
+                f"👤 {display_name} ({username_part})\n\n"
+                f"{html_escape(text)}\n\n"
+                "برای پاسخ به همین عضو، فقط روی همین پیام «ریپلای» بزنید؛ "
+                "پاسخ‌تون مستقیم و بدونِ نیاز به دونستنِ آیدی، براش ارسال می‌شه."
+            ),
+        )
+        _pending_admin_replies[sent.message_id] = user.id
+    except Exception as e:
+        logger.warning("ارسالِ پیامِ عضو به ادمین ممکن نشد: %s", e)
+
+
+@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.reply_to_message)
+async def handle_admin_reply_via_native_reply(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    replied_id = message.reply_to_message.message_id
+    target_user_id = _pending_admin_replies.get(replied_id)
+    if target_user_id is None:
+        return  # این ریپلای مربوط به پیامِ ثبت‌شده‌ی هیچ عضوی نیست
+
+    reply_text = (message.html_text or message.text or "").strip()
+    if not reply_text:
+        return
+
+    try:
+        await bot.send_message(
+            chat_id=target_user_id,
+            text=f"از سوی مدیریتِ رواق:\n\n{reply_text}",
+        )
+        await message.reply("✅ پاسخ شما برای همون عضو ارسال شد.")
+    except Exception as e:
+        logger.warning("ارسالِ پاسخِ ادمین به کاربر %s ممکن نشد: %s", target_user_id, e)
+        await message.reply(f"❌ ارسال پاسخ ناموفق بود: {e}")
+
+
+@dp.message(F.chat.type == "private", StateFilter(None))
+async def handle_generic_member_message(message: Message):
+    # پیام‌های ادمین‌ها اینجا دست نمی‌خورد — یا با فیلترهای اختصاصی
+    # بالاتر گرفته می‌شوند، یا (اگر ریپلای باشند) با هندلرِ بالا.
+    if is_admin(message.from_user.id):
+        return
+
+    text = message.text or message.caption
+    if not text or text.startswith("/"):
+        return
+
+    await relay_message_to_admin(message.from_user, text)
+    await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 
 # --------------------------------------------------------------
