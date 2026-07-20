@@ -151,7 +151,7 @@ function showStep(n) {
     stepLabel.textContent = `سوال ${toFarsiDigits(n)} از ${toFarsiDigits(FORM_STEPS)}`;
   }
   backBtn.style.visibility = n === 1 ? "hidden" : "visible";
-  nextBtn.textContent = n === FORM_STEPS ? "ثبت و پیوستن به رواق" : "گامِ بعدی ←";
+  nextBtn.textContent = n === FORM_STEPS ? "ثبت و پیوستن" : "بعدی ←";
   if (!isResultStep) validateCurrentStep();
 }
 
