@@ -183,6 +183,10 @@ class BroadcastStates(StatesGroup):
     confirming = State()
 
 
+class ReplyStates(StatesGroup):
+    waiting_for_reply_text = State()
+
+
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
     if not DATA_FILE.exists():
@@ -392,6 +396,14 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def phone_request_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 # --------------------------------------------------------------
 # ۲) هندلر /start
 # --------------------------------------------------------------
@@ -422,19 +434,12 @@ async def handle_start(message: Message, command: CommandObject = None):
 # --------------------------------------------------------------
 # ۳) دریافت شماره تلفن
 # --------------------------------------------------------------
-def phone_request_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
 @dp.message(F.contact)
 async def handle_contact_shared(message: Message):
     contact = message.contact
     user = message.from_user
 
+    # فقط شماره‌ی خودِ همان کاربر پذیرفته می‌شود
     if contact.user_id != user.id:
         await message.answer(
             "این‌جا فقط شماره‌ی خودت کلیدِ ورود است. لطفاً با همان دکمه، "
@@ -443,13 +448,14 @@ async def handle_contact_shared(message: Message):
         )
         return
 
+    # ذخیره شماره
     await save_phone(user.id, contact.phone_number)
     await message.answer(
         "✅ شماره‌ی شما ثبت شد. حالا می‌توانید فرم را تکمیل کنید.",
         reply_markup=ReplyKeyboardRemove()
     )
     
-    # باز کردن مینی‌اپ با شماره (به‌عنوان پارامتر)
+    # باز کردن مینی‌اپ با شماره به‌عنوان پارامتر
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1018,11 +1024,6 @@ async def cb_reply_to_user(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# ---------- State برای پاسخ به کاربر ----------
-class ReplyStates(StatesGroup):
-    waiting_for_reply_text = State()
-
-
 @dp.message(ReplyStates.waiting_for_reply_text)
 async def handle_reply_text_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1230,7 +1231,7 @@ async def on_startup(app: web.Application):
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
 
     await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(text="mini app", web_app=WebAppInfo(url=WEBAPP_URL))
+        menu_button=MenuButtonWebApp(text="ورود به رواق", web_app=WebAppInfo(url=WEBAPP_URL))
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 

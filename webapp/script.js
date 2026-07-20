@@ -1,5 +1,5 @@
 // ==========================================================
-// منطق فرم پذیرش عضویت با احراز هویت شماره تلفن درون‌برنامه‌ای
+// منطق فرم پذیرش عضویت با احراز هویت شماره تلفن
 // ==========================================================
 
 const tg = window.Telegram.WebApp;
@@ -44,15 +44,47 @@ rulesCancelBtn.addEventListener("click", () => {
 tg.BackButton && tg.BackButton.hide();
 
 // ==========================================================
-// ۱) درخواست شماره تلفن (مرحله ۰) — روش دوگانه
+// ۱) مدیریت شماره تلفن
 // ==========================================================
 let userPhone = null;
 let phoneRequested = false;
 
+// تابع برای ذخیره‌ی شماره در localStorage و حافظه
+function setUserPhone(phone) {
+  userPhone = phone;
+  try {
+    localStorage.setItem('roaq_phone', phone);
+  } catch (e) {}
+}
+
+// تابع برای دریافت شماره از localStorage
+function getStoredPhone() {
+  try {
+    return localStorage.getItem('roaq_phone');
+  } catch (e) {
+    return null;
+  }
+}
+
+// بررسی شماره‌ی ذخیره‌شده در localStorage
+const storedPhone = getStoredPhone();
+if (storedPhone) {
+  userPhone = storedPhone;
+}
+
+// بررسی پارامتر phone در URL (وقتی از چت برمی‌گردد)
+const urlParams = new URLSearchParams(window.location.search);
+const phoneParam = urlParams.get('phone');
+if (phoneParam) {
+  setUserPhone(phoneParam);
+  // پاک کردن پارامتر از URL برای جلوگیری از تکرار
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
+// اگر شماره موجود باشد، مستقیماً به مرحله‌ی ۱ برو
 const phoneStep = document.getElementById("phoneStep");
 const requestPhoneBtn = document.getElementById("requestPhoneBtn");
 
-// تابع اصلی برای دریافت شماره
 async function requestPhoneNumber() {
   if (phoneRequested) return;
   phoneRequested = true;
@@ -62,10 +94,7 @@ async function requestPhoneNumber() {
   try {
     const contact = await tg.requestContact();
     if (contact && contact.phone_number) {
-      userPhone = contact.phone_number;
-      try {
-        localStorage.setItem('roaq_phone', userPhone);
-      } catch (e) {}
+      setUserPhone(contact.phone_number);
       showStep(1);
       return;
     }
@@ -79,7 +108,6 @@ async function requestPhoneNumber() {
   showAlternativePhoneMethod();
 }
 
-// روش جایگزین: هدایت به چت ربات
 function showAlternativePhoneMethod() {
   const phoneStepContent = document.getElementById('phoneStep');
   phoneStepContent.innerHTML = `
@@ -101,10 +129,13 @@ function showAlternativePhoneMethod() {
   `;
 
   document.getElementById('altPhoneBtn').addEventListener('click', () => {
-    tg.openTelegramLink(`https://t.me/${tg.initDataUnsafe.user.username ? tg.initDataUnsafe.user.username : 'YourBotUsername'}?start=phone`);
+    // دریافت یوزرنیم ربات از initData
+    const botUsername = tg.initDataUnsafe?.user?.username || 'YourBotUsername';
+    tg.openTelegramLink(`https://t.me/${botUsername}?start=phone`);
   });
 
   document.getElementById('retryPhoneBtn').addEventListener('click', () => {
+    // بازنشانی و تلاش مجدد با روش اول
     phoneStepContent.innerHTML = `
       <h2>📱 احراز هویت با شماره تلفن</h2>
       <p class="hint" style="margin-bottom:24px;">
@@ -120,30 +151,11 @@ function showAlternativePhoneMethod() {
   });
 }
 
+// دکمه‌ی اصلی برای درخواست شماره
 requestPhoneBtn.addEventListener('click', requestPhoneNumber);
 
-// بررسی localStorage برای شماره‌ی قبلی
-try {
-  const savedPhone = localStorage.getItem('roaq_phone');
-  if (savedPhone) {
-    userPhone = savedPhone;
-    setTimeout(() => showStep(1), 300);
-  }
-} catch (e) {}
-
-// دریافت شماره از پارامتر URL (وقتی از چت برمی‌گردد)
-try {
-  const urlParams = new URLSearchParams(window.location.search);
-  const phoneParam = urlParams.get('phone');
-  if (phoneParam) {
-    userPhone = phoneParam;
-    localStorage.setItem('roaq_phone', userPhone);
-    showStep(1);
-  }
-} catch (e) {}
-
 // ==========================================================
-// ۲) لیست علایق
+// ۲) لیست علایق و منطق فرم
 // ==========================================================
 const INTERESTS = [
   "کافه معماری",
@@ -301,16 +313,24 @@ const resultBadge = document.getElementById("resultBadge");
 const resultTitle = document.getElementById("resultTitle");
 const resultText = document.getElementById("resultText");
 
-const GROUP_INVITE_LINK = "https://t.me/+S04d2nabqShmZTJk"; // لینک دعوت گروه خود را اینجا قرار دهید
+// لینک دعوت گروه را از متغیر محیطی یا اینجا تنظیم کنید
+const GROUP_INVITE_LINK = "https://t.me/+S04d2nabqShmZTJk";
 
 async function submitForm() {
+  // چک کردن شماره (اگر هنوز وجود نداشته باشد، از localStorage بخوان)
   if (!userPhone) {
-    tg.showPopup({
-      title: "خطا",
-      message: "شماره تلفن خود را به اشتراک نگذاشته‌اید. لطفاً دوباره تلاش کنید.",
-      buttons: [{ type: "ok" }]
-    });
-    return;
+    const stored = getStoredPhone();
+    if (stored) {
+      userPhone = stored;
+    } else {
+      tg.showPopup({
+        title: "خطا",
+        message: "شماره تلفن خود را به اشتراک نگذاشته‌اید. لطفاً دوباره تلاش کنید.",
+        buttons: [{ type: "ok" }]
+      });
+      showStep(0);
+      return;
+    }
   }
 
   nextBtn.disabled = true;
@@ -370,5 +390,12 @@ async function submitForm() {
   setTimeout(() => tg.close(), 5000);
 }
 
-// شروع از مرحله ۰
-showStep(0);
+// ==========================================================
+// ۴) شروع برنامه
+// ==========================================================
+// اگر شماره از قبل وجود داشته باشد (localStorage یا پارامتر URL)، مرحله‌ی ۱ را نشان بده
+if (userPhone) {
+  setTimeout(() => showStep(1), 300);
+} else {
+  showStep(0);
+}
