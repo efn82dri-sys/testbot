@@ -6,7 +6,6 @@ const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// تنظیم رنگ‌های مینی‌اپ
 document.documentElement.style.colorScheme = "dark";
 try {
   tg.setHeaderColor("#0c2a1a");
@@ -14,7 +13,7 @@ try {
 } catch (e) { /* ignore */ }
 
 // ==========================================================
-// ۰) پاپ‌آپ قوانین (قبلاً موجود)
+// ۰) پاپ‌آپ قوانین
 // ==========================================================
 const rulesOverlay = document.getElementById("rulesOverlay");
 const agreeRow = document.getElementById("agreeRow");
@@ -35,7 +34,6 @@ rulesStartBtn.addEventListener("click", () => {
   if (!rulesAgreed) return;
   rulesOverlay.classList.add("hidden");
   document.body.classList.remove("rules-locked");
-  // بعد از پذیرش قوانین، مرحله‌ی شماره تلفن را نشان بده
   showStep(0);
 });
 
@@ -46,41 +44,106 @@ rulesCancelBtn.addEventListener("click", () => {
 tg.BackButton && tg.BackButton.hide();
 
 // ==========================================================
-// ۱) درخواست شماره تلفن (مرحله ۰)
+// ۱) درخواست شماره تلفن (مرحله ۰) — روش دوگانه
 // ==========================================================
 let userPhone = null;
+let phoneRequested = false;
 
 const phoneStep = document.getElementById("phoneStep");
 const requestPhoneBtn = document.getElementById("requestPhoneBtn");
 
-requestPhoneBtn.addEventListener("click", async () => {
+// تابع اصلی برای دریافت شماره
+async function requestPhoneNumber() {
+  if (phoneRequested) return;
+  phoneRequested = true;
+  requestPhoneBtn.disabled = true;
+  requestPhoneBtn.textContent = "⏳ در حال دریافت...";
+
   try {
-    // استفاده از متد رسمی تلگرام برای دریافت شماره
     const contact = await tg.requestContact();
     if (contact && contact.phone_number) {
       userPhone = contact.phone_number;
-      // پس از دریافت شماره، به مرحله‌ی اول فرم برو
+      try {
+        localStorage.setItem('roaq_phone', userPhone);
+      } catch (e) {}
       showStep(1);
-    } else {
-      // کاربر انصراف داده یا شماره معتبر نیست
-      tg.showPopup({
-        title: "خطا",
-        message: "برای ادامه، باید شماره تلفن خود را به اشتراک بگذارید.",
-        buttons: [{ type: "ok" }]
-      });
+      return;
     }
   } catch (e) {
-    // کاربر انصراف داده
-    tg.showPopup({
-      title: "اطلاع",
-      message: "برای ادامه، اشتراک‌گذاری شماره ضروری است.",
-      buttons: [{ type: "ok" }]
-    });
+    console.warn('requestContact failed:', e);
   }
-});
+
+  requestPhoneBtn.disabled = false;
+  requestPhoneBtn.textContent = "📞 اشتراک‌گذاری شماره تلفن";
+  phoneRequested = false;
+  showAlternativePhoneMethod();
+}
+
+// روش جایگزین: هدایت به چت ربات
+function showAlternativePhoneMethod() {
+  const phoneStepContent = document.getElementById('phoneStep');
+  phoneStepContent.innerHTML = `
+    <h2>📱 احراز هویت با شماره تلفن</h2>
+    <p class="hint" style="margin-bottom:16px;">
+      برای تکمیل عضویت، لطفاً شماره تلفن خود را به اشتراک بگذارید.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <button type="button" class="btn-primary" id="altPhoneBtn" style="width:100%;padding:14px;font-size:16px;">
+        📲 ارسال شماره در چت ربات
+      </button>
+      <button type="button" class="btn-secondary" id="retryPhoneBtn" style="width:100%;padding:14px;font-size:14px;">
+        🔄 تلاش مجدد با روش سریع
+      </button>
+      <p style="font-size:12px;color:var(--text-secondary);margin-top:8px;">
+        با کلیک روی دکمه‌ی بالا، به چت ربات می‌روید و شماره خود را با یک دکمه به اشتراک می‌گذارید. سپس به‌طور خودکار به این صفحه بازمی‌گردید.
+      </p>
+    </div>
+  `;
+
+  document.getElementById('altPhoneBtn').addEventListener('click', () => {
+    tg.openTelegramLink(`https://t.me/${tg.initDataUnsafe.user.username ? tg.initDataUnsafe.user.username : 'YourBotUsername'}?start=phone`);
+  });
+
+  document.getElementById('retryPhoneBtn').addEventListener('click', () => {
+    phoneStepContent.innerHTML = `
+      <h2>📱 احراز هویت با شماره تلفن</h2>
+      <p class="hint" style="margin-bottom:24px;">
+        برای تکمیل عضویت، لطفاً شماره تلفن خود را با کلیک روی دکمه‌ی زیر به اشتراک بگذارید.
+        <br><small>شماره‌ی شما فقط برای احراز هویت استفاده می‌شود و نزد ما محفوظ است.</small>
+      </p>
+      <button type="button" class="btn-primary" id="requestPhoneBtn" style="width:100%;padding:14px;font-size:16px;">
+        📞 اشتراک‌گذاری شماره تلفن
+      </button>
+    `;
+    document.getElementById('requestPhoneBtn').addEventListener('click', requestPhoneNumber);
+    phoneRequested = false;
+  });
+}
+
+requestPhoneBtn.addEventListener('click', requestPhoneNumber);
+
+// بررسی localStorage برای شماره‌ی قبلی
+try {
+  const savedPhone = localStorage.getItem('roaq_phone');
+  if (savedPhone) {
+    userPhone = savedPhone;
+    setTimeout(() => showStep(1), 300);
+  }
+} catch (e) {}
+
+// دریافت شماره از پارامتر URL (وقتی از چت برمی‌گردد)
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const phoneParam = urlParams.get('phone');
+  if (phoneParam) {
+    userPhone = phoneParam;
+    localStorage.setItem('roaq_phone', userPhone);
+    showStep(1);
+  }
+} catch (e) {}
 
 // ==========================================================
-// ۲) لیست علایق و منطق فرم (همانند قبل)
+// ۲) لیست علایق
 // ==========================================================
 const INTERESTS = [
   "کافه معماری",
@@ -159,7 +222,7 @@ referralList.querySelectorAll(".option-item").forEach((item) => {
 
 // ---------- ناوبری بین مراحل ----------
 const steps = Array.from(document.querySelectorAll(".step"));
-let currentStep = 0; // 0 برای شماره، 1-3 برای فرم، 4 برای نتیجه
+let currentStep = 0;
 
 const progressLines = Array.from(document.querySelectorAll(".progress-line"));
 const progressBarContainer = document.getElementById("progressBarContainer");
@@ -167,14 +230,13 @@ const stepLabel = document.getElementById("stepLabel");
 const nextBtn = document.getElementById("nextBtn");
 const backBtn = document.getElementById("backBtn");
 
-const FORM_STEPS = 3; // 1,2,3
+const FORM_STEPS = 3;
 
 function showStep(n) {
   steps.forEach((s) => s.classList.toggle("active", Number(s.dataset.step) === n));
   const isFormStep = n >= 1 && n <= FORM_STEPS;
   const isResultStep = n === 4;
   
-  // نمایش نوار پیشرفت فقط در مراحل فرم
   if (isFormStep) {
     progressBarContainer.style.display = "flex";
     stepLabel.style.display = "block";
@@ -187,11 +249,9 @@ function showStep(n) {
     stepLabel.style.display = "none";
   }
 
-  // دکمه‌ها
   backBtn.style.visibility = (n === 0 || n === 4) ? "hidden" : "visible";
   nextBtn.textContent = (n === FORM_STEPS) ? "ثبت و پیوستن" : "بعدی ←";
   
-  // اگر مرحله ۰ (شماره) باشد، دکمه‌ی بعدی را غیرفعال می‌کنیم و خود کاربر با دکمه‌ی اختصاصی شماره را می‌فرستد
   if (n === 0) {
     nextBtn.disabled = true;
   } else if (isFormStep) {
@@ -217,7 +277,7 @@ function validateCurrentStep() {
 }
 
 backBtn.addEventListener("click", () => {
-  if (currentStep > 1) { // از مرحله 1 به عقب نمی‌رویم (تا 0 نمی‌رویم)
+  if (currentStep > 1) {
     currentStep -= 1;
     showStep(currentStep);
   }
@@ -234,12 +294,14 @@ nextBtn.addEventListener("click", () => {
 });
 
 // ==========================================================
-// ۳) ارسال نهایی فرم به همراه شماره تلفن
+// ۳) ارسال نهایی فرم
 // ==========================================================
 const navButtons = document.getElementById("navButtons");
 const resultBadge = document.getElementById("resultBadge");
 const resultTitle = document.getElementById("resultTitle");
 const resultText = document.getElementById("resultText");
+
+const GROUP_INVITE_LINK = "https://t.me/+S04d2nabqShmZTJk"; // لینک دعوت گروه خود را اینجا قرار دهید
 
 async function submitForm() {
   if (!userPhone) {
@@ -259,7 +321,7 @@ async function submitForm() {
     education_label: selectedEducation.label,
     referral: selectedReferral,
     interests: Array.from(selectedInterests),
-    phone: userPhone, // ارسال شماره به بک‌اند
+    phone: userPhone,
   };
 
   currentStep = 4;
@@ -291,7 +353,6 @@ async function submitForm() {
           ورود به گروه
         </a>
       `;
-      // باز کردن خودکار لینک (با تاخیر تا کاربر پیام را ببیند)
       setTimeout(() => {
         tg.openLink(GROUP_INVITE_LINK);
       }, 2000);
@@ -306,10 +367,8 @@ async function submitForm() {
     resultText.textContent = "متأسفانه در ثبتِ فرم مشکلی پیش آمد. لطفاً دوباره تلاش کن یا از طریقِ گروه با ادمین در میان بگذار.";
   }
 
-  // مینی‌اپ بعد از ۵ ثانیه بسته می‌شود (کاربر می‌تواند زودتر ببندد)
   setTimeout(() => tg.close(), 5000);
 }
 
-// شروع از مرحله ۰ (شماره تلفن)؛ اما اگر شماره قبلاً ذخیره شده باشد (از قبل)، می‌توانیم مستقیم به مرحله ۱ برویم.
-// برای سادگی، همیشه از مرحله ۰ شروع می‌کنیم.
+// شروع از مرحله ۰
 showStep(0);

@@ -4,15 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>فرم پذیرش عضویت | رواق</title>
-
-  <!-- کتابخانه رسمی تلگرام برای WebApp — این خط الزامی است -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- ===================== پاپ‌آپ منشورِ رواق ===================== -->
+  <!-- پاپ‌آپ قوانین -->
   <div class="rules-overlay" id="rulesOverlay">
     <div class="rules-sheet">
       <div class="rules-handle"></div>
@@ -33,7 +30,6 @@
 
   <div class="app" id="appRoot">
 
-    <!-- هدر -->
     <header class="app-header">
       <div class="logo-badge">
         <span style="font-family: 'Kalameh', serif; font-weight: 900; font-size: 24px; color: var(--gold);">ر</span>
@@ -44,7 +40,7 @@
       </div>
     </header>
 
-    <!-- نوار پیشرفت (مراحل ۱ تا ۳) -->
+    <!-- نوار پیشرفت -->
     <div class="progress-bar-container" id="progressBarContainer">
       <div class="progress-line" data-line="1"></div>
       <div class="progress-line" data-line="2"></div>
@@ -52,7 +48,7 @@
     </div>
     <div class="step-label" id="stepLabel">سوال ۱ از ۳</div>
 
-    <!-- مرحله ۰: درخواست شماره تلفن (قبل از فرم) -->
+    <!-- مرحله ۰: شماره تلفن -->
     <section class="step" data-step="0" id="phoneStep">
       <h2>📱 احراز هویت با شماره تلفن</h2>
       <p class="hint" style="margin-bottom:24px;">
@@ -131,12 +127,10 @@
     <section class="step" data-step="3">
       <h2>کدام بخش از این انبارِ دانش، بیشتر به‌کارِت می‌آید؟</h2>
       <p class="hint" id="interestsHint">(حداکثر ۳ مورد از طاق‌هایِ تخصصی را انتخاب کن)</p>
-      <div class="chip-grid" id="interestsGrid">
-        <!-- با جاوااسکریپت پر می‌شود -->
-      </div>
+      <div class="chip-grid" id="interestsGrid"></div>
     </section>
 
-    <!-- مرحله ۴: نتیجه نهایی -->
+    <!-- مرحله ۴: نتیجه -->
     <section class="step" data-step="4">
       <div class="result-box">
         <div class="result-badge" id="resultBadge">✓</div>
@@ -145,7 +139,7 @@
       </div>
     </section>
 
-    <!-- ناوبری بین مراحل -->
+    <!-- دکمه‌های ناوبری -->
     <div class="nav-buttons" id="navButtons">
       <button type="button" id="backBtn" class="btn-secondary" style="visibility:hidden">→ پیشین</button>
       <button type="button" id="nextBtn" class="btn-primary" disabled>بعدی ←</button>
@@ -153,14 +147,6 @@
 
   </div>
 
-  <!-- لینک دعوت گروه از متغیر سرور (در بک‌اند مشخص می‌شود) -->
-  <script>
-    // این متغیر را از بک‌اند یا از HTML می‌توان ست کرد، ولی فعلاً ثابت می‌گذاریم
-    // در نسخه‌ی نهایی، بهتر است از طریق یک تگ <meta> یا داده‌ی جاوااسکریپت از سرور دریافت شود.
-    // اما برای سادگی، همان متغیر GROUP_INVITE_LINK از بک‌اند را در اینجا قرار می‌دهیم.
-    // می‌توانید در فایل اصلی این مقدار را به‌روز کنید.
-    const GROUP_INVITE_LINK = "https://t.me/+S04d2nabqShmZTJk"; // <-- لینک دعوت گروه خود را اینجا قرار دهید
-  </script>
   <script src="script.js"></script>
 </body>
 </html>
