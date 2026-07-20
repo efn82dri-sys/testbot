@@ -619,7 +619,8 @@ async def notify_new_member(user) -> None:
 
 
 async def send_welcome_to_group(user) -> None:
-    """ارسال پیام خوش‌آمدگویی در گروه برای عضو جدید.
+    """ارسال پیام خوش‌آمدگویی در گروه برای عضو جدید؛ این پیام بعد از ۳۰
+    ثانیه به‌صورت خودکار توسطِ خودِ ربات پاک می‌شود تا چتِ گروه شلوغ نماند.
 
     نکته: منشن با فرمتِ tg://user?id={id} کار می‌کند حتی برای کاربرانی که
     یوزرنیمِ عمومی ندارند یا در تنظیماتِ حریمِ خصوصی، افزوده‌شدن به گروه‌ها
@@ -632,17 +633,34 @@ async def send_welcome_to_group(user) -> None:
     display_name = html_escape(user.full_name or user.first_name or "کاربر")
     user_mention = f"<a href='tg://user?id={user.id}'>{display_name}</a>"
     try:
-        await bot.send_message(
+        sent = await bot.send_message(
             chat_id=GROUP_CHAT_ID,
             text=(
-                f"🏛 به رواق خوش آمدی {user_mention}!\n"
-                "امیدواریم این فضا، مرجع همیشگیِ مسیر حرفه‌ای‌ات باشد.\n"
-                "📌 لطفاً خودت را در گروه معرفی کن و بگو در چه حوزه‌ای فعالی."
+                f"سلام {user_mention}\n\n"
+                "🧱 به جمع معمارای حرفه‌ای خوش اومدی!\n\n"
+                "اینجا جاییه که آدمای باهوش مثل تو، به بهترین فایل‌ها و "
+                "منابع معماری دسترسی دارن.\n"
+                "📌 لطفاً خودت رو در تایپیک کافه معماری معرفی کن.\n\n"
+                "🏛 آماده‌ای بریم سمت پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
         logger.warning("ارسال پیام خوش‌آمدگویی به گروه ممکن نشد: %s", e)
+        return
+
+    asyncio.create_task(_delete_message_later(sent.chat.id, sent.message_id, delay=30))
+
+
+async def _delete_message_later(chat_id: int, message_id: int, delay: int) -> None:
+    """بعد از گذشتِ delay ثانیه، پیامِ موردنظر را پاک می‌کند (مثلاً برای
+    پاک‌کردنِ خودکارِ پیامِ خوش‌آمدگویی). اگر ربات دسترسیِ حذفِ پیام در آن
+    چت را نداشته باشد، فقط یک هشدار در لاگ ثبت می‌شود، نه خطا."""
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.warning("حذفِ خودکارِ پیامِ خوش‌آمدگویی ممکن نشد: %s", e)
 
 
 async def handle_member_left(user) -> None:
