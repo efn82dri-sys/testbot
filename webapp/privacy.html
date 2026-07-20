@@ -5,13 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>سیاست حریم خصوصی | رواق</title>
     <style>
+        /* ==========================================================
+           فونت «کلمه» (Kalameh) — مسیر نسبی از پوشه‌ی fonts
+           ========================================================== */
+        @font-face {
+            font-family: 'Kalameh';
+            src: url('fonts/Kalameh-Regular.woff2') format('woff2'),
+                 url('fonts/Kalameh-Regular.woff') format('woff');
+            font-weight: 400;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Kalameh';
+            src: url('fonts/Kalameh-Bold.woff2') format('woff2'),
+                 url('fonts/Kalameh-Bold.woff') format('woff');
+            font-weight: 700;
+            font-display: swap;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
         body {
-            font-family: 'Tahoma', 'Segoe UI', sans-serif;
+            font-family: 'Kalameh', 'Tahoma', 'Segoe UI', sans-serif;
             background: #1a1e1a;
             color: #f0ece4;
             display: flex;
@@ -75,7 +93,7 @@
         }
         .highlight {
             color: #c9a86c;
-            font-weight: 600;
+            font-weight: 700;
         }
         .footer {
             margin-top: 32px;
