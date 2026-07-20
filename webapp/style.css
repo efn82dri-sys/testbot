@@ -80,8 +80,8 @@ html, body {
   margin-bottom: 28px;
 }
 .logo-badge {
-  width: 54px;
-  height: 54px;
+  width: 64px;
+  height: 64px;
   border-radius: 18px;
   background: linear-gradient(135deg, #f4efe4, #e5ddc8);
   backdrop-filter: blur(16px) saturate(1.4);
@@ -95,12 +95,12 @@ html, body {
   flex-shrink: 0;
   color: var(--gold);
   overflow: hidden;
-  padding: 6px;
+  padding: 2px;
 }
 .logo-badge-img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   display: block;
 }
 .app-header h1 {
