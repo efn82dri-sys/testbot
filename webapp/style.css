@@ -83,7 +83,7 @@ html, body {
   width: 54px;
   height: 54px;
   border-radius: 18px;
-  background: var(--card-bg);
+  background: linear-gradient(135deg, #f4efe4, #e5ddc8);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid var(--card-border);
@@ -94,6 +94,14 @@ html, body {
   font-size: 26px;
   flex-shrink: 0;
   color: var(--gold);
+  overflow: hidden;
+  padding: 6px;
+}
+.logo-badge-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .app-header h1 {
   font-size: 18px;
