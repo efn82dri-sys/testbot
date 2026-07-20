@@ -1,23 +1,20 @@
 // ==========================================================
-// منطق فرم پذیرش عضویت
+// منطق فرم پذیرش عضویت با احراز هویت شماره تلفن درون‌برنامه‌ای
 // ==========================================================
 
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
 
-// این مینی‌اپ با تم تیره طراحی شده، پس صرف‌نظر از تم تلگرام کاربر
-// همیشه هدر تلگرام را با پس‌زمینه‌ی خودمان هماهنگ می‌کنیم.
+// تنظیم رنگ‌های مینی‌اپ
 document.documentElement.style.colorScheme = "dark";
 try {
   tg.setHeaderColor("#0c2a1a");
   tg.setBackgroundColor("#0c2a1a");
-} catch (e) {
-  /* در نسخه‌های قدیمی کلاینت تلگرام ممکن است این متدها نباشند */
-}
+} catch (e) { /* ignore */ }
 
 // ==========================================================
-// ۰) پاپ‌آپ آدابِ رواق — باید حتماً قبل از فرم تایید شود
+// ۰) پاپ‌آپ قوانین (قبلاً موجود)
 // ==========================================================
 const rulesOverlay = document.getElementById("rulesOverlay");
 const agreeRow = document.getElementById("agreeRow");
@@ -38,17 +35,53 @@ rulesStartBtn.addEventListener("click", () => {
   if (!rulesAgreed) return;
   rulesOverlay.classList.add("hidden");
   document.body.classList.remove("rules-locked");
+  // بعد از پذیرش قوانین، مرحله‌ی شماره تلفن را نشان بده
+  showStep(0);
 });
 
 rulesCancelBtn.addEventListener("click", () => {
-  // کاربر با آدابِ رواق موافقت نکرده؛ نمی‌تواند فرم را ادامه دهد
   tg.close();
 });
 
-// نمایش دکمه‌ی «بستن» تلگرام برای انصراف سریع، تا زمانی که پاپ‌آپ باز است
 tg.BackButton && tg.BackButton.hide();
 
-// ---------- لیست علایق (طبق درخواست کارفرما) ----------
+// ==========================================================
+// ۱) درخواست شماره تلفن (مرحله ۰)
+// ==========================================================
+let userPhone = null;
+
+const phoneStep = document.getElementById("phoneStep");
+const requestPhoneBtn = document.getElementById("requestPhoneBtn");
+
+requestPhoneBtn.addEventListener("click", async () => {
+  try {
+    // استفاده از متد رسمی تلگرام برای دریافت شماره
+    const contact = await tg.requestContact();
+    if (contact && contact.phone_number) {
+      userPhone = contact.phone_number;
+      // پس از دریافت شماره، به مرحله‌ی اول فرم برو
+      showStep(1);
+    } else {
+      // کاربر انصراف داده یا شماره معتبر نیست
+      tg.showPopup({
+        title: "خطا",
+        message: "برای ادامه، باید شماره تلفن خود را به اشتراک بگذارید.",
+        buttons: [{ type: "ok" }]
+      });
+    }
+  } catch (e) {
+    // کاربر انصراف داده
+    tg.showPopup({
+      title: "اطلاع",
+      message: "برای ادامه، اشتراک‌گذاری شماره ضروری است.",
+      buttons: [{ type: "ok" }]
+    });
+  }
+});
+
+// ==========================================================
+// ۲) لیست علایق و منطق فرم (همانند قبل)
+// ==========================================================
 const INTERESTS = [
   "کافه معماری",
   "فرصت‌های شغلی و کارآموزی",
@@ -66,7 +99,6 @@ const INTERESTS = [
 ];
 const MAX_INTERESTS = 3;
 
-// ---------- ساخت چیپ‌های علایق ----------
 const interestsGrid = document.getElementById("interestsGrid");
 const selectedInterests = new Set();
 
@@ -85,7 +117,7 @@ function toggleInterest(chip) {
     selectedInterests.delete(value);
     chip.classList.remove("selected");
   } else {
-    if (selectedInterests.size >= MAX_INTERESTS) return; // سقف ۳ مورد
+    if (selectedInterests.size >= MAX_INTERESTS) return;
     selectedInterests.add(value);
     chip.classList.add("selected");
   }
@@ -101,26 +133,24 @@ function refreshInterestLock() {
   });
 }
 
-// ---------- مرحله ۱: مقطع تحصیلی (کارت‌های تک‌انتخابی) ----------
-let selectedEducation = null; // { value, label }
+// ---------- مرحله ۱: مقطع تحصیلی ----------
+let selectedEducation = null;
 const educationList = document.getElementById("educationList");
-
 educationList.querySelectorAll(".option-item").forEach((item) => {
   item.addEventListener("click", () => {
-    educationList.querySelectorAll(".option-item").forEach((el) => el.classList.remove("selected"));
+    educationList.querySelectorAll(".option-item").forEach(el => el.classList.remove("selected"));
     item.classList.add("selected");
     selectedEducation = { value: item.dataset.value, label: item.dataset.label };
     validateCurrentStep();
   });
 });
 
-// ---------- مرحله ۲: نحوه آشنایی (کارت‌های تک‌انتخابی) ----------
+// ---------- مرحله ۲: نحوه آشنایی ----------
 let selectedReferral = null;
 const referralList = document.getElementById("referralList");
-
 referralList.querySelectorAll(".option-item").forEach((item) => {
   item.addEventListener("click", () => {
-    referralList.querySelectorAll(".option-item").forEach((el) => el.classList.remove("selected"));
+    referralList.querySelectorAll(".option-item").forEach(el => el.classList.remove("selected"));
     item.classList.add("selected");
     selectedReferral = item.dataset.value;
     validateCurrentStep();
@@ -129,7 +159,7 @@ referralList.querySelectorAll(".option-item").forEach((item) => {
 
 // ---------- ناوبری بین مراحل ----------
 const steps = Array.from(document.querySelectorAll(".step"));
-let currentStep = 1;
+let currentStep = 0; // 0 برای شماره، 1-3 برای فرم، 4 برای نتیجه
 
 const progressLines = Array.from(document.querySelectorAll(".progress-line"));
 const progressBarContainer = document.getElementById("progressBarContainer");
@@ -137,22 +167,36 @@ const stepLabel = document.getElementById("stepLabel");
 const nextBtn = document.getElementById("nextBtn");
 const backBtn = document.getElementById("backBtn");
 
-const FORM_STEPS = 3; // مرحله ۴ صفحه‌ی نتیجه است، نه یک قدم فرم
+const FORM_STEPS = 3; // 1,2,3
 
 function showStep(n) {
   steps.forEach((s) => s.classList.toggle("active", Number(s.dataset.step) === n));
-  const isResultStep = n > FORM_STEPS;
-  progressBarContainer.style.display = isResultStep ? "none" : "flex";
-  stepLabel.style.display = isResultStep ? "none" : "block";
-  if (!isResultStep) {
+  const isFormStep = n >= 1 && n <= FORM_STEPS;
+  const isResultStep = n === 4;
+  
+  // نمایش نوار پیشرفت فقط در مراحل فرم
+  if (isFormStep) {
+    progressBarContainer.style.display = "flex";
+    stepLabel.style.display = "block";
     progressLines.forEach((line) => {
       line.classList.toggle("filled", Number(line.dataset.line) <= n);
     });
     stepLabel.textContent = `سوال ${toFarsiDigits(n)} از ${toFarsiDigits(FORM_STEPS)}`;
+  } else {
+    progressBarContainer.style.display = "none";
+    stepLabel.style.display = "none";
   }
-  backBtn.style.visibility = n === 1 ? "hidden" : "visible";
-  nextBtn.textContent = n === FORM_STEPS ? "ثبت و پیوستن" : "بعدی ←";
-  if (!isResultStep) validateCurrentStep();
+
+  // دکمه‌ها
+  backBtn.style.visibility = (n === 0 || n === 4) ? "hidden" : "visible";
+  nextBtn.textContent = (n === FORM_STEPS) ? "ثبت و پیوستن" : "بعدی ←";
+  
+  // اگر مرحله ۰ (شماره) باشد، دکمه‌ی بعدی را غیرفعال می‌کنیم و خود کاربر با دکمه‌ی اختصاصی شماره را می‌فرستد
+  if (n === 0) {
+    nextBtn.disabled = true;
+  } else if (isFormStep) {
+    validateCurrentStep();
+  }
 }
 
 function toFarsiDigits(num) {
@@ -173,7 +217,7 @@ function validateCurrentStep() {
 }
 
 backBtn.addEventListener("click", () => {
-  if (currentStep > 1) {
+  if (currentStep > 1) { // از مرحله 1 به عقب نمی‌رویم (تا 0 نمی‌رویم)
     currentStep -= 1;
     showStep(currentStep);
   }
@@ -184,22 +228,29 @@ nextBtn.addEventListener("click", () => {
   if (currentStep < FORM_STEPS) {
     currentStep += 1;
     showStep(currentStep);
-  } else {
+  } else if (currentStep === FORM_STEPS) {
     submitForm();
   }
 });
 
-// ---------- ارسال نهایی داده به سرور ----------
-// نکته: تابع tg.sendData فقط برای مینی‌اپ‌هایی کار می‌کند که از
-// «Keyboard Button» باز شده باشند. چون این مینی‌اپ از دکمه‌ی زیر پیام
-// (Inline Button) باز می‌شود، داده را با fetch مستقیم به بک‌اند خودمان
-// می‌فرستیم و tg.initData را هم همراهش می‌فرستیم تا هویت کاربر تایید شود.
+// ==========================================================
+// ۳) ارسال نهایی فرم به همراه شماره تلفن
+// ==========================================================
 const navButtons = document.getElementById("navButtons");
 const resultBadge = document.getElementById("resultBadge");
 const resultTitle = document.getElementById("resultTitle");
 const resultText = document.getElementById("resultText");
 
 async function submitForm() {
+  if (!userPhone) {
+    tg.showPopup({
+      title: "خطا",
+      message: "شماره تلفن خود را به اشتراک نگذاشته‌اید. لطفاً دوباره تلاش کنید.",
+      buttons: [{ type: "ok" }]
+    });
+    return;
+  }
+
   nextBtn.disabled = true;
   nextBtn.textContent = "⏳ در حال ارسال...";
 
@@ -208,6 +259,7 @@ async function submitForm() {
     education_label: selectedEducation.label,
     referral: selectedReferral,
     interests: Array.from(selectedInterests),
+    phone: userPhone, // ارسال شماره به بک‌اند
   };
 
   currentStep = 4;
@@ -230,7 +282,19 @@ async function submitForm() {
       resultBadge.classList.remove("error");
       resultBadge.classList.add("celebrate");
       resultTitle.textContent = "🏛 عضویت‌ات به امضا رسید!";
-      resultText.textContent = "هویت‌ات در این رواق ثبت شد. همین حالا می‌توانی به گروه برگردی و فایل‌ها را ورق بزنی — درگاه، به رویِ تو گشوده شد.";
+      resultText.innerHTML = `
+        هویت‌ات در این رواق ثبت شد.
+        <br><br>
+        برای ورود به گروه، روی دکمه‌ی زیر کلیک کن و پس از کلیک روی «عضویت»، به‌طور خودکار تایید می‌شوی.
+        <br><br>
+        <a href="${GROUP_INVITE_LINK}" target="_blank" style="display:inline-block;background:#c9a86c;color:#1a1e1a;padding:12px 24px;border-radius:999px;text-decoration:none;font-weight:700;margin-top:8px;">
+          ورود به گروه
+        </a>
+      `;
+      // باز کردن خودکار لینک (با تاخیر تا کاربر پیام را ببیند)
+      setTimeout(() => {
+        tg.openLink(GROUP_INVITE_LINK);
+      }, 2000);
     } else {
       throw new Error(data.error || "unknown");
     }
@@ -242,9 +306,10 @@ async function submitForm() {
     resultText.textContent = "متأسفانه در ثبتِ فرم مشکلی پیش آمد. لطفاً دوباره تلاش کن یا از طریقِ گروه با ادمین در میان بگذار.";
   }
 
-  // بعد از چند ثانیه، مینی‌اپ را ببند تا کاربر داخل چت گروه/ربات برگردد
-  setTimeout(() => tg.close(), 2600);
+  // مینی‌اپ بعد از ۵ ثانیه بسته می‌شود (کاربر می‌تواند زودتر ببندد)
+  setTimeout(() => tg.close(), 5000);
 }
 
-// شروع از مرحله ۱
-showStep(currentStep);
+// شروع از مرحله ۰ (شماره تلفن)؛ اما اگر شماره قبلاً ذخیره شده باشد (از قبل)، می‌توانیم مستقیم به مرحله ۱ برویم.
+// برای سادگی، همیشه از مرحله ۰ شروع می‌کنیم.
+showStep(0);

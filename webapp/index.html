@@ -13,8 +13,6 @@
 <body>
 
   <!-- ===================== پاپ‌آپ منشورِ رواق ===================== -->
-  <!-- تا وقتی کاربر تیک "موافقم" را نزند و روی «ورود به جمع» نزند، فرم
-       دیده نمی‌شود. این پاپ‌آپ همیشه هنگام باز شدن مینی‌اپ نمایش داده می‌شود. -->
   <div class="rules-overlay" id="rulesOverlay">
     <div class="rules-sheet">
       <div class="rules-handle"></div>
@@ -46,7 +44,7 @@
       </div>
     </header>
 
-    <!-- نوار پیشرفت -->
+    <!-- نوار پیشرفت (مراحل ۱ تا ۳) -->
     <div class="progress-bar-container" id="progressBarContainer">
       <div class="progress-line" data-line="1"></div>
       <div class="progress-line" data-line="2"></div>
@@ -54,8 +52,20 @@
     </div>
     <div class="step-label" id="stepLabel">سوال ۱ از ۳</div>
 
+    <!-- مرحله ۰: درخواست شماره تلفن (قبل از فرم) -->
+    <section class="step" data-step="0" id="phoneStep">
+      <h2>📱 احراز هویت با شماره تلفن</h2>
+      <p class="hint" style="margin-bottom:24px;">
+        برای تکمیل عضویت، لطفاً شماره تلفن خود را با کلیک روی دکمه‌ی زیر به اشتراک بگذارید.
+        <br><small>شماره‌ی شما فقط برای احراز هویت استفاده می‌شود و نزد ما محفوظ است.</small>
+      </p>
+      <button type="button" class="btn-primary" id="requestPhoneBtn" style="width:100%;padding:14px;font-size:16px;">
+        📞 اشتراک‌گذاری شماره تلفن
+      </button>
+    </section>
+
     <!-- مرحله ۱: مقطع تحصیلی -->
-    <section class="step active" data-step="1">
+    <section class="step" data-step="1">
       <h2>سطحِ حرفه‌ای‌ات را مشخص کن: در کدام رده‌ی آموزشی یا تجربی قرار می‌گیری؟</h2>
       <div class="option-list" id="educationList">
         <div class="option-item" data-value="diploma" data-label="دیپلم / پیش‌دانشگاهی">
@@ -143,6 +153,14 @@
 
   </div>
 
+  <!-- لینک دعوت گروه از متغیر سرور (در بک‌اند مشخص می‌شود) -->
+  <script>
+    // این متغیر را از بک‌اند یا از HTML می‌توان ست کرد، ولی فعلاً ثابت می‌گذاریم
+    // در نسخه‌ی نهایی، بهتر است از طریق یک تگ <meta> یا داده‌ی جاوااسکریپت از سرور دریافت شود.
+    // اما برای سادگی، همان متغیر GROUP_INVITE_LINK از بک‌اند را در اینجا قرار می‌دهیم.
+    // می‌توانید در فایل اصلی این مقدار را به‌روز کنید.
+    const GROUP_INVITE_LINK = "https://t.me/+S04d2nabqShmZTJk"; // <-- لینک دعوت گروه خود را اینجا قرار دهید
+  </script>
   <script src="script.js"></script>
 </body>
 </html>

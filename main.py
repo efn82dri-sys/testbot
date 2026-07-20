@@ -226,6 +226,24 @@ def get_saved_phone(user_id: int) -> str:
     return load_phones().get(str(user_id), "")
 
 
+def has_submitted_form(user_id: int) -> bool:
+    """بررسی می‌کند که آیا کاربر قبلاً فرم را پر کرده است یا خیر."""
+    if not DATA_FILE.exists():
+        return False
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if int(record.get("user_id", 0)) == user_id:
+                    return True
+            except:
+                continue
+    return False
+
+
 # حالت‌های گفت‌وگوی «ارسال پیام همگانی» — وقتی ادمین دکمه‌ی «ارسال
 # پیام همگانی» را می‌زند، ربات منتظر می‌ماند متن پیام را بفرستد،
 # سپس یک پیش‌نمایش با دکمه‌ی تایید/انصراف نشان می‌دهد.
@@ -515,6 +533,15 @@ async def handle_join_request(join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
 
+    # اگر کاربر قبلاً فرم را پر کرده باشد، مستقیماً تایید کن و پیام نفرست
+    if has_submitted_form(user.id):
+        try:
+            await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
+            logger.info("کاربر %s قبلاً فرم را پر کرده بود، درخواست تایید شد.", user.id)
+        except Exception as e:
+            logger.warning("تایید خودکار کاربر %s ممکن نشد: %s", user.id, e)
+        return
+
     # اگر قبلاً یک‌بار شماره‌اش را تایید کرده، مستقیم فرم را بفرست
     if get_saved_phone(user.id):
         await send_webapp_form_message(user)
@@ -725,11 +752,44 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
     if option_index >= len(LEAVE_REASONS):
         return
 
-    _, reply_text = LEAVE_REASONS[option_index]
+    reason_text, reply_text = LEAVE_REASONS[option_index]
     try:
         await bot.send_message(chat_id=user_id, text=reply_text)
     except Exception as e:
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
+
+    # اگر NOTIFY_CHAT_ID تنظیم شده باشد، انتقاد کاربر به ادمین ارسال شود
+    if NOTIFY_CHAT_ID and reason_text:
+        try:
+            user = await bot.get_chat(user_id)
+            display_name = html_escape(user.full_name or user.first_name or "کاربر")
+            user_mention = f"<a href='tg://user?id={user_id}'>{display_name}</a>"
+            username_part = f"@{user.username}" if user.username else f"<code>{user_id}</code>"
+
+            reply_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✏️ پاسخ به این کاربر",
+                            callback_data=f"reply_to_user:{user_id}"
+                        )
+                    ]
+                ]
+            )
+
+            await bot.send_message(
+                chat_id=NOTIFY_CHAT_ID,
+                text=(
+                    f"📩 **انتقاد جدید از یک کاربر خارج‌شده**\n\n"
+                    f"👤 {user_mention}\n"
+                    f"🆔 {username_part}\n\n"
+                    f"💬 **دلیل ترک:**\n{reason_text}"
+                ),
+                reply_markup=reply_keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.warning("ارسال انتقاد به ادمین ممکن نشد: %s", e)
 
 
 # --------------------------------------------------------------
@@ -1073,6 +1133,11 @@ async def handle_submit(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "invalid_init_data"}, status=403)
 
     user_id = user["id"]
+    
+    # استخراج شماره تلفن از فرم (اگر ارسال شده باشد)
+    phone_from_form = form_data.get("phone", "")
+    if phone_from_form and not get_saved_phone(user_id):
+        await save_phone(user_id, phone_from_form)
 
     record = {
         "user_id": user_id,
@@ -1090,7 +1155,7 @@ async def handle_submit(request: web.Request) -> web.Response:
 
     logger.info("فرم کاربر %s ذخیره شد.", user_id)
 
-    # تایید درخواست عضویت کاربر در گروه
+    # تایید درخواست عضویت کاربر در گروه (اگر درخواستی وجود داشته باشد)
     approved = False
     try:
         await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
@@ -1204,7 +1269,7 @@ async def on_startup(app: web.Application):
 def create_app() -> web.Application:
     app = web.Application()
 
-    # فایل‌های estatic صفحه فرم (index.html / style.css / script.js / فونت‌ها)
+    # فایل‌های استاتیک صفحه فرم (index.html / style.css / script.js / فونت‌ها)
     webapp_dir = Path(__file__).parent / "webapp"
     app.router.add_static("/webapp/", path=str(webapp_dir), show_index=False)
 
