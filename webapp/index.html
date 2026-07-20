@@ -4,12 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>فرم پذیرش عضویت | رواق</title>
+
+  <!-- کتابخانه رسمی تلگرام برای WebApp — این خط الزامی است -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- پاپ‌آپ قوانین -->
+  <!-- ===================== پاپ‌آپ منشورِ رواق ===================== -->
+  <!-- تا وقتی کاربر تیک "موافقم" را نزند و روی «ورود به جمع» نزند، فرم
+       دیده نمی‌شود. این پاپ‌آپ همیشه هنگام باز شدن مینی‌اپ نمایش داده می‌شود. -->
   <div class="rules-overlay" id="rulesOverlay">
     <div class="rules-sheet">
       <div class="rules-handle"></div>
@@ -30,6 +35,7 @@
 
   <div class="app" id="appRoot">
 
+    <!-- هدر -->
     <header class="app-header">
       <div class="logo-badge">
         <span style="font-family: 'Kalameh', serif; font-weight: 900; font-size: 24px; color: var(--gold);">ر</span>
@@ -48,20 +54,8 @@
     </div>
     <div class="step-label" id="stepLabel">سوال ۱ از ۳</div>
 
-    <!-- مرحله ۰: شماره تلفن -->
-    <section class="step" data-step="0" id="phoneStep">
-      <h2>📱 احراز هویت با شماره تلفن</h2>
-      <p class="hint" style="margin-bottom:24px;">
-        برای تکمیل عضویت، لطفاً شماره تلفن خود را با کلیک روی دکمه‌ی زیر به اشتراک بگذارید.
-        <br><small>شماره‌ی شما فقط برای احراز هویت استفاده می‌شود و نزد ما محفوظ است.</small>
-      </p>
-      <button type="button" class="btn-primary" id="requestPhoneBtn" style="width:100%;padding:14px;font-size:16px;">
-        📞 اشتراک‌گذاری شماره تلفن
-      </button>
-    </section>
-
     <!-- مرحله ۱: مقطع تحصیلی -->
-    <section class="step" data-step="1">
+    <section class="step active" data-step="1">
       <h2>سطحِ حرفه‌ای‌ات را مشخص کن: در کدام رده‌ی آموزشی یا تجربی قرار می‌گیری؟</h2>
       <div class="option-list" id="educationList">
         <div class="option-item" data-value="diploma" data-label="دیپلم / پیش‌دانشگاهی">
@@ -127,10 +121,12 @@
     <section class="step" data-step="3">
       <h2>کدام بخش از این انبارِ دانش، بیشتر به‌کارِت می‌آید؟</h2>
       <p class="hint" id="interestsHint">(حداکثر ۳ مورد از طاق‌هایِ تخصصی را انتخاب کن)</p>
-      <div class="chip-grid" id="interestsGrid"></div>
+      <div class="chip-grid" id="interestsGrid">
+        <!-- با جاوااسکریپت پر می‌شود -->
+      </div>
     </section>
 
-    <!-- مرحله ۴: نتیجه -->
+    <!-- مرحله ۴: نتیجه نهایی -->
     <section class="step" data-step="4">
       <div class="result-box">
         <div class="result-badge" id="resultBadge">✓</div>
@@ -139,7 +135,7 @@
       </div>
     </section>
 
-    <!-- دکمه‌های ناوبری -->
+    <!-- ناوبری بین مراحل -->
     <div class="nav-buttons" id="navButtons">
       <button type="button" id="backBtn" class="btn-secondary" style="visibility:hidden">→ پیشین</button>
       <button type="button" id="nextBtn" class="btn-primary" disabled>بعدی ←</button>
