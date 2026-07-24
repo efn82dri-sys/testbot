@@ -11,6 +11,8 @@
 - برادکست از هر نوع پیامی (متن، عکس، سند، ویدئو و ...) پشتیبانی می‌کند.
 - قبل از نمایش دکمه‌ی فرم، یک پیام هشدار درباره‌ی VPN به کاربر نمایش داده می‌شود.
 - خروجی اکسل شامل همه‌ی کاربرانی است که شماره‌شان را تأیید کرده‌اند (حتی اگر فرم را پر نکرده باشند).
+- اضافه شدن قابلیت حذف اطلاعات کاربر (هم به‌صورت دستور /delete_user و هم از طریق پنل مدیریت)
+- اضافه شدن دستور /help برای راهنمایی کاربران و ارسال پیام به ادمین
 ====================================================================
 """
 
@@ -168,6 +170,13 @@ class BroadcastStates(StatesGroup):
     confirming = State()
 
 
+# ==============================================================
+# وضعیت‌های جدید برای مدیریت (حذف کاربر)
+# ==============================================================
+class AdminStates(StatesGroup):
+    waiting_for_delete_user_id = State()
+
+
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
     if not DATA_FILE.exists():
@@ -271,8 +280,51 @@ async def build_stats_detail_text() -> str:
 
 
 # ==============================================================
-# تغییر اصلی ۳: خروجی اکسل شامل همه‌ی افرادی که شماره را تأیید کرده‌اند
+# حذف اطلاعات کاربر (برای ادمین)
 # ==============================================================
+async def delete_user_data(user_id: int) -> tuple[bool, str]:
+    """حذف شماره تلفن و رکوردهای فرم یک کاربر."""
+    uid_str = str(user_id)
+    phones = load_phones()
+    removed_phone = False
+    if uid_str in phones:
+        del phones[uid_str]
+        async with _write_lock:
+            PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
+        removed_phone = True
+
+    removed_form = False
+    if DATA_FILE.exists():
+        lines = []
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    if int(record.get("user_id", 0)) == user_id:
+                        removed_form = True
+                        continue
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                lines.append(line)
+        if removed_form:
+            async with _write_lock:
+                with open(DATA_FILE, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines) + ("\n" if lines else ""))
+
+    if not removed_phone and not removed_form:
+        return False, f"❌ کاربری با آیدی `{user_id}` در هیچ داده‌ای یافت نشد."
+
+    msg = f"✅ اطلاعات کاربر `{user_id}` حذف شد."
+    if removed_phone:
+        msg += " (شماره تلفن)"
+    if removed_form:
+        msg += " (فرم عضویت)"
+    return True, msg
+
+
 def build_export_file() -> BufferedInputFile | None:
     """فایل اکسل شامل همه‌ی کاربرانی که شماره‌شان تأیید شده است (حتی اگر فرم را پر نکرده باشند)."""
     phones = load_phones()
@@ -384,7 +436,7 @@ def build_export_file() -> BufferedInputFile | None:
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
 
-# ---------- صفحه‌کلیدهای مدیریت (بدون تغییر) ----------
+# ---------- صفحه‌کلیدهای مدیریت (با دکمه‌ی حذف کاربر جدید) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -392,6 +444,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📈 آمار تفصیلیِ فرم‌ها", callback_data="admin:stats_detail")],
             [InlineKeyboardButton(text="📄 خروجی اکسل (همه‌ی تأییدشده‌ها)", callback_data="admin:export")],
             [InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="admin:broadcast")],
+            [InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user")],
             [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
         ]
     )
@@ -410,6 +463,21 @@ async def handle_start(message: Message):
         "به رواق خوش آمدی؛ درگاهِ تخصصیِ فایل‌های معماری و عمران.\n"
         "این‌جا انبارِ دانشِ هزاران معمار و مهندس است. برای ورود، کافی‌ست "
         "درخواستِ عضویت در گروه را ثبت کنی. مسیرِ بعدی را برایت می‌گشایم."
+    )
+
+
+# ---------- دستور /help (جدید) ----------
+@dp.message(Command("help"))
+async def handle_help(message: Message):
+    await message.answer(
+        "📚 <b>راهنما و پشتیبانی</b>\n\n"
+        "برای ارتباط با مدیریت رواق، کافیست پیام خود را در همین چت بنویسید. "
+        "پیام شما به‌طور خودکار به ادمین‌ها ارسال می‌شود و آنها در اسرع وقت پاسخ می‌دهند.\n\n"
+        "🔹 دستورات موجود:\n"
+        "/start - شروع مجدد\n"
+        "/help - نمایش این راهنما\n"
+        "/admin - پنل مدیریت (فقط ادمین‌ها)\n\n"
+        "اگر سوال یا مشکلی دارید، پیام خود را بنویسید تا به ادمین برسد."
     )
 
 
@@ -650,7 +718,7 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
 
-# ---------- پنل مدیریت (بدون تغییر عمده) ----------
+# ---------- پنل مدیریت ----------
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -726,6 +794,29 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
     return sent, failed
 
 
+# ==============================================================
+# دستور /delete_user (برای ادمین)
+# ==============================================================
+@dp.message(Command("delete_user"))
+async def handle_delete_user(message: Message, command: CommandObject):
+    if not is_admin(message.from_user.id):
+        return
+    args = (command.args or "").strip()
+    if not args:
+        await message.answer(
+            "⚠️ لطفاً آیدی عددی کاربر را مشخص کنید:\n"
+            "<code>/delete_user 123456789</code>"
+        )
+        return
+    try:
+        user_id = int(args)
+    except ValueError:
+        await message.answer("❌ آیدی باید یک عدد صحیح باشد.")
+        return
+    ok, msg = await delete_user_data(user_id)
+    await message.answer(msg)
+
+
 # ---------- دکمه‌های پنل ----------
 @dp.callback_query(F.data == "admin:menu")
 async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
@@ -785,7 +876,7 @@ async def cb_admin_export(callback: CallbackQuery):
 
 
 # ==============================================================
-# تغییر اصلی ۱: برادکست با پشتیبانی از مدیا (عکس، فایل، ویدئو و ...)
+# برادکست با پشتیبانی از مدیا
 # ==============================================================
 @dp.callback_query(F.data == "admin:broadcast")
 async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
@@ -897,6 +988,53 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
+
+
+# ==============================================================
+# حذف کاربر از طریق پنل مدیریت (دکمه)
+# ==============================================================
+@dp.callback_query(F.data == "admin:delete_user")
+async def cb_admin_delete_user(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(AdminStates.waiting_for_delete_user_id)
+    await callback.message.edit_text(
+        "🗑 <b>حذف کاربر</b>\n\n"
+        "لطفاً آیدی عددی کاربر مورد نظر را در یک پیام جداگانه ارسال کنید.\n"
+        "مثال: <code>123456789</code>\n\n"
+        "برای لغو، دستور /cancel را بفرستید.",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+
+@dp.message(AdminStates.waiting_for_delete_user_id)
+async def handle_delete_user_id_input(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("لطفاً یک آیدی عددی وارد کنید.")
+        return
+    # اگر کاربر /cancel فرستاد
+    if text.startswith("/"):
+        await state.clear()
+        await message.answer("عملیات لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    try:
+        user_id = int(text)
+    except ValueError:
+        await message.answer("❌ آیدی باید عددی باشد. دوباره تلاش کنید یا /cancel بزنید.")
+        return
+    ok, msg = await delete_user_data(user_id)
+    await message.answer(msg)
+    await state.clear()
+    # بازگشت به منوی مدیریت
+    await message.answer(
+        "🛠 بازگشت به پنل مدیریت",
+        reply_markup=admin_panel_keyboard()
+    )
 
 
 # ---------- صندوق پیام اعضا (بدون تغییر) ----------
