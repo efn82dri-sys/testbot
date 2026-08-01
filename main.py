@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی با روش Async Iterator برای دریافت اعضا (سازگار با aiogram 3.x)
+نسخه‌ی نهایی با دریافت اعضا از طریق API مستقیم تلگرام
 """
 
 import asyncio
@@ -18,6 +18,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
 
+import aiohttp
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
@@ -926,7 +927,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — نسخه‌ی نهایی با Async Iterator
+#  بخش حضور و غیاب هفتگی — با API مستقیم تلگرام
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -944,20 +945,41 @@ async def save_attendance_data(data: dict) -> None:
 
 
 async def get_all_group_members(chat_id: int) -> list[int]:
-    """دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator (سازگار با aiogram 3.x)"""
+    """
+    دریافت لیست تمام اعضای گروه با درخواست مستقیم به API تلگرام
+    (مستقل از کتابخانه‌ی aiogram)
+    """
     members = []
-    try:
-        async for member in bot.get_chat_members(chat_id):
-            if not member.user.is_bot:
-                members.append(member.user.id)
-            if len(members) % 100 == 0:
-                await asyncio.sleep(0.05)
-    except AttributeError as e:
-        logger.error("متد get_chat_members در دسترس نیست: %s", e)
-        raise Exception("نسخه‌ی aiogram خیلی قدیمی است. لطفاً به نسخه‌ی 3.x به‌روز کنید.")
-    except Exception as e:
-        logger.error("خطا در دریافت اعضای گروه: %s", e)
-        raise
+    offset = 0
+    limit = 200  # حداکثر مجاز توسط تلگرام
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getChatMembers"
+    
+    while True:
+        params = {
+            "chat_id": chat_id,
+            "offset": offset,
+            "limit": limit
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        raise Exception(f"API error: {resp.status} - {text}")
+                    data = await resp.json()
+                    if not data.get("ok"):
+                        raise Exception(f"API error: {data.get('description', 'Unknown error')}")
+                    chunk = data.get("result", [])
+                    if not chunk:
+                        break
+                    for member in chunk:
+                        if not member.get("user", {}).get("is_bot", False):
+                            members.append(member["user"]["id"])
+                    offset += limit
+                    await asyncio.sleep(0.1)  # جلوگیری از Rate Limit
+        except Exception as e:
+            logger.error("خطا در دریافت اعضای گروه با API مستقیم: %s", e)
+            raise
     return members
 
 
@@ -1044,16 +1066,6 @@ async def cmd_attendance_report(message: Message):
     active = data.get("active")
     if active is None:
         await message.answer("هیچ دوره‌ی فعالی وجود ندارد. ابتدا با /attendance_start شروع کنید.")
-        return
-
-    # بررسی دسترسی ربات به لیست اعضا
-    try:
-        await bot.get_chat_member(GROUP_CHAT_ID, bot.id)
-    except Exception as e:
-        logger.error("خطا در بررسی دسترسی ربات: %s", e)
-        await message.answer(
-            "❌ ربات نمی‌تواند اعضای گروه را ببیند. لطفاً مطمئن شوید ربات ادمین است و دسترسی «اعضا» را دارد."
-        )
         return
 
     await message.answer("⏳ در حال دریافت لیست اعضای گروه...")
@@ -1233,7 +1245,6 @@ async def handle_health(request: web.Request) -> web.Response:
 
 
 async def self_ping_loop(app: web.Application) -> None:
-    import aiohttp
     ping_url = f"{WEBHOOK_HOST}/health"
     async with aiohttp.ClientSession() as session:
         while True:
