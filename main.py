@@ -536,14 +536,13 @@ async def send_welcome_to_group(user) -> None:
         sent = await bot.send_message(
             chat_id=GROUP_CHAT_ID,
             text=(
-                f"سلام {user_mention}\n\n"
-                "🧱 به جمع معمارای حرفه‌ای خوش اومدی!\n\n"
-                "اینجا جاییه که آدمای باهوش مثل تو، به بهترین فایل‌ها و "
-                "منابع معماری دسترسی دارن.\n"
-                "📌 لطفاً خودت رو در تایپیک کافه معماری معرفی کن.\n\n"
-                "🏛 آماده‌ای بریم سمت پیشرفت؟"
+                f"{user_mention} عزیز خوش آمدی 👋\n\n"
+                "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
+                "▫️ برای شروع، خودت را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
+                "🏛 آماده‌ای برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
+            disable_notification=True,  # <-- پیام بی‌صدا ارسال می‌شود
         )
     except Exception as e:
         logger.warning("ارسال پیام خوش‌آمدگویی به گروه ممکن نشد: %s", e)
