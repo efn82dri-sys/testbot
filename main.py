@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی با روش offset/limit برای دریافت لیست اعضا
+نسخه‌ی نهایی با Async Iterator برای دریافت لیست اعضا (سازگار با aiogram 3.x)
 """
 
 import asyncio
@@ -926,7 +926,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — با offset/limit (سازگار با همه‌ی نسخه‌ها)
+#  بخش حضور و غیاب هفتگی — با Async Iterator (سازگار با aiogram 3.x)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -945,25 +945,23 @@ async def save_attendance_data(data: dict) -> None:
 
 async def get_all_group_members(chat_id: int) -> list[int]:
     """
-    دریافت لیست عددی تمام اعضای گروه با روش offset/limit
-    (سازگار با همه‌ی نسخه‌های aiogram)
+    دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator
+    (سازگار با aiogram 3.x)
     """
     members = []
-    offset = 0
-    limit = 100
-    while True:
-        try:
-            chunk = await bot.get_chat_members(chat_id, offset=offset, limit=limit)
-        except Exception as e:
-            logger.error(f"خطا در دریافت اعضای گروه (offset={offset}): {e}")
-            raise
-        if not chunk:
-            break
-        for member in chunk:
+    try:
+        async for member in bot.get_chat_members(chat_id):
             if not member.user.is_bot:
                 members.append(member.user.id)
-        offset += limit
-        await asyncio.sleep(0.1)  # جلوگیری از Rate Limit
+            # برای جلوگیری از Rate Limit، هر ۱۰۰ عضو یک‌بار مکث کوتاه
+            if len(members) % 100 == 0:
+                await asyncio.sleep(0.05)
+    except AttributeError as e:
+        logger.error("متد get_chat_members در دسترس نیست: %s", e)
+        raise Exception("نسخه‌ی aiogram خیلی قدیمی است. لطفاً به نسخه‌ی 3.x به‌روز کنید.")
+    except Exception as e:
+        logger.error("خطا در دریافت اعضای گروه: %s", e)
+        raise
     return members
 
 
@@ -1058,13 +1056,7 @@ async def cmd_attendance_report(message: Message):
     except Exception as e:
         error_msg = str(e)
         logger.error(f"خطا در دریافت لیست اعضا: {error_msg}")
-        if "404" in error_msg:
-            await message.answer(
-                "❌ متد دریافت اعضا در این نسخه از Bot API پشتیبانی نمی‌شود.\n"
-                "لطفاً از روش‌های جایگزین مانند دریافت لیست از خود گروه یا ابزارهای مدیریت گروه استفاده کنید."
-            )
-        else:
-            await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
+        await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
         return
 
     if not all_members:
