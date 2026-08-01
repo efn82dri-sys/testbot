@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی به‌روز شده با قابلیت «حضور و غیاب» هفتگی
+نسخه‌ی به‌روز شده با قابلیت «حضور و غیاب» هفتگی و رفع خطای دریافت اعضا
 """
 
 import asyncio
@@ -66,7 +66,7 @@ DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
-ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"   # === NEW ===
+ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -403,9 +403,6 @@ def phone_request_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-# ==============================================================
-# تغییر: پیام جدید درخواست شماره (حس اعتماد)
-# ==============================================================
 async def send_vpn_warning_and_form(user) -> None:
     try:
         await bot.send_message(
@@ -453,7 +450,6 @@ async def handle_join_request(join_request: ChatJoinRequest):
         await send_vpn_warning_and_form(user)
         return
 
-    # === NEW === متن جدید درخواست شماره
     try:
         await bot.send_message(
             chat_id=user.id,
@@ -930,11 +926,10 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  === NEW === بخش حضور و غیاب هفتگی
+#  بخش حضور و غیاب هفتگی — نسخه‌ی اصلاح‌شده با مدیریت خطا
 # ==============================================================
 
 def load_attendance_data() -> dict:
-    """بارگذاری داده‌های حضور و غیاب"""
     if not ATTENDANCE_FILE.exists():
         return {"active": None}
     try:
@@ -949,7 +944,7 @@ async def save_attendance_data(data: dict) -> None:
 
 
 async def get_all_group_members(chat_id: int) -> list[int]:
-    """دریافت لیست عددی تمام اعضای گروه با رعایت محدودیت نرخ"""
+    """دریافت لیست عددی تمام اعضای گروه با مدیریت خطا"""
     members = []
     offset = 0
     limit = 100
@@ -957,8 +952,9 @@ async def get_all_group_members(chat_id: int) -> list[int]:
         try:
             chunk = await bot.get_chat_members(chat_id, offset=offset, limit=limit)
         except Exception as e:
-            logger.error("خطا در دریافت اعضای گروه: %s", e)
-            break
+            # خطا را به سمت بالا پرتاب می‌کنیم تا در caller مدیریت شود
+            logger.error("خطا در دریافت اعضای گروه (offset=%d): %s", offset, e)
+            raise
         if not chunk:
             break
         for member in chunk:
@@ -971,11 +967,9 @@ async def get_all_group_members(chat_id: int) -> list[int]:
 
 @dp.message(Command("attendance_start"))
 async def cmd_attendance_start(message: Message):
-    """شروع دوره‌ی حضور و غیاب (فقط ادمین)"""
     if not is_admin(message.from_user.id):
         return
-    # فقط در گروه قابل اجراست
-    if message.chat.type != "group" and message.chat.type != "supergroup":
+    if message.chat.type not in ("group", "supergroup"):
         await message.answer("این دستور فقط در گروه قابل استفاده است.")
         return
 
@@ -984,7 +978,6 @@ async def cmd_attendance_start(message: Message):
         await message.answer("یک دوره‌ی حضور و غیاب هم‌اکنون فعال است. ابتدا آن را با /attendance_end پایان دهید.")
         return
 
-    # ارسال پیام با دکمه‌ی حضور
     try:
         sent_msg = await bot.send_message(
             chat_id=message.chat.id,
@@ -1004,7 +997,6 @@ async def cmd_attendance_start(message: Message):
         await message.answer("خطا در ارسال پیام حضور.")
         return
 
-    # ذخیره‌ی اطلاعات دوره
     active_data = {
         "started_at": datetime.utcnow().isoformat(),
         "message_id": sent_msg.message_id,
@@ -1018,7 +1010,6 @@ async def cmd_attendance_start(message: Message):
 
 @dp.message(Command("attendance_status"))
 async def cmd_attendance_status(message: Message):
-    """نمایش وضعیت دوره‌ی جاری"""
     if not is_admin(message.from_user.id):
         return
     data = load_attendance_data()
@@ -1038,7 +1029,6 @@ async def cmd_attendance_status(message: Message):
 
 @dp.message(Command("attendance_end"))
 async def cmd_attendance_end(message: Message):
-    """پایان دادن به دوره‌ی جاری (فقط ادمین)"""
     if not is_admin(message.from_user.id):
         return
     data = load_attendance_data()
@@ -1052,7 +1042,6 @@ async def cmd_attendance_end(message: Message):
 
 @dp.message(Command("attendance_report"))
 async def cmd_attendance_report(message: Message):
-    """گزارش غایبان (فقط ادمین)"""
     if not is_admin(message.from_user.id):
         return
     data = load_attendance_data()
@@ -1061,11 +1050,36 @@ async def cmd_attendance_report(message: Message):
         await message.answer("هیچ دوره‌ی فعالی وجود ندارد. ابتدا با /attendance_start شروع کنید.")
         return
 
-    # دریافت لیست کل اعضای گروه
+    # بررسی دسترسی ربات به لیست اعضا
+    try:
+        # تست دسترسی با یک درخواست کوچک
+        await bot.get_chat_member(GROUP_CHAT_ID, bot.id)
+    except Exception as e:
+        logger.error("خطا در بررسی دسترسی ربات: %s", e)
+        await message.answer(
+            "❌ ربات نمی‌تواند اعضای گروه را ببیند. لطفاً مطمئن شوید ربات ادمین است و دسترسی «اعضا» را دارد."
+        )
+        return
+
     await message.answer("⏳ در حال دریافت لیست اعضای گروه...")
-    all_members = await get_all_group_members(GROUP_CHAT_ID)
+    try:
+        all_members = await get_all_group_members(GROUP_CHAT_ID)
+    except Exception as e:
+        error_msg = str(e)
+        logger.error("خطا در دریافت لیست اعضا: %s", error_msg)
+        # نمایش پیام خطای دقیق‌تر
+        if "ChatAdminRequired" in error_msg:
+            await message.answer(
+                "❌ ربات نیاز به دسترسی ادمین برای دریافت لیست اعضا دارد. لطفاً ربات را به عنوان ادمین با تمام دسترسی‌ها (به جز دسترسی به پیام‌های مخفی) تنظیم کنید."
+            )
+        elif "Too Many Requests" in error_msg:
+            await message.answer("❌ درخواست‌های زیادی ارسال شده است. لطفاً چند دقیقه صبر کنید و دوباره تلاش کنید.")
+        else:
+            await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
+        return
+
     if not all_members:
-        await message.answer("امکان دریافت لیست اعضا وجود ندارد.")
+        await message.answer("لیست اعضای گروه خالی است یا خطایی رخ داده است.")
         return
 
     participants = set(active["participants"])
@@ -1075,7 +1089,7 @@ async def cmd_attendance_report(message: Message):
         await message.answer("✅ همه‌ی اعضای گروه حضور خود را ثبت کرده‌اند! عالی!")
         return
 
-    # تهیه‌ی متن گزارش
+    # تهیه‌ی گزارش
     report_lines = [
         f"📋 <b>گزارش غایبان دوره‌ی حضور و غیاب</b>\n"
         f"تعداد کل اعضا: {len(all_members)}\n"
@@ -1084,11 +1098,8 @@ async def cmd_attendance_report(message: Message):
         "<b>لیست غایبان:</b>"
     ]
 
-    # برای جلوگیری از پیام خیلی طولانی، به صورت فایل ارسال می‌کنیم
-    # اگر تعداد غایبان کمتر از ۵۰ باشد، به صورت پیام ارسال می‌شود
     if len(absentees) <= 50:
         for uid in absentees:
-            # سعی می‌کنیم نام کاربر را پیدا کنیم
             try:
                 chat_member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
                 name = chat_member.user.full_name or str(uid)
@@ -1098,19 +1109,17 @@ async def cmd_attendance_report(message: Message):
                 report_lines.append(f"• ID: {uid}")
         await message.answer("\n".join(report_lines))
     else:
-        # ارسال به صورت فایل متنی
         with BytesIO() as f:
             f.write("\n".join(report_lines).encode("utf-8"))
             f.seek(0)
             await message.answer_document(
                 BufferedInputFile(f.read(), filename="غایبان.txt"),
-                caption="📄 لیست کامل غایبان (تعداد {len(absentees)} نفر)"
+                caption=f"📄 لیست کامل غایبان (تعداد {len(absentees)} نفر)"
             )
 
 
 @dp.callback_query(F.data == "attendance:yes")
 async def cb_attendance_yes(callback: CallbackQuery):
-    """ثبت حضور کاربر با کلیک روی دکمه"""
     user_id = callback.from_user.id
     data = load_attendance_data()
     active = data.get("active")
@@ -1118,18 +1127,13 @@ async def cb_attendance_yes(callback: CallbackQuery):
         await callback.answer("دوره‌ی حضور و غیاب فعال نیست.", show_alert=True)
         return
 
-    # اگر کاربر قبلاً ثبت شده، پیام تکراری ندهیم
     if user_id in active["participants"]:
         await callback.answer("✅ حضور شما قبلاً ثبت شده است.")
         return
 
-    # ثبت کاربر
     active["participants"].append(user_id)
     await save_attendance_data(data)
-
-    # پاسخ به کاربر (نمایش تیک)
     await callback.answer("✅ حضور شما ثبت شد.", show_alert=False)
-    # (اختیاری) می‌توانیم دکمه را غیرفعال کنیم یا پیام را ویرایش کنیم، اما ساده نگه می‌داریم
 
 
 # ==============================================================
