@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی با Async Iterator برای دریافت لیست اعضا (سازگار با aiogram 3.x)
+نسخه‌ی نهایی - گزارش فقط لیست حاضرین با جزئیات کامل
 """
 
 import asyncio
@@ -926,7 +926,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — با Async Iterator (سازگار با aiogram 3.x)
+#  بخش حضور و غیاب هفتگی — فقط لیست حاضرین با جزئیات
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -941,28 +941,6 @@ def load_attendance_data() -> dict:
 async def save_attendance_data(data: dict) -> None:
     async with _write_lock:
         ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-
-
-async def get_all_group_members(chat_id: int) -> list[int]:
-    """
-    دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator
-    (سازگار با aiogram 3.x)
-    """
-    members = []
-    try:
-        async for member in bot.get_chat_members(chat_id):
-            if not member.user.is_bot:
-                members.append(member.user.id)
-            # برای جلوگیری از Rate Limit، هر ۱۰۰ عضو یک‌بار مکث کوتاه
-            if len(members) % 100 == 0:
-                await asyncio.sleep(0.05)
-    except AttributeError as e:
-        logger.error("متد get_chat_members در دسترس نیست: %s", e)
-        raise Exception("نسخه‌ی aiogram خیلی قدیمی است. لطفاً به نسخه‌ی 3.x به‌روز کنید.")
-    except Exception as e:
-        logger.error("خطا در دریافت اعضای گروه: %s", e)
-        raise
-    return members
 
 
 @dp.message(Command("attendance_start"))
@@ -1050,51 +1028,42 @@ async def cmd_attendance_report(message: Message):
         await message.answer("هیچ دوره‌ی فعالی وجود ندارد. ابتدا با /attendance_start شروع کنید.")
         return
 
-    await message.answer("⏳ در حال دریافت لیست اعضای گروه...")
-    try:
-        all_members = await get_all_group_members(GROUP_CHAT_ID)
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"خطا در دریافت لیست اعضا: {error_msg}")
-        await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
+    participants = active["participants"]
+    
+    if not participants:
+        await message.answer("📋 تا الان کسی حضور خود را ثبت نکرده است.")
         return
 
-    if not all_members:
-        await message.answer("لیست اعضای گروه خالی است یا خطایی رخ داده است.")
-        return
-
-    participants = set(active["participants"])
-    absentees = [uid for uid in all_members if uid not in participants]
-
-    if not absentees:
-        await message.answer("✅ همه‌ی اعضای گروه حضور خود را ثبت کرده‌اند! عالی!")
-        return
-
+    # دریافت جزئیات هر شرکت‌کننده
     report_lines = [
-        f"📋 <b>گزارش غایبان دوره‌ی حضور و غیاب</b>\n"
-        f"تعداد کل اعضا: {len(all_members)}\n"
-        f"تعداد حاضرین: {len(participants)}\n"
-        f"تعداد غایبان: {len(absentees)}\n\n"
-        "<b>لیست غایبان:</b>"
+        f"📋 <b>لیست حاضرین در دوره‌ی حضور و غیاب</b>\n"
+        f"تعداد کل شرکت‌کنندگان: <b>{len(participants)}</b> نفر\n\n"
+        "<b>👤 لیست شرکت‌کنندگان:</b>"
     ]
 
-    if len(absentees) <= 50:
-        for uid in absentees:
-            try:
-                chat_member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
-                name = chat_member.user.full_name or str(uid)
-                username = f" @{chat_member.user.username}" if chat_member.user.username else ""
-                report_lines.append(f"• {name} (ID: {uid}){username}")
-            except Exception:
-                report_lines.append(f"• ID: {uid}")
+    for uid in participants:
+        try:
+            chat_member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+            user = chat_member.user
+            name = user.full_name or str(uid)
+            username = f" @{user.username}" if user.username else ""
+            # فقط آیدی و نام را نمایش می‌دهیم
+            report_lines.append(f"• {name} (ID: <code>{uid}</code>){username}")
+        except Exception:
+            report_lines.append(f"• کاربر با آیدی: <code>{uid}</code> (اطلاعات در دسترس نیست)")
+
+    # اگر تعداد شرکت‌کنندگان زیاد بود، به صورت فایل ارسال شود
+    if len(participants) <= 50:
         await message.answer("\n".join(report_lines))
     else:
         with BytesIO() as f:
-            f.write("\n".join(report_lines).encode("utf-8"))
+            # فایل را بدون تگ‌های HTML ذخیره می‌کنیم
+            plain_lines = [line.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for line in report_lines]
+            f.write("\n".join(plain_lines).encode("utf-8"))
             f.seek(0)
             await message.answer_document(
-                BufferedInputFile(f.read(), filename="غایبان.txt"),
-                caption=f"📄 لیست کامل غایبان (تعداد {len(absentees)} نفر)"
+                BufferedInputFile(f.read(), filename="لیست_حاضرین.txt"),
+                caption=f"📄 لیست کامل حاضرین (تعداد {len(participants)} نفر)"
             )
 
 
