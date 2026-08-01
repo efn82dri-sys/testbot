@@ -3,15 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-این فایل قلب پروژه است. کارهایی که انجام می‌دهد:
-
-... (توضیحات قبلی)
-
-تغییرات جدید:
-- برادکست از هر نوع پیامی (متن، عکس، سند، ویدئو و ...) پشتیبانی می‌کند.
-- قبل از نمایش دکمه‌ی فرم، یک پیام هشدار درباره‌ی VPN به کاربر نمایش داده می‌شود.
-- خروجی اکسل شامل همه‌ی کاربرانی است که شماره‌شان را تأیید کرده‌اند (حتی اگر فرم را پر نکرده باشند).
-====================================================================
+نسخه‌ی به‌روز شده با قابلیت «حضور و غیاب» هفتگی
 """
 
 import asyncio
@@ -54,7 +46,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
-# ۱) تنظیمات — (همان‌طور که بود)
+# ۱) تنظیمات
 # --------------------------------------------------------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
@@ -74,6 +66,7 @@ DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
+ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"   # === NEW ===
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -270,16 +263,11 @@ async def build_stats_detail_text() -> str:
     return "\n".join(lines)
 
 
-# ==============================================================
-# تغییر اصلی ۳: خروجی اکسل شامل همه‌ی افرادی که شماره را تأیید کرده‌اند
-# ==============================================================
 def build_export_file() -> BufferedInputFile | None:
-    """فایل اکسل شامل همه‌ی کاربرانی که شماره‌شان تأیید شده است (حتی اگر فرم را پر نکرده باشند)."""
     phones = load_phones()
     if not phones and not DATA_FILE.exists():
         return None
 
-    # خواندن رکوردهای فرم (برای تکمیل اطلاعات)
     form_records = {}
     if DATA_FILE.exists():
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -294,12 +282,10 @@ def build_export_file() -> BufferedInputFile | None:
                 except json.JSONDecodeError:
                     continue
 
-    # مجموعه‌ی همه‌ی کاربرانی که حداقل شماره یا فرم دارند
     all_user_ids = set(phones.keys()) | set(form_records.keys())
     if not all_user_ids:
         return None
 
-    # ساخت ردیف‌ها
     rows = []
     for uid_str in all_user_ids:
         try:
@@ -309,7 +295,6 @@ def build_export_file() -> BufferedInputFile | None:
         phone = phones.get(uid_str, "")
         record = form_records.get(uid_str, {})
 
-        # اطلاعات کاربر از رکورد فرم (اگر موجود باشد)
         username = record.get("username")
         full_name = record.get("full_name", "")
         submitted_at = record.get("submitted_at", "")
@@ -318,7 +303,6 @@ def build_export_file() -> BufferedInputFile | None:
         interests_list = record.get("interests", [])
         interests_str = "، ".join(interests_list) if interests_list else "-"
 
-        # ستون وضعیت فرم
         form_status = "تکمیل شده" if record else "تکمیل نشده"
 
         rows.append([
@@ -326,14 +310,13 @@ def build_export_file() -> BufferedInputFile | None:
             f"@{username}" if username else "-",
             full_name or "-",
             phone or "-",
-            submitted_at[:16] if submitted_at else "-",  # فقط تاریخ و ساعت
+            submitted_at[:16] if submitted_at else "-",
             education,
             referral,
             interests_str,
             form_status,
         ])
 
-    # مرتب‌سازی: ابتدا کسانی که فرم دارند، بر اساس تاریخ نزولی، سپس بقیه
     rows.sort(key=lambda r: (r[4] == "-", r[4]), reverse=False)
 
     headers = [
@@ -384,7 +367,6 @@ def build_export_file() -> BufferedInputFile | None:
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
 
-# ---------- صفحه‌کلیدهای مدیریت (بدون تغییر) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -403,7 +385,7 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-# ---------- دستور /start (بدون تغییر) ----------
+# ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message):
     await message.answer(
@@ -413,7 +395,6 @@ async def handle_start(message: Message):
     )
 
 
-# ---------- دکمه‌ی اشتراک‌گذاری شماره (بدون تغییر) ----------
 def phone_request_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
@@ -423,11 +404,9 @@ def phone_request_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ==============================================================
-# تغییر اصلی ۲: پیام هشدار VPN قبل از نمایش دکمه‌ی فرم
+# تغییر: پیام جدید درخواست شماره (حس اعتماد)
 # ==============================================================
 async def send_vpn_warning_and_form(user) -> None:
-    """ارسال پیام هشدار VPN و سپس دکمه‌ی فرم."""
-    # پیام هشدار
     try:
         await bot.send_message(
             chat_id=user.id,
@@ -441,7 +420,6 @@ async def send_vpn_warning_and_form(user) -> None:
     except Exception as e:
         logger.warning("ارسال پیام VPN به کاربر %s ممکن نشد: %s", user.id, e)
 
-    # دکمه‌ی فرم
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -471,20 +449,19 @@ async def handle_join_request(join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
 
-    # اگر قبلاً شماره تأیید شده، مستقیم پیام VPN و فرم را بفرست
     if get_saved_phone(user.id):
         await send_vpn_warning_and_form(user)
         return
 
+    # === NEW === متن جدید درخواست شماره
     try:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"سلام {user.first_name} عزیز. عبور از این دروازه، یک گامِ احرازِ "
-                "هویت دارد.\n"
-                "برای اینکه مطمئن شویم «خودِ تو» هستی و از مصالحِ این رواق "
-                "محافظت کنیم، شماره‌ات را با دکمه‌ی پایینِ صفحه (فقط شماره‌ی "
-                "خودت) به اشتراک بگذار تا نقشه‌ی ورودت تکمیل شود."
+                f"سلام {user.first_name}،\n\n"
+                "طبق سیاست‌های جدید تلگرام، برای احراز هویت و جلوگیری از ورود ربات‌ها، "
+                "لازم است شماره تلفن خود را با استفاده از دکمه‌ی پایین صفحه تأیید کنید.\n"
+                "پس از تأیید، فرم عضویت برای شما فعال می‌شود."
             ),
             reply_markup=phone_request_keyboard(),
         )
@@ -508,11 +485,10 @@ async def handle_contact_shared(message: Message):
 
     await save_phone(user.id, contact.phone_number)
     await message.answer("مسیر باز شد ✅", reply_markup=ReplyKeyboardRemove())
-    # بعد از احراز هویت، پیام VPN و سپس فرم
     await send_vpn_warning_and_form(user)
 
 
-# ---------- رویداد تغییر وضعیت عضو (بدون تغییر) ----------
+# ---------- رویداد تغییر وضعیت عضو ----------
 @dp.chat_member()
 async def handle_chat_member_update(update: ChatMemberUpdated):
     if update.chat.id != GROUP_CHAT_ID:
@@ -650,7 +626,7 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
 
-# ---------- پنل مدیریت (بدون تغییر عمده) ----------
+# ---------- پنل مدیریت ----------
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -691,8 +667,6 @@ async def handle_export(message: Message):
 async def handle_broadcast(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id):
         return
-    # با دستور مستقیم فقط متن ارسال می‌شود (برای سادگی همان روش قبلی)
-    # اما توصیه می‌کنیم از پنل استفاده کنید تا از مدیا هم پشتیبانی شود
     text = (command.args or "").strip()
     if not text:
         await message.answer(
@@ -784,9 +758,7 @@ async def cb_admin_export(callback: CallbackQuery):
     await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
 
 
-# ==============================================================
-# تغییر اصلی ۱: برادکست با پشتیبانی از مدیا (عکس، فایل، ویدئو و ...)
-# ==============================================================
+# ---------- برادکست با پشتیبانی از مدیا ----------
 @dp.callback_query(F.data == "admin:broadcast")
 async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -808,7 +780,6 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
-    # اگر پیام متنی است و با / شروع می‌شود، به عنوان لغو در نظر بگیر
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer(
@@ -817,15 +788,12 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
         )
         return
 
-    # هر نوع پیام (متن، عکس، سند، ویدئو، صدا و ...) را قبول کن
-    # پیام اصلی را در state ذخیره می‌کنیم تا بعداً کپی شود
     await state.update_data(
         broadcast_chat_id=message.chat.id,
         broadcast_message_id=message.message_id,
     )
     await state.set_state(BroadcastStates.confirming)
 
-    # ساختن پیش‌نمایش
     preview_text = "پیش‌نمایش پیام:\n"
     if message.text:
         preview_text += message.text
@@ -899,7 +867,7 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
 
 
-# ---------- صندوق پیام اعضا (بدون تغییر) ----------
+# ---------- صندوق پیام اعضا ----------
 async def relay_message_to_admin(user, text: str) -> None:
     if not NOTIFY_CHAT_ID:
         return
@@ -961,7 +929,213 @@ async def handle_generic_member_message(message: Message):
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 
-# ---------- اعتبارسنجی initData و دریافت فرم (بدون تغییر) ----------
+# ==============================================================
+#  === NEW === بخش حضور و غیاب هفتگی
+# ==============================================================
+
+def load_attendance_data() -> dict:
+    """بارگذاری داده‌های حضور و غیاب"""
+    if not ATTENDANCE_FILE.exists():
+        return {"active": None}
+    try:
+        return json.loads(ATTENDANCE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"active": None}
+
+
+async def save_attendance_data(data: dict) -> None:
+    async with _write_lock:
+        ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+async def get_all_group_members(chat_id: int) -> list[int]:
+    """دریافت لیست عددی تمام اعضای گروه با رعایت محدودیت نرخ"""
+    members = []
+    offset = 0
+    limit = 100
+    while True:
+        try:
+            chunk = await bot.get_chat_members(chat_id, offset=offset, limit=limit)
+        except Exception as e:
+            logger.error("خطا در دریافت اعضای گروه: %s", e)
+            break
+        if not chunk:
+            break
+        for member in chunk:
+            if not member.user.is_bot:
+                members.append(member.user.id)
+        offset += limit
+        await asyncio.sleep(0.1)  # جلوگیری از Rate Limit
+    return members
+
+
+@dp.message(Command("attendance_start"))
+async def cmd_attendance_start(message: Message):
+    """شروع دوره‌ی حضور و غیاب (فقط ادمین)"""
+    if not is_admin(message.from_user.id):
+        return
+    # فقط در گروه قابل اجراست
+    if message.chat.type != "group" and message.chat.type != "supergroup":
+        await message.answer("این دستور فقط در گروه قابل استفاده است.")
+        return
+
+    data = load_attendance_data()
+    if data.get("active") is not None:
+        await message.answer("یک دوره‌ی حضور و غیاب هم‌اکنون فعال است. ابتدا آن را با /attendance_end پایان دهید.")
+        return
+
+    # ارسال پیام با دکمه‌ی حضور
+    try:
+        sent_msg = await bot.send_message(
+            chat_id=message.chat.id,
+            text=(
+                "📋 <b>ثبت حضور هفتگی</b>\n\n"
+                "اگر هنوز در گروه فعال هستید، لطفاً با کلیک روی دکمه‌ی زیر حضور خود را ثبت کنید.\n"
+                "این کار به ما کمک می‌کند اعضای فعال را شناسایی کنیم."
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ من اینجام", callback_data="attendance:yes")]
+                ]
+            ),
+        )
+    except Exception as e:
+        logger.error("خطا در ارسال پیام حضور: %s", e)
+        await message.answer("خطا در ارسال پیام حضور.")
+        return
+
+    # ذخیره‌ی اطلاعات دوره
+    active_data = {
+        "started_at": datetime.utcnow().isoformat(),
+        "message_id": sent_msg.message_id,
+        "chat_id": message.chat.id,
+        "participants": [],
+    }
+    data["active"] = active_data
+    await save_attendance_data(data)
+    await message.answer("✅ دوره‌ی حضور و غیاب شروع شد.")
+
+
+@dp.message(Command("attendance_status"))
+async def cmd_attendance_status(message: Message):
+    """نمایش وضعیت دوره‌ی جاری"""
+    if not is_admin(message.from_user.id):
+        return
+    data = load_attendance_data()
+    active = data.get("active")
+    if active is None:
+        await message.answer("هیچ دوره‌ی فعالی وجود ندارد.")
+        return
+
+    started = active["started_at"]
+    participants_count = len(active["participants"])
+    await message.answer(
+        f"📊 <b>وضعیت حضور و غیاب</b>\n\n"
+        f"⏰ شروع: <code>{started}</code>\n"
+        f"👤 شرکت‌کنندگان: <b>{participants_count}</b> نفر"
+    )
+
+
+@dp.message(Command("attendance_end"))
+async def cmd_attendance_end(message: Message):
+    """پایان دادن به دوره‌ی جاری (فقط ادمین)"""
+    if not is_admin(message.from_user.id):
+        return
+    data = load_attendance_data()
+    if data.get("active") is None:
+        await message.answer("هیچ دوره‌ی فعالی برای پایان دادن وجود ندارد.")
+        return
+    data["active"] = None
+    await save_attendance_data(data)
+    await message.answer("✅ دوره‌ی حضور و غیاب پایان یافت.")
+
+
+@dp.message(Command("attendance_report"))
+async def cmd_attendance_report(message: Message):
+    """گزارش غایبان (فقط ادمین)"""
+    if not is_admin(message.from_user.id):
+        return
+    data = load_attendance_data()
+    active = data.get("active")
+    if active is None:
+        await message.answer("هیچ دوره‌ی فعالی وجود ندارد. ابتدا با /attendance_start شروع کنید.")
+        return
+
+    # دریافت لیست کل اعضای گروه
+    await message.answer("⏳ در حال دریافت لیست اعضای گروه...")
+    all_members = await get_all_group_members(GROUP_CHAT_ID)
+    if not all_members:
+        await message.answer("امکان دریافت لیست اعضا وجود ندارد.")
+        return
+
+    participants = set(active["participants"])
+    absentees = [uid for uid in all_members if uid not in participants]
+
+    if not absentees:
+        await message.answer("✅ همه‌ی اعضای گروه حضور خود را ثبت کرده‌اند! عالی!")
+        return
+
+    # تهیه‌ی متن گزارش
+    report_lines = [
+        f"📋 <b>گزارش غایبان دوره‌ی حضور و غیاب</b>\n"
+        f"تعداد کل اعضا: {len(all_members)}\n"
+        f"تعداد حاضرین: {len(participants)}\n"
+        f"تعداد غایبان: {len(absentees)}\n\n"
+        "<b>لیست غایبان:</b>"
+    ]
+
+    # برای جلوگیری از پیام خیلی طولانی، به صورت فایل ارسال می‌کنیم
+    # اگر تعداد غایبان کمتر از ۵۰ باشد، به صورت پیام ارسال می‌شود
+    if len(absentees) <= 50:
+        for uid in absentees:
+            # سعی می‌کنیم نام کاربر را پیدا کنیم
+            try:
+                chat_member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+                name = chat_member.user.full_name or str(uid)
+                username = f" @{chat_member.user.username}" if chat_member.user.username else ""
+                report_lines.append(f"• {name} (ID: {uid}){username}")
+            except Exception:
+                report_lines.append(f"• ID: {uid}")
+        await message.answer("\n".join(report_lines))
+    else:
+        # ارسال به صورت فایل متنی
+        with BytesIO() as f:
+            f.write("\n".join(report_lines).encode("utf-8"))
+            f.seek(0)
+            await message.answer_document(
+                BufferedInputFile(f.read(), filename="غایبان.txt"),
+                caption="📄 لیست کامل غایبان (تعداد {len(absentees)} نفر)"
+            )
+
+
+@dp.callback_query(F.data == "attendance:yes")
+async def cb_attendance_yes(callback: CallbackQuery):
+    """ثبت حضور کاربر با کلیک روی دکمه"""
+    user_id = callback.from_user.id
+    data = load_attendance_data()
+    active = data.get("active")
+    if active is None:
+        await callback.answer("دوره‌ی حضور و غیاب فعال نیست.", show_alert=True)
+        return
+
+    # اگر کاربر قبلاً ثبت شده، پیام تکراری ندهیم
+    if user_id in active["participants"]:
+        await callback.answer("✅ حضور شما قبلاً ثبت شده است.")
+        return
+
+    # ثبت کاربر
+    active["participants"].append(user_id)
+    await save_attendance_data(data)
+
+    # پاسخ به کاربر (نمایش تیک)
+    await callback.answer("✅ حضور شما ثبت شد.", show_alert=False)
+    # (اختیاری) می‌توانیم دکمه را غیرفعال کنیم یا پیام را ویرایش کنیم، اما ساده نگه می‌داریم
+
+
+# ==============================================================
+#  اعتبارسنجی initData و دریافت فرم
+# ==============================================================
+
 def validate_init_data(init_data: str):
     try:
         pairs = dict(parse_qsl(init_data, strict_parsing=True))
@@ -1056,7 +1230,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     return web.json_response({"ok": approved})
 
 
-# ---------- مسیر سلامت و پینگ خودکار (بدون تغییر) ----------
+# ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
@@ -1088,7 +1262,7 @@ async def stop_self_ping(app: web.Application) -> None:
             pass
 
 
-# ---------- راه‌اندازی وب‌سرور (بدون تغییر) ----------
+# ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
     await bot.set_webhook(
         WEBHOOK_URL,
