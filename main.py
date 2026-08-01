@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی به‌روز شده با قابلیت «حضور و غیاب» هفتگی و رفع خطای دریافت اعضا
+نسخه‌ی به‌روز با رفع خطای دریافت اعضا (استفاده از iterator)
 """
 
 import asyncio
@@ -926,7 +926,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — نسخه‌ی اصلاح‌شده با مدیریت خطا
+#  بخش حضور و غیاب هفتگی — نسخه‌ی اصلاح‌شده (استفاده از iterator)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -944,24 +944,20 @@ async def save_attendance_data(data: dict) -> None:
 
 
 async def get_all_group_members(chat_id: int) -> list[int]:
-    """دریافت لیست عددی تمام اعضای گروه با مدیریت خطا"""
+    """دریافت لیست عددی تمام اعضای گروه با استفاده از iterator (aiogram 3.x)"""
     members = []
-    offset = 0
-    limit = 100
-    while True:
-        try:
-            chunk = await bot.get_chat_members(chat_id, offset=offset, limit=limit)
-        except Exception as e:
-            # خطا را به سمت بالا پرتاب می‌کنیم تا در caller مدیریت شود
-            logger.error("خطا در دریافت اعضای گروه (offset=%d): %s", offset, e)
-            raise
-        if not chunk:
-            break
-        for member in chunk:
+    try:
+        async for member in bot.get_chat_members(chat_id):
             if not member.user.is_bot:
                 members.append(member.user.id)
-        offset += limit
-        await asyncio.sleep(0.1)  # جلوگیری از Rate Limit
+            await asyncio.sleep(0.05)  # جلوگیری از Rate Limit
+    except AttributeError as e:
+        # اگر متد get_chat_members وجود نداشت، خطا را با پیام واضح‌تر بدهیم
+        logger.error("متد get_chat_members در این نسخه از aiogram وجود ندارد: %s", e)
+        raise Exception("نسخه‌ی aiogram از متد get_chat_members پشتیبانی نمی‌کند. لطفاً aiogram را به نسخه‌ی 3.x به‌روز کنید.")
+    except Exception as e:
+        logger.error("خطا در دریافت اعضای گروه: %s", e)
+        raise
     return members
 
 
@@ -1052,7 +1048,6 @@ async def cmd_attendance_report(message: Message):
 
     # بررسی دسترسی ربات به لیست اعضا
     try:
-        # تست دسترسی با یک درخواست کوچک
         await bot.get_chat_member(GROUP_CHAT_ID, bot.id)
     except Exception as e:
         logger.error("خطا در بررسی دسترسی ربات: %s", e)
@@ -1067,13 +1062,17 @@ async def cmd_attendance_report(message: Message):
     except Exception as e:
         error_msg = str(e)
         logger.error("خطا در دریافت لیست اعضا: %s", error_msg)
-        # نمایش پیام خطای دقیق‌تر
         if "ChatAdminRequired" in error_msg:
             await message.answer(
                 "❌ ربات نیاز به دسترسی ادمین برای دریافت لیست اعضا دارد. لطفاً ربات را به عنوان ادمین با تمام دسترسی‌ها (به جز دسترسی به پیام‌های مخفی) تنظیم کنید."
             )
         elif "Too Many Requests" in error_msg:
             await message.answer("❌ درخواست‌های زیادی ارسال شده است. لطفاً چند دقیقه صبر کنید و دوباره تلاش کنید.")
+        elif "get_chat_members" in error_msg:
+            await message.answer(
+                "❌ خطای سیستمی: متد دریافت اعضا در این نسخه از کتابخانه پشتیبانی نمی‌شود. "
+                "لطفاً با ادمین سیستم تماس بگیرید تا نسخه‌ی aiogram را به‌روز کند."
+            )
         else:
             await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
         return
@@ -1089,7 +1088,6 @@ async def cmd_attendance_report(message: Message):
         await message.answer("✅ همه‌ی اعضای گروه حضور خود را ثبت کرده‌اند! عالی!")
         return
 
-    # تهیه‌ی گزارش
     report_lines = [
         f"📋 <b>گزارش غایبان دوره‌ی حضور و غیاب</b>\n"
         f"تعداد کل اعضا: {len(all_members)}\n"
