@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی با استفاده از Async Iterator برای دریافت اعضا
+نسخه‌ی نهایی با روش Async Iterator برای دریافت اعضا (سازگار با aiogram 3.x)
 """
 
 import asyncio
@@ -946,10 +946,14 @@ async def save_attendance_data(data: dict) -> None:
 async def get_all_group_members(chat_id: int) -> list[int]:
     """
     دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator
-    (سازگار با aiogram 3.x و 2.x)
+    (سازگار با aiogram 3.x)
     """
     members = []
     try:
+        # بررسی وجود متد get_chat_members
+        if not hasattr(bot, 'get_chat_members'):
+            raise AttributeError("متد get_chat_members در شیء Bot وجود ندارد. لطفاً aiogram را به نسخه‌ی 3.x به‌روز کنید.")
+        
         async for member in bot.get_chat_members(chat_id):
             if not member.user.is_bot:
                 members.append(member.user.id)
@@ -957,7 +961,6 @@ async def get_all_group_members(chat_id: int) -> list[int]:
             if len(members) % 100 == 0:
                 await asyncio.sleep(0.05)
     except AttributeError as e:
-        # اگر متد get_chat_members وجود نداشت (نسخه‌ی خیلی قدیمی)
         logger.error("متد get_chat_members در دسترس نیست: %s", e)
         raise Exception("نسخه‌ی aiogram خیلی قدیمی است. لطفاً به نسخه‌ی 3.x به‌روز کنید.")
     except Exception as e:
