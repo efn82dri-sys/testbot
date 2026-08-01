@@ -3,7 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی به‌روز با رفع خطای دریافت اعضا (استفاده از iterator)
+نسخه‌ی نهایی با روش دریافت اعضا (سازگار با aiogram 2.x و 3.x)
 """
 
 import asyncio
@@ -926,7 +926,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — نسخه‌ی اصلاح‌شده (استفاده از iterator)
+#  بخش حضور و غیاب هفتگی — روش سازگار با نسخه‌های مختلف
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -944,20 +944,45 @@ async def save_attendance_data(data: dict) -> None:
 
 
 async def get_all_group_members(chat_id: int) -> list[int]:
-    """دریافت لیست عددی تمام اعضای گروه با استفاده از iterator (aiogram 3.x)"""
+    """
+    دریافت لیست عددی تمام اعضای گروه با استفاده از روش offset/limit
+    که با نسخه‌های 2.x و 3.x aiogram سازگار است.
+    """
     members = []
-    try:
-        async for member in bot.get_chat_members(chat_id):
+    offset = 0
+    limit = 100  # حداکثر مجاز توسط تلگرام
+
+    while True:
+        try:
+            # در aiogram 3.x هنوز این روش پشتیبانی می‌شود
+            chunk = await bot.get_chat_members(chat_id, offset=offset, limit=limit)
+        except AttributeError:
+            # اگر متد get_chat_members با پارامترهای offset/limit وجود نداشت،
+            # ممکن است نسخه خیلی قدیمی باشد. در این صورت با iterator امتحان می‌کنیم.
+            try:
+                chunk = []
+                async for member in bot.get_chat_members(chat_id):
+                    chunk.append(member)
+                    if len(chunk) >= limit:
+                        break
+                # اما این روش برای offset کار نمی‌کند، پس بهتر است خطا بدهیم
+                raise Exception("نسخه‌ی aiogram خیلی قدیمی است. لطفاً به نسخه‌ی 3.x به‌روز کنید.")
+            except Exception as e:
+                raise Exception(f"متد دریافت اعضا در دسترس نیست: {e}")
+        except Exception as e:
+            logger.error("خطا در دریافت اعضای گروه (offset=%d): %s", offset, e)
+            raise
+
+        if not chunk:
+            break
+
+        for member in chunk:
             if not member.user.is_bot:
                 members.append(member.user.id)
-            await asyncio.sleep(0.05)  # جلوگیری از Rate Limit
-    except AttributeError as e:
-        # اگر متد get_chat_members وجود نداشت، خطا را با پیام واضح‌تر بدهیم
-        logger.error("متد get_chat_members در این نسخه از aiogram وجود ندارد: %s", e)
-        raise Exception("نسخه‌ی aiogram از متد get_chat_members پشتیبانی نمی‌کند. لطفاً aiogram را به نسخه‌ی 3.x به‌روز کنید.")
-    except Exception as e:
-        logger.error("خطا در دریافت اعضای گروه: %s", e)
-        raise
+
+        offset += limit
+        await asyncio.sleep(0.1)  # جلوگیری از Rate Limit
+
     return members
 
 
@@ -1068,11 +1093,6 @@ async def cmd_attendance_report(message: Message):
             )
         elif "Too Many Requests" in error_msg:
             await message.answer("❌ درخواست‌های زیادی ارسال شده است. لطفاً چند دقیقه صبر کنید و دوباره تلاش کنید.")
-        elif "get_chat_members" in error_msg:
-            await message.answer(
-                "❌ خطای سیستمی: متد دریافت اعضا در این نسخه از کتابخانه پشتیبانی نمی‌شود. "
-                "لطفاً با ادمین سیستم تماس بگیرید تا نسخه‌ی aiogram را به‌روز کند."
-            )
         else:
             await message.answer(f"❌ خطا در دریافت لیست اعضا: {error_msg}")
         return
