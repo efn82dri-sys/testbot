@@ -3,14 +3,6 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-
-تغییرات جدید:
-- پیام درخواست شماره تلفن به‌روزرسانی شد با لحن اعتمادآمیز و مختصر
-- اضافه شدن سیستم حضور و غیاب هفتگی با دکمه‌ی شیشه‌ای (WebApp) داخل گروه
-- خروجی لیست اعضای غیرفعال در پایان هر هفته برای ادمین
-- قابلیت حذف اعضای غیرفعال از گروه (با تأیید ادمین)
-- پیش‌نمایش مراحل فرم عضویت در پنل مدیریت
-====================================================================
 """
 
 import asyncio
@@ -53,7 +45,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
-# ۱) تنظیمات
+# تنظیمات
 # --------------------------------------------------------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
@@ -69,7 +61,7 @@ WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/index.html"
 ATTENDANCE_WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/attendance.html"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
-ATTENDANCE_CHECK_INTERVAL_SECONDS = 3600  # هر یک ساعت بررسی کن
+ATTENDANCE_CHECK_INTERVAL_SECONDS = 3600
 
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
@@ -166,11 +158,10 @@ def get_saved_phone(user_id: int) -> str:
 
 
 # ==============================================================
-# مدیریت حضور و غیاب (Attendance)
+# مدیریت حضور و غیاب
 # ==============================================================
 
 def load_attendance_data() -> dict:
-    """بارگذاری داده‌های حضور و غیاب."""
     if not ATTENDANCE_FILE.exists():
         return {"weeks": {}, "current_week": None}
     try:
@@ -180,34 +171,28 @@ def load_attendance_data() -> dict:
 
 
 async def save_attendance_data(data: dict) -> None:
-    """ذخیره‌ی داده‌های حضور و غیاب."""
     async with _write_lock:
         ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def get_iso_week_number(dt: datetime) -> str:
-    """بازگرداندن شماره‌ی هفته به فرمت YYYY-Www."""
     return dt.strftime("%Y-W%W")
 
 
 def get_week_start_end(week_key: str) -> tuple[datetime, datetime]:
-    """بازگرداندن شروع و پایان یک هفته بر اساس کلید هفته."""
     year, week = week_key.split("-W")
     year = int(year)
     week = int(week)
-    # محاسبه‌ی روز شروع هفته (دوشنبه)
     start = datetime.fromisocalendar(year, week, 1).replace(tzinfo=timezone.utc)
     end = start + timedelta(days=7)
     return start, end
 
 
 def get_current_week_key() -> str:
-    """بازگرداندن کلید هفته‌ی جاری (UTC)."""
     return get_iso_week_number(datetime.now(timezone.utc))
 
 
 async def get_group_member_ids() -> list[int]:
-    """گرفتن لیست آیدی تمام اعضای گروه (به‌صورت تدریجی)."""
     member_ids = []
     try:
         async for member in bot.get_chat_members(GROUP_CHAT_ID):
@@ -219,20 +204,16 @@ async def get_group_member_ids() -> list[int]:
 
 
 async def start_attendance_week() -> bool:
-    """شروع یک هفته‌ی جدید برای حضور و غیاب. پیام در گروه ارسال می‌شود."""
     data = load_attendance_data()
     current_week = get_current_week_key()
 
-    # اگر هفته‌ی جاری از قبل شروع شده، کاری نکن
     if data.get("current_week") == current_week:
         return False
 
-    # بستن هفته‌ی قبلی (اگر وجود داشت)
     old_week = data.get("current_week")
     if old_week and old_week in data["weeks"]:
         data["weeks"][old_week]["status"] = "closed"
 
-    # شروع هفته‌ی جدید
     start_dt, end_dt = get_week_start_end(current_week)
     data["weeks"][current_week] = {
         "start": start_dt.isoformat(),
@@ -244,7 +225,6 @@ async def start_attendance_week() -> bool:
     data["current_week"] = current_week
     await save_attendance_data(data)
 
-    # ارسال پیام حضور و غیاب در گروه
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -269,7 +249,6 @@ async def start_attendance_week() -> bool:
             ),
             reply_markup=keyboard,
         )
-        # ذخیره‌ی message_id برای پیگیری
         data = load_attendance_data()
         if current_week in data["weeks"]:
             data["weeks"][current_week]["message_id"] = sent.message_id
@@ -282,7 +261,6 @@ async def start_attendance_week() -> bool:
 
 
 async def close_attendance_week(week_key: str) -> dict | None:
-    """بستن هفته‌ی حضور و غیاب و بازگرداندن گزارش."""
     data = load_attendance_data()
     if week_key not in data["weeks"]:
         return None
@@ -291,17 +269,14 @@ async def close_attendance_week(week_key: str) -> dict | None:
     if week["status"] == "closed":
         return None
 
-    # بستن هفته
     week["status"] = "closed"
     await save_attendance_data(data)
 
-    # دریافت لیست اعضای گروه
     member_ids = await get_group_member_ids()
     records = week.get("records", {})
     attended = set(int(uid) for uid in records.keys())
     inactive = [uid for uid in member_ids if uid not in attended]
 
-    # ارسال گزارش به ادمین
     report = {
         "week_key": week_key,
         "start": week["start"],
@@ -316,7 +291,6 @@ async def close_attendance_week(week_key: str) -> dict | None:
 
 
 async def record_attendance(user_id: int) -> bool:
-    """ثبت حضور یک کاربر در هفته‌ی جاری."""
     data = load_attendance_data()
     current_week = data.get("current_week")
     if not current_week or current_week not in data["weeks"]:
@@ -326,7 +300,6 @@ async def record_attendance(user_id: int) -> bool:
     if week["status"] != "active":
         return False
 
-    # بررسی اینکه آیا کاربر قبلاً ثبت کرده
     uid_str = str(user_id)
     if uid_str in week["records"]:
         return False
@@ -337,7 +310,6 @@ async def record_attendance(user_id: int) -> bool:
 
 
 def get_attendance_status(user_id: int) -> str | None:
-    """بررسی وضعیت حضور کاربر در هفته‌ی جاری."""
     data = load_attendance_data()
     current_week = data.get("current_week")
     if not current_week or current_week not in data["weeks"]:
@@ -362,7 +334,7 @@ class BroadcastStates(StatesGroup):
 
 class AdminStates(StatesGroup):
     waiting_for_delete_user_id = State()
-    waiting_for_attendance_remove = State()
+    waiting_for_attendance_remove = State()   # ✅ این حالت اضافه شد
 
 
 # ==============================================================
@@ -403,7 +375,6 @@ async def build_stats_text() -> str:
     total_left = stats.get("total_left", 0)
     leave_rate = (total_left / total_joined * 100) if total_joined else 0
 
-    # اطلاعات حضور و غیاب هفتگی
     att_data = load_attendance_data()
     current_week = att_data.get("current_week")
     week_info = ""
@@ -632,7 +603,7 @@ def build_export_file() -> BufferedInputFile | None:
 
 
 # ==============================================================
-# صفحه‌کلیدهای مدیریت (با دکمه‌های جدید)
+# صفحه‌کلیدهای مدیریت
 # ==============================================================
 
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
@@ -692,7 +663,7 @@ def phone_request_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ==============================================================
-# درخواست عضویت — پیام به‌روزرسانی‌شده
+# درخواست عضویت
 # ==============================================================
 
 @dp.chat_join_request()
@@ -707,7 +678,6 @@ async def handle_join_request(join_request: ChatJoinRequest):
         await send_vpn_warning_and_form(user)
         return
 
-    # پیام به‌روزرسانی‌شده با لحن اعتمادآمیز و مختصر
     try:
         await bot.send_message(
             chat_id=user.id,
@@ -998,10 +968,6 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
     return sent, failed
 
 
-# ==============================================================
-# دستور /delete_user
-# ==============================================================
-
 @dp.message(Command("delete_user"))
 async def handle_delete_user(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id):
@@ -1028,7 +994,6 @@ async def handle_delete_user(message: Message, command: CommandObject):
 
 @dp.message(Command("attendance_start"))
 async def handle_attendance_start(message: Message):
-    """شروع دستی هفته‌ی حضور و غیاب."""
     if not is_admin(message.from_user.id):
         return
     result = await start_attendance_week()
@@ -1040,7 +1005,6 @@ async def handle_attendance_start(message: Message):
 
 @dp.message(Command("attendance_report"))
 async def handle_attendance_report(message: Message):
-    """دریافت گزارش هفته‌ی جاری."""
     if not is_admin(message.from_user.id):
         return
 
@@ -1054,7 +1018,6 @@ async def handle_attendance_report(message: Message):
     records = week.get("records", {})
     attended_count = len(records)
 
-    # دریافت لیست اعضای گروه
     member_ids = await get_group_member_ids()
     attended_set = set(int(uid) for uid in records.keys())
     inactive = [uid for uid in member_ids if uid not in attended_set]
@@ -1078,7 +1041,6 @@ async def handle_attendance_report(message: Message):
 
 @dp.message(Command("attendance_remove"))
 async def handle_attendance_remove(message: Message, state: FSMContext):
-    """حذف اعضای غیرفعال (با تأیید)."""
     if not is_admin(message.from_user.id):
         return
 
@@ -1101,7 +1063,6 @@ async def handle_attendance_remove(message: Message, state: FSMContext):
     await state.set_state(AdminStates.waiting_for_attendance_remove)
     await state.update_data(inactive_list=inactive)
 
-    # نمایش چند نمونه از کاربران
     sample = inactive[:5]
     sample_text = "\n".join([f"• `{uid}`" for uid in sample])
     if len(inactive) > 5:
@@ -1136,7 +1097,7 @@ async def handle_confirm_remove(message: Message, state: FSMContext):
         try:
             await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=uid)
             removed += 1
-            await asyncio.sleep(0.3)  # جلوگیری از محدودیت
+            await asyncio.sleep(0.3)
         except Exception as e:
             logger.warning("حذف کاربر %s ممکن نشد: %s", uid, e)
             failed += 1
@@ -1481,7 +1442,6 @@ async def cb_admin_attendance_list(callback: CallbackQuery):
         await callback.answer()
         return
 
-    # نمایش لیست در چند پیام
     lines = [f"📋 <b>لیست غایبان — هفته‌ی {current_week}</b>\n\n"]
     for uid in inactive:
         lines.append(f"• <code>{uid}</code>")
@@ -1555,7 +1515,6 @@ async def cb_admin_preview_steps(callback: CallbackQuery):
         await callback.answer("دسترسی ندارید.", show_alert=True)
         return
 
-    # شبیه‌سازی نمایش مراحل فرم
     preview = (
         "👁 <b>پیش‌نمایش مراحل فرم عضویت</b>\n\n"
         "🔹 <b>مرحله ۱ — مقطع تحصیلی</b>\n"
@@ -1759,7 +1718,6 @@ async def handle_submit(request: web.Request) -> web.Response:
 # ==============================================================
 
 async def handle_attendance(request: web.Request) -> web.Response:
-    """ثبت حضور کاربر از طریق WebApp."""
     try:
         payload = await request.json()
     except json.JSONDecodeError:
@@ -1773,7 +1731,6 @@ async def handle_attendance(request: web.Request) -> web.Response:
 
     user_id = user["id"]
 
-    # بررسی اینکه آیا کاربر عضو گروه است
     try:
         member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
         if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
@@ -1781,12 +1738,10 @@ async def handle_attendance(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"ok": False, "error": "not_member"}, status=403)
 
-    # ثبت حضور
     success = await record_attendance(user_id)
     if success:
         return web.json_response({"ok": True, "status": "attended"})
     else:
-        # ممکن است قبلاً ثبت کرده باشد یا هفته فعال نباشد
         status = get_attendance_status(user_id)
         if status == "attended":
             return web.json_response({"ok": True, "status": "already_attended"})
@@ -1819,7 +1774,6 @@ async def self_ping_loop(app: web.Application) -> None:
 # ==============================================================
 
 async def attendance_scheduler_loop(app: web.Application) -> None:
-    """بررسی هر ساعت برای شروع هفته‌ی جدید و بستن هفته‌ی قبلی."""
     while True:
         await asyncio.sleep(ATTENDANCE_CHECK_INTERVAL_SECONDS)
         try:
@@ -1827,13 +1781,10 @@ async def attendance_scheduler_loop(app: web.Application) -> None:
             current_week = get_current_week_key()
             last_week = data.get("current_week")
 
-            # اگر هفته عوض شده باشد
             if last_week != current_week:
-                # بستن هفته‌ی قبلی و گزارش به ادمین
                 if last_week and last_week in data["weeks"]:
                     report = await close_attendance_week(last_week)
                     if report and report["inactive_ids"]:
-                        # ارسال گزارش به ادمین‌ها
                         for admin_id in ADMIN_IDS:
                             try:
                                 await bot.send_message(
@@ -1855,7 +1806,6 @@ async def attendance_scheduler_loop(app: web.Application) -> None:
                             except Exception as e:
                                 logger.warning("ارسال گزارش به ادمین %s ممکن نشد: %s", admin_id, e)
 
-                # شروع هفته‌ی جدید
                 await start_attendance_week()
 
         except Exception as e:
@@ -1899,7 +1849,6 @@ async def on_startup(app: web.Application):
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
-    # یک بار در ابتدا سعی کن هفته‌ی جاری را شروع کنی (اگر قبلاً شروع نشده)
     data = load_attendance_data()
     current_week = get_current_week_key()
     if data.get("current_week") != current_week:
