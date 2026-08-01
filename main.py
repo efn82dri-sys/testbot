@@ -3,16 +3,13 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-این فایل قلب پروژه است. کارهایی که انجام می‌دهد:
-
-... (توضیحات قبلی)
 
 تغییرات جدید:
-- برادکست از هر نوع پیامی (متن، عکس، سند، ویدئو و ...) پشتیبانی می‌کند.
-- قبل از نمایش دکمه‌ی فرم، یک پیام هشدار درباره‌ی VPN به کاربر نمایش داده می‌شود.
-- خروجی اکسل شامل همه‌ی کاربرانی است که شماره‌شان را تأیید کرده‌اند (حتی اگر فرم را پر نکرده باشند).
-- اضافه شدن قابلیت حذف اطلاعات کاربر (هم به‌صورت دستور /delete_user و هم از طریق پنل مدیریت)
-- اضافه شدن دستور /help برای راهنمایی کاربران و ارسال پیام به ادمین
+- پیام درخواست شماره تلفن به‌روزرسانی شد با لحن اعتمادآمیز و مختصر
+- اضافه شدن سیستم حضور و غیاب هفتگی با دکمه‌ی شیشه‌ای (WebApp) داخل گروه
+- خروجی لیست اعضای غیرفعال در پایان هر هفته برای ادمین
+- قابلیت حذف اعضای غیرفعال از گروه (با تأیید ادمین)
+- پیش‌نمایش مراحل فرم عضویت در پنل مدیریت
 ====================================================================
 """
 
@@ -22,7 +19,7 @@ import hmac
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
@@ -56,7 +53,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
-# ۱) تنظیمات — (همان‌طور که بود)
+# ۱) تنظیمات
 # --------------------------------------------------------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
@@ -69,13 +66,16 @@ WEBHOOK_HOST = os.environ["WEBHOOK_HOST"].rstrip("/")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/index.html"
+ATTENDANCE_WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/attendance.html"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
+ATTENDANCE_CHECK_INTERVAL_SECONDS = 3600  # هر یک ساعت بررسی کن
 
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
+ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -165,17 +165,209 @@ def get_saved_phone(user_id: int) -> str:
     return load_phones().get(str(user_id), "")
 
 
+# ==============================================================
+# مدیریت حضور و غیاب (Attendance)
+# ==============================================================
+
+def load_attendance_data() -> dict:
+    """بارگذاری داده‌های حضور و غیاب."""
+    if not ATTENDANCE_FILE.exists():
+        return {"weeks": {}, "current_week": None}
+    try:
+        return json.loads(ATTENDANCE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"weeks": {}, "current_week": None}
+
+
+async def save_attendance_data(data: dict) -> None:
+    """ذخیره‌ی داده‌های حضور و غیاب."""
+    async with _write_lock:
+        ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_iso_week_number(dt: datetime) -> str:
+    """بازگرداندن شماره‌ی هفته به فرمت YYYY-Www."""
+    return dt.strftime("%Y-W%W")
+
+
+def get_week_start_end(week_key: str) -> tuple[datetime, datetime]:
+    """بازگرداندن شروع و پایان یک هفته بر اساس کلید هفته."""
+    year, week = week_key.split("-W")
+    year = int(year)
+    week = int(week)
+    # محاسبه‌ی روز شروع هفته (دوشنبه)
+    start = datetime.fromisocalendar(year, week, 1).replace(tzinfo=timezone.utc)
+    end = start + timedelta(days=7)
+    return start, end
+
+
+def get_current_week_key() -> str:
+    """بازگرداندن کلید هفته‌ی جاری (UTC)."""
+    return get_iso_week_number(datetime.now(timezone.utc))
+
+
+async def get_group_member_ids() -> list[int]:
+    """گرفتن لیست آیدی تمام اعضای گروه (به‌صورت تدریجی)."""
+    member_ids = []
+    try:
+        async for member in bot.get_chat_members(GROUP_CHAT_ID):
+            if not member.user.is_bot:
+                member_ids.append(member.user.id)
+    except Exception as e:
+        logger.warning("گرفتن لیست اعضای گروه ممکن نشد: %s", e)
+    return member_ids
+
+
+async def start_attendance_week() -> bool:
+    """شروع یک هفته‌ی جدید برای حضور و غیاب. پیام در گروه ارسال می‌شود."""
+    data = load_attendance_data()
+    current_week = get_current_week_key()
+
+    # اگر هفته‌ی جاری از قبل شروع شده، کاری نکن
+    if data.get("current_week") == current_week:
+        return False
+
+    # بستن هفته‌ی قبلی (اگر وجود داشت)
+    old_week = data.get("current_week")
+    if old_week and old_week in data["weeks"]:
+        data["weeks"][old_week]["status"] = "closed"
+
+    # شروع هفته‌ی جدید
+    start_dt, end_dt = get_week_start_end(current_week)
+    data["weeks"][current_week] = {
+        "start": start_dt.isoformat(),
+        "end": end_dt.isoformat(),
+        "records": {},
+        "message_id": None,
+        "status": "active",
+    }
+    data["current_week"] = current_week
+    await save_attendance_data(data)
+
+    # ارسال پیام حضور و غیاب در گروه
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ ثبت حضور این هفته",
+                    web_app=WebAppInfo(url=ATTENDANCE_WEBAPP_URL),
+                )
+            ]
+        ]
+    )
+
+    try:
+        sent = await bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=(
+                "🏛 <b>حضور و غیاب هفتگی رواق</b>\n\n"
+                "سلام به همه‌ی ساکنانِ این رواق!\n"
+                "برای اینکه بدانیم کدامیک از شما همچنان در این مسیر همراه ما هستید، "
+                "لطفاً با کلیک روی دکمه‌ی زیر، حضور خود را ثبت کنید.\n\n"
+                "⏳ این فرصت تا پایان هفته (یکشنبه شب) باز است.\n"
+                "کسانی که تا آن زمان حضورشان را ثبت نکنند، <b>غیرفعال</b> محسوب می‌شوند."
+            ),
+            reply_markup=keyboard,
+        )
+        # ذخیره‌ی message_id برای پیگیری
+        data = load_attendance_data()
+        if current_week in data["weeks"]:
+            data["weeks"][current_week]["message_id"] = sent.message_id
+            await save_attendance_data(data)
+        logger.info("پیام حضور و غیاب برای هفته‌ی %s در گروه ارسال شد.", current_week)
+        return True
+    except Exception as e:
+        logger.error("ارسال پیام حضور و غیاب ممکن نشد: %s", e)
+        return False
+
+
+async def close_attendance_week(week_key: str) -> dict | None:
+    """بستن هفته‌ی حضور و غیاب و بازگرداندن گزارش."""
+    data = load_attendance_data()
+    if week_key not in data["weeks"]:
+        return None
+
+    week = data["weeks"][week_key]
+    if week["status"] == "closed":
+        return None
+
+    # بستن هفته
+    week["status"] = "closed"
+    await save_attendance_data(data)
+
+    # دریافت لیست اعضای گروه
+    member_ids = await get_group_member_ids()
+    records = week.get("records", {})
+    attended = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended]
+
+    # ارسال گزارش به ادمین
+    report = {
+        "week_key": week_key,
+        "start": week["start"],
+        "end": week["end"],
+        "total_members": len(member_ids),
+        "attended_count": len(attended),
+        "inactive_count": len(inactive),
+        "inactive_ids": inactive,
+        "attended_ids": list(attended),
+    }
+    return report
+
+
+async def record_attendance(user_id: int) -> bool:
+    """ثبت حضور یک کاربر در هفته‌ی جاری."""
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        return False
+
+    week = data["weeks"][current_week]
+    if week["status"] != "active":
+        return False
+
+    # بررسی اینکه آیا کاربر قبلاً ثبت کرده
+    uid_str = str(user_id)
+    if uid_str in week["records"]:
+        return False
+
+    week["records"][uid_str] = datetime.now(timezone.utc).isoformat()
+    await save_attendance_data(data)
+    return True
+
+
+def get_attendance_status(user_id: int) -> str | None:
+    """بررسی وضعیت حضور کاربر در هفته‌ی جاری."""
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        return None
+    week = data["weeks"][current_week]
+    if week["status"] != "active":
+        return None
+    uid_str = str(user_id)
+    if uid_str in week["records"]:
+        return "attended"
+    return "pending"
+
+
+# ==============================================================
+# وضعیت‌های FSM
+# ==============================================================
+
 class BroadcastStates(StatesGroup):
     waiting_for_text = State()
     confirming = State()
 
 
-# ==============================================================
-# وضعیت‌های جدید برای مدیریت (حذف کاربر)
-# ==============================================================
 class AdminStates(StatesGroup):
     waiting_for_delete_user_id = State()
+    waiting_for_attendance_remove = State()
 
+
+# ==============================================================
+# توابع کمکی
+# ==============================================================
 
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
@@ -211,13 +403,23 @@ async def build_stats_text() -> str:
     total_left = stats.get("total_left", 0)
     leave_rate = (total_left / total_joined * 100) if total_joined else 0
 
+    # اطلاعات حضور و غیاب هفتگی
+    att_data = load_attendance_data()
+    current_week = att_data.get("current_week")
+    week_info = ""
+    if current_week and current_week in att_data["weeks"]:
+        week = att_data["weeks"][current_week]
+        records_count = len(week.get("records", {}))
+        week_info = f"\n✅ ثبت‌شده‌ی این هفته: <b>{records_count}</b> نفر"
+
     return (
         "📐 <b>گزارشِ وضعیتِ بنا (آمار لحظه‌ای)</b>\n\n"
         f"👥 ساکنینِ فعلی: <b>{member_count}</b>\n"
         f"📝 پروفایل‌های تکمیل‌شده (فرم): <b>{form_count}</b>\n"
         f"➕ کل ورودها از ابتدای ساماندهی: <b>{total_joined}</b>\n"
         f"➖ کل خروج‌ها: <b>{total_left}</b>\n"
-        f"📉 نرخِ ریزشِ جمعیت: <b>{leave_rate:.1f}٪</b>\n\n"
+        f"📉 نرخِ ریزشِ جمعیت: <b>{leave_rate:.1f}٪</b>"
+        f"{week_info}\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
     )
 
@@ -280,10 +482,10 @@ async def build_stats_detail_text() -> str:
 
 
 # ==============================================================
-# حذف اطلاعات کاربر (برای ادمین)
+# حذف اطلاعات کاربر
 # ==============================================================
+
 async def delete_user_data(user_id: int) -> tuple[bool, str]:
-    """حذف شماره تلفن و رکوردهای فرم یک کاربر."""
     uid_str = str(user_id)
     phones = load_phones()
     removed_phone = False
@@ -326,12 +528,10 @@ async def delete_user_data(user_id: int) -> tuple[bool, str]:
 
 
 def build_export_file() -> BufferedInputFile | None:
-    """فایل اکسل شامل همه‌ی کاربرانی که شماره‌شان تأیید شده است (حتی اگر فرم را پر نکرده باشند)."""
     phones = load_phones()
     if not phones and not DATA_FILE.exists():
         return None
 
-    # خواندن رکوردهای فرم (برای تکمیل اطلاعات)
     form_records = {}
     if DATA_FILE.exists():
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -346,12 +546,10 @@ def build_export_file() -> BufferedInputFile | None:
                 except json.JSONDecodeError:
                     continue
 
-    # مجموعه‌ی همه‌ی کاربرانی که حداقل شماره یا فرم دارند
     all_user_ids = set(phones.keys()) | set(form_records.keys())
     if not all_user_ids:
         return None
 
-    # ساخت ردیف‌ها
     rows = []
     for uid_str in all_user_ids:
         try:
@@ -361,7 +559,6 @@ def build_export_file() -> BufferedInputFile | None:
         phone = phones.get(uid_str, "")
         record = form_records.get(uid_str, {})
 
-        # اطلاعات کاربر از رکورد فرم (اگر موجود باشد)
         username = record.get("username")
         full_name = record.get("full_name", "")
         submitted_at = record.get("submitted_at", "")
@@ -370,7 +567,6 @@ def build_export_file() -> BufferedInputFile | None:
         interests_list = record.get("interests", [])
         interests_str = "، ".join(interests_list) if interests_list else "-"
 
-        # ستون وضعیت فرم
         form_status = "تکمیل شده" if record else "تکمیل نشده"
 
         rows.append([
@@ -378,14 +574,13 @@ def build_export_file() -> BufferedInputFile | None:
             f"@{username}" if username else "-",
             full_name or "-",
             phone or "-",
-            submitted_at[:16] if submitted_at else "-",  # فقط تاریخ و ساعت
+            submitted_at[:16] if submitted_at else "-",
             education,
             referral,
             interests_str,
             form_status,
         ])
 
-    # مرتب‌سازی: ابتدا کسانی که فرم دارند، بر اساس تاریخ نزولی، سپس بقیه
     rows.sort(key=lambda r: (r[4] == "-", r[4]), reverse=False)
 
     headers = [
@@ -436,7 +631,10 @@ def build_export_file() -> BufferedInputFile | None:
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
 
-# ---------- صفحه‌کلیدهای مدیریت (با دکمه‌ی حذف کاربر جدید) ----------
+# ==============================================================
+# صفحه‌کلیدهای مدیریت (با دکمه‌های جدید)
+# ==============================================================
+
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -445,6 +643,8 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📄 خروجی اکسل (همه‌ی تأییدشده‌ها)", callback_data="admin:export")],
             [InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="admin:broadcast")],
             [InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user")],
+            [InlineKeyboardButton(text="👥 حضور و غیاب", callback_data="admin:attendance_menu")],
+            [InlineKeyboardButton(text="👁 پیش‌نمایش مراحل فرم", callback_data="admin:preview_steps")],
             [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
         ]
     )
@@ -456,7 +656,10 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-# ---------- دستور /start (بدون تغییر) ----------
+# ==============================================================
+# دستورات
+# ==============================================================
+
 @dp.message(Command("start"))
 async def handle_start(message: Message):
     await message.answer(
@@ -466,7 +669,6 @@ async def handle_start(message: Message):
     )
 
 
-# ---------- دستور /help (جدید) ----------
 @dp.message(Command("help"))
 async def handle_help(message: Message):
     await message.answer(
@@ -481,7 +683,6 @@ async def handle_help(message: Message):
     )
 
 
-# ---------- دکمه‌ی اشتراک‌گذاری شماره (بدون تغییر) ----------
 def phone_request_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
@@ -491,11 +692,43 @@ def phone_request_keyboard() -> ReplyKeyboardMarkup:
 
 
 # ==============================================================
-# تغییر اصلی ۲: پیام هشدار VPN قبل از نمایش دکمه‌ی فرم
+# درخواست عضویت — پیام به‌روزرسانی‌شده
 # ==============================================================
+
+@dp.chat_join_request()
+async def handle_join_request(join_request: ChatJoinRequest):
+    if join_request.chat.id != GROUP_CHAT_ID:
+        return
+
+    user = join_request.from_user
+    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
+
+    if get_saved_phone(user.id):
+        await send_vpn_warning_and_form(user)
+        return
+
+    # پیام به‌روزرسانی‌شده با لحن اعتمادآمیز و مختصر
+    try:
+        await bot.send_message(
+            chat_id=user.id,
+            text=(
+                f"سلام {user.first_name} عزیز.\n\n"
+                "طبق سیاست‌های جدید تلگرام و برای جلوگیری از ورود ربات‌های خودکار، "
+                "احراز هویت با شماره تلفن الزامی است.\n"
+                "لطفاً شماره‌ی خود را با دکمه‌ی پایین صفحه به اشتراک بگذارید.\n\n"
+                "🔒 این شماره فقط برای تأیید هویت شما استفاده می‌شود و نزد ما محفوظ است."
+            ),
+            reply_markup=phone_request_keyboard(),
+        )
+    except Exception as e:
+        logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
+
+
+# ==============================================================
+# دریافت شماره تلفن و ارسال VPN + فرم
+# ==============================================================
+
 async def send_vpn_warning_and_form(user) -> None:
-    """ارسال پیام هشدار VPN و سپس دکمه‌ی فرم."""
-    # پیام هشدار
     try:
         await bot.send_message(
             chat_id=user.id,
@@ -509,7 +742,6 @@ async def send_vpn_warning_and_form(user) -> None:
     except Exception as e:
         logger.warning("ارسال پیام VPN به کاربر %s ممکن نشد: %s", user.id, e)
 
-    # دکمه‌ی فرم
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -530,37 +762,6 @@ async def send_vpn_warning_and_form(user) -> None:
         logger.warning("ارسال دکمه‌ی فرم به کاربر %s ممکن نشد: %s", user.id, e)
 
 
-# ---------- درخواست عضویت ----------
-@dp.chat_join_request()
-async def handle_join_request(join_request: ChatJoinRequest):
-    if join_request.chat.id != GROUP_CHAT_ID:
-        return
-
-    user = join_request.from_user
-    logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
-
-    # اگر قبلاً شماره تأیید شده، مستقیم پیام VPN و فرم را بفرست
-    if get_saved_phone(user.id):
-        await send_vpn_warning_and_form(user)
-        return
-
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                f"سلام {user.first_name} عزیز. عبور از این دروازه، یک گامِ احرازِ "
-                "هویت دارد.\n"
-                "برای اینکه مطمئن شویم «خودِ تو» هستی و از مصالحِ این رواق "
-                "محافظت کنیم، شماره‌ات را با دکمه‌ی پایینِ صفحه (فقط شماره‌ی "
-                "خودت) به اشتراک بگذار تا نقشه‌ی ورودت تکمیل شود."
-            ),
-            reply_markup=phone_request_keyboard(),
-        )
-    except Exception as e:
-        logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
-
-
-# ---------- دریافت شماره تلفن ----------
 @dp.message(F.contact)
 async def handle_contact_shared(message: Message):
     contact = message.contact
@@ -576,11 +777,13 @@ async def handle_contact_shared(message: Message):
 
     await save_phone(user.id, contact.phone_number)
     await message.answer("مسیر باز شد ✅", reply_markup=ReplyKeyboardRemove())
-    # بعد از احراز هویت، پیام VPN و سپس فرم
     await send_vpn_warning_and_form(user)
 
 
-# ---------- رویداد تغییر وضعیت عضو (بدون تغییر) ----------
+# ==============================================================
+# رویداد تغییر وضعیت عضو
+# ==============================================================
+
 @dp.chat_member()
 async def handle_chat_member_update(update: ChatMemberUpdated):
     if update.chat.id != GROUP_CHAT_ID:
@@ -718,7 +921,10 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
 
-# ---------- پنل مدیریت ----------
+# ==============================================================
+# پنل مدیریت
+# ==============================================================
+
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -759,8 +965,6 @@ async def handle_export(message: Message):
 async def handle_broadcast(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id):
         return
-    # با دستور مستقیم فقط متن ارسال می‌شود (برای سادگی همان روش قبلی)
-    # اما توصیه می‌کنیم از پنل استفاده کنید تا از مدیا هم پشتیبانی شود
     text = (command.args or "").strip()
     if not text:
         await message.answer(
@@ -795,8 +999,9 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
 
 
 # ==============================================================
-# دستور /delete_user (برای ادمین)
+# دستور /delete_user
 # ==============================================================
+
 @dp.message(Command("delete_user"))
 async def handle_delete_user(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id):
@@ -817,7 +1022,136 @@ async def handle_delete_user(message: Message, command: CommandObject):
     await message.answer(msg)
 
 
-# ---------- دکمه‌های پنل ----------
+# ==============================================================
+# حضور و غیاب — دستورات ادمین
+# ==============================================================
+
+@dp.message(Command("attendance_start"))
+async def handle_attendance_start(message: Message):
+    """شروع دستی هفته‌ی حضور و غیاب."""
+    if not is_admin(message.from_user.id):
+        return
+    result = await start_attendance_week()
+    if result:
+        await message.answer("✅ هفته‌ی حضور و غیاب با موفقیت شروع شد.")
+    else:
+        await message.answer("⚠️ هفته‌ی حضور و غیاب از قبل فعال است یا مشکلی پیش آمد.")
+
+
+@dp.message(Command("attendance_report"))
+async def handle_attendance_report(message: Message):
+    """دریافت گزارش هفته‌ی جاری."""
+    if not is_admin(message.from_user.id):
+        return
+
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        await message.answer("هیچ هفته‌ی فعالی برای حضور و غیاب وجود ندارد.")
+        return
+
+    week = data["weeks"][current_week]
+    records = week.get("records", {})
+    attended_count = len(records)
+
+    # دریافت لیست اعضای گروه
+    member_ids = await get_group_member_ids()
+    attended_set = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended_set]
+
+    report = (
+        f"📋 <b>گزارش حضور و غیاب — هفته‌ی {current_week}</b>\n\n"
+        f"👥 کل اعضای گروه: <b>{len(member_ids)}</b>\n"
+        f"✅ ثبت‌شده: <b>{attended_count}</b>\n"
+        f"❌ ثبت‌نشده: <b>{len(inactive)}</b>\n\n"
+        f"<i>برای دریافت لیست کامل افرادی که ثبت نکرده‌اند، روی دکمه‌ی «لیست غایبان» در پنل کلیک کنید.</i>"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 لیست غایبان", callback_data="admin:attendance_list")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")],
+        ]
+    )
+    await message.answer(report, reply_markup=keyboard)
+
+
+@dp.message(Command("attendance_remove"))
+async def handle_attendance_remove(message: Message, state: FSMContext):
+    """حذف اعضای غیرفعال (با تأیید)."""
+    if not is_admin(message.from_user.id):
+        return
+
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        await message.answer("هیچ هفته‌ی فعالی برای حضور و غیاب وجود ندارد.")
+        return
+
+    week = data["weeks"][current_week]
+    records = week.get("records", {})
+    member_ids = await get_group_member_ids()
+    attended_set = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended_set]
+
+    if not inactive:
+        await message.answer("✅ همه‌ی اعضای گروه در این هفته حضور ثبت کرده‌اند. کسی برای حذف وجود ندارد.")
+        return
+
+    await state.set_state(AdminStates.waiting_for_attendance_remove)
+    await state.update_data(inactive_list=inactive)
+
+    # نمایش چند نمونه از کاربران
+    sample = inactive[:5]
+    sample_text = "\n".join([f"• `{uid}`" for uid in sample])
+    if len(inactive) > 5:
+        sample_text += f"\n• ... و {len(inactive) - 5} نفر دیگر"
+
+    await message.answer(
+        f"⚠️ <b>حذف اعضای غیرفعال</b>\n\n"
+        f"<b>{len(inactive)}</b> نفر در این هفته حضور ثبت نکرده‌اند.\n\n"
+        f"نمونه:\n{sample_text}\n\n"
+        "برای تأیید حذف این افراد از گروه، دستور زیر را بفرستید:\n"
+        "<code>/confirm_remove</code>\n\n"
+        "برای لغو، دستور /cancel را بفرستید."
+    )
+
+
+@dp.message(Command("confirm_remove"), AdminStates.waiting_for_attendance_remove)
+async def handle_confirm_remove(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    data = await state.get_data()
+    inactive_list = data.get("inactive_list", [])
+    await state.clear()
+
+    if not inactive_list:
+        await message.answer("لیست خالی است.")
+        return
+
+    removed = 0
+    failed = 0
+    for uid in inactive_list:
+        try:
+            await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=uid)
+            removed += 1
+            await asyncio.sleep(0.3)  # جلوگیری از محدودیت
+        except Exception as e:
+            logger.warning("حذف کاربر %s ممکن نشد: %s", uid, e)
+            failed += 1
+
+    await message.answer(
+        f"✅ عملیات حذف کامل شد.\n"
+        f"موفق: <b>{removed}</b>\n"
+        f"ناموفق: <b>{failed}</b>"
+    )
+
+
+# ==============================================================
+# دکمه‌های پنل مدیریت
+# ==============================================================
+
 @dp.callback_query(F.data == "admin:menu")
 async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -878,6 +1212,7 @@ async def cb_admin_export(callback: CallbackQuery):
 # ==============================================================
 # برادکست با پشتیبانی از مدیا
 # ==============================================================
+
 @dp.callback_query(F.data == "admin:broadcast")
 async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -899,7 +1234,6 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
 
-    # اگر پیام متنی است و با / شروع می‌شود، به عنوان لغو در نظر بگیر
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer(
@@ -908,15 +1242,12 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
         )
         return
 
-    # هر نوع پیام (متن، عکس، سند، ویدئو، صدا و ...) را قبول کن
-    # پیام اصلی را در state ذخیره می‌کنیم تا بعداً کپی شود
     await state.update_data(
         broadcast_chat_id=message.chat.id,
         broadcast_message_id=message.message_id,
     )
     await state.set_state(BroadcastStates.confirming)
 
-    # ساختن پیش‌نمایش
     preview_text = "پیش‌نمایش پیام:\n"
     if message.text:
         preview_text += message.text
@@ -991,8 +1322,9 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
 
 
 # ==============================================================
-# حذف کاربر از طریق پنل مدیریت (دکمه)
+# حذف کاربر از طریق پنل مدیریت
 # ==============================================================
+
 @dp.callback_query(F.data == "admin:delete_user")
 async def cb_admin_delete_user(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -1017,7 +1349,6 @@ async def handle_delete_user_id_input(message: Message, state: FSMContext):
     if not text:
         await message.answer("لطفاً یک آیدی عددی وارد کنید.")
         return
-    # اگر کاربر /cancel فرستاد
     if text.startswith("/"):
         await state.clear()
         await message.answer("عملیات لغو شد.", reply_markup=admin_panel_keyboard())
@@ -1030,14 +1361,240 @@ async def handle_delete_user_id_input(message: Message, state: FSMContext):
     ok, msg = await delete_user_data(user_id)
     await message.answer(msg)
     await state.clear()
-    # بازگشت به منوی مدیریت
     await message.answer(
         "🛠 بازگشت به پنل مدیریت",
         reply_markup=admin_panel_keyboard()
     )
 
 
-# ---------- صندوق پیام اعضا (بدون تغییر) ----------
+# ==============================================================
+# حضور و غیاب — دکمه‌های پنل
+# ==============================================================
+
+@dp.callback_query(F.data == "admin:attendance_menu")
+async def cb_admin_attendance_menu(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📢 شروع هفته‌ی جدید", callback_data="admin:attendance_start")],
+            [InlineKeyboardButton(text="📋 گزارش هفته‌ی جاری", callback_data="admin:attendance_report")],
+            [InlineKeyboardButton(text="🗑 حذف غایبان", callback_data="admin:attendance_remove")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")],
+        ]
+    )
+    await callback.message.edit_text(
+        "👥 <b>مدیریت حضور و غیاب</b>\n\n"
+        "از این بخش می‌توانید هفته‌ی جدید را شروع کنید، گزارش بگیرید "
+        "و اعضای غیرفعال را حذف کنید.",
+        reply_markup=keyboard,
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "admin:attendance_start")
+async def cb_admin_attendance_start(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await callback.answer("⏳ در حال شروع...")
+    result = await start_attendance_week()
+    if result:
+        await callback.message.edit_text(
+            "✅ هفته‌ی حضور و غیاب با موفقیت شروع شد.\n"
+            "پیام مربوطه در گروه ارسال گردید.",
+            reply_markup=admin_back_keyboard(),
+        )
+    else:
+        await callback.message.edit_text(
+            "⚠️ هفته‌ی حضور و غیاب از قبل فعال است یا مشکلی پیش آمد.",
+            reply_markup=admin_back_keyboard(),
+        )
+
+
+@dp.callback_query(F.data == "admin:attendance_report")
+async def cb_admin_attendance_report(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        await callback.message.edit_text(
+            "هیچ هفته‌ی فعالی برای حضور و غیاب وجود ندارد.",
+            reply_markup=admin_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    week = data["weeks"][current_week]
+    records = week.get("records", {})
+    attended_count = len(records)
+
+    member_ids = await get_group_member_ids()
+    attended_set = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended_set]
+
+    report = (
+        f"📋 <b>گزارش حضور و غیاب — هفته‌ی {current_week}</b>\n\n"
+        f"👥 کل اعضای گروه: <b>{len(member_ids)}</b>\n"
+        f"✅ ثبت‌شده: <b>{attended_count}</b>\n"
+        f"❌ ثبت‌نشده: <b>{len(inactive)}</b>"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 لیست غایبان", callback_data="admin:attendance_list")],
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:attendance_menu")],
+        ]
+    )
+    await callback.message.edit_text(report, reply_markup=keyboard)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "admin:attendance_list")
+async def cb_admin_attendance_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        await callback.answer("هیچ هفته‌ی فعالی وجود ندارد.")
+        return
+
+    week = data["weeks"][current_week]
+    records = week.get("records", {})
+    member_ids = await get_group_member_ids()
+    attended_set = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended_set]
+
+    if not inactive:
+        await callback.message.edit_text(
+            "✅ همه‌ی اعضای گروه در این هفته حضور ثبت کرده‌اند.",
+            reply_markup=admin_back_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    # نمایش لیست در چند پیام
+    lines = [f"📋 <b>لیست غایبان — هفته‌ی {current_week}</b>\n\n"]
+    for uid in inactive:
+        lines.append(f"• <code>{uid}</code>")
+        if len("\n".join(lines)) > 3500:
+            await callback.message.answer("\n".join(lines))
+            lines = ["..."]
+
+    if lines:
+        await callback.message.answer("\n".join(lines))
+
+    await callback.message.answer(
+        "🔙 برای بازگشت به منوی حضور و غیاب، دکمه‌ی زیر را بزنید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:attendance_menu")]
+            ]
+        )
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "admin:attendance_remove")
+async def cb_admin_attendance_remove(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    data = load_attendance_data()
+    current_week = data.get("current_week")
+    if not current_week or current_week not in data["weeks"]:
+        await callback.answer("هیچ هفته‌ی فعالی وجود ندارد.")
+        return
+
+    week = data["weeks"][current_week]
+    records = week.get("records", {})
+    member_ids = await get_group_member_ids()
+    attended_set = set(int(uid) for uid in records.keys())
+    inactive = [uid for uid in member_ids if uid not in attended_set]
+
+    if not inactive:
+        await callback.answer("✅ همه حضور ثبت کرده‌اند.")
+        return
+
+    await state.set_state(AdminStates.waiting_for_attendance_remove)
+    await state.update_data(inactive_list=inactive)
+
+    sample = inactive[:5]
+    sample_text = "\n".join([f"• `{uid}`" for uid in sample])
+    if len(inactive) > 5:
+        sample_text += f"\n• ... و {len(inactive) - 5} نفر دیگر"
+
+    await callback.message.edit_text(
+        f"⚠️ <b>حذف اعضای غیرفعال</b>\n\n"
+        f"<b>{len(inactive)}</b> نفر در این هفته حضور ثبت نکرده‌اند.\n\n"
+        f"نمونه:\n{sample_text}\n\n"
+        "برای تأیید حذف این افراد از گروه، دستور زیر را بفرستید:\n"
+        "<code>/confirm_remove</code>\n\n"
+        "برای لغو، دستور /cancel را بفرستید.",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+
+# ==============================================================
+# پیش‌نمایش مراحل فرم
+# ==============================================================
+
+@dp.callback_query(F.data == "admin:preview_steps")
+async def cb_admin_preview_steps(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    # شبیه‌سازی نمایش مراحل فرم
+    preview = (
+        "👁 <b>پیش‌نمایش مراحل فرم عضویت</b>\n\n"
+        "🔹 <b>مرحله ۱ — مقطع تحصیلی</b>\n"
+        "   دیپلم / پیش‌دانشگاهی\n"
+        "   کاردانی\n"
+        "   کارشناسی\n"
+        "   کارشناسی ارشد\n"
+        "   دکتری\n"
+        "   سایر\n\n"
+        "🔹 <b>مرحله ۲ — نحوه‌ی آشنایی</b>\n"
+        "   اینستاگرام\n"
+        "   معرفی دوستان\n"
+        "   سایر گروه‌ها و کانال‌ها\n"
+        "   جستجوی اینترنتی\n"
+        "   سایر موارد\n\n"
+        "🔹 <b>مرحله ۳ — علایق تخصصی</b>\n"
+        "   انتخاب حداکثر ۳ مورد از:\n"
+        "   اتاق پرامپت، فرصت‌های شغلی، پرزانته و پرتفولیو،\n"
+        "   آکادمی آنلاین، کتابخانه و ضوابط ملی، رادیو معماری،\n"
+        "   بانک پروژه، معماری جهان، فایل‌های گرافیکی،\n"
+        "   دنیای نرم‌افزار و پلاگین، آبجکت و فمیلی، پلان و نقشه\n\n"
+        "🔹 <b>مرحله ۴ — نتیجه</b>\n"
+        "   پس از ارسال، کاربر پیام تایید یا خطا را می‌بیند.\n\n"
+        "<i>این همان فرمی است که کاربران هنگام تکمیل عضویت می‌بینند.</i>"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")]
+        ]
+    )
+    await callback.message.edit_text(preview, reply_markup=keyboard)
+    await callback.answer()
+
+
+# ==============================================================
+# صندوق پیام اعضا
+# ==============================================================
+
 async def relay_message_to_admin(user, text: str) -> None:
     if not NOTIFY_CHAT_ID:
         return
@@ -1099,7 +1656,10 @@ async def handle_generic_member_message(message: Message):
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 
-# ---------- اعتبارسنجی initData و دریافت فرم (بدون تغییر) ----------
+# ==============================================================
+# اعتبارسنجی initData و دریافت فرم
+# ==============================================================
+
 def validate_init_data(init_data: str):
     try:
         pairs = dict(parse_qsl(init_data, strict_parsing=True))
@@ -1144,7 +1704,7 @@ async def handle_submit(request: web.Request) -> web.Response:
         "username": user.get("username"),
         "full_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
         "phone": get_saved_phone(user_id),
-        "submitted_at": datetime.utcnow().isoformat(),
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
         **form_data,
     }
 
@@ -1194,7 +1754,49 @@ async def handle_submit(request: web.Request) -> web.Response:
     return web.json_response({"ok": approved})
 
 
-# ---------- مسیر سلامت و پینگ خودکار (بدون تغییر) ----------
+# ==============================================================
+# اندپوینت حضور و غیاب
+# ==============================================================
+
+async def handle_attendance(request: web.Request) -> web.Response:
+    """ثبت حضور کاربر از طریق WebApp."""
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
+
+    init_data = payload.get("initData", "")
+    user = validate_init_data(init_data)
+    if user is None:
+        logger.warning("attendance: initData نامعتبر بود.")
+        return web.json_response({"ok": False, "error": "invalid_init_data"}, status=403)
+
+    user_id = user["id"]
+
+    # بررسی اینکه آیا کاربر عضو گروه است
+    try:
+        member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
+        if member.status not in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+            return web.json_response({"ok": False, "error": "not_member"}, status=403)
+    except Exception:
+        return web.json_response({"ok": False, "error": "not_member"}, status=403)
+
+    # ثبت حضور
+    success = await record_attendance(user_id)
+    if success:
+        return web.json_response({"ok": True, "status": "attended"})
+    else:
+        # ممکن است قبلاً ثبت کرده باشد یا هفته فعال نباشد
+        status = get_attendance_status(user_id)
+        if status == "attended":
+            return web.json_response({"ok": True, "status": "already_attended"})
+        return web.json_response({"ok": False, "error": "no_active_week"}, status=400)
+
+
+# ==============================================================
+# مسیر سلامت و پینگ خودکار
+# ==============================================================
+
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
@@ -1212,12 +1814,60 @@ async def self_ping_loop(app: web.Application) -> None:
                 logger.warning("پینگِ خودکار ناموفق بود: %s", e)
 
 
-async def start_self_ping(app: web.Application) -> None:
-    app["self_ping_task"] = asyncio.create_task(self_ping_loop(app))
+# ==============================================================
+# وظیفه‌ی زمان‌بندی‌شده برای حضور و غیاب
+# ==============================================================
+
+async def attendance_scheduler_loop(app: web.Application) -> None:
+    """بررسی هر ساعت برای شروع هفته‌ی جدید و بستن هفته‌ی قبلی."""
+    while True:
+        await asyncio.sleep(ATTENDANCE_CHECK_INTERVAL_SECONDS)
+        try:
+            data = load_attendance_data()
+            current_week = get_current_week_key()
+            last_week = data.get("current_week")
+
+            # اگر هفته عوض شده باشد
+            if last_week != current_week:
+                # بستن هفته‌ی قبلی و گزارش به ادمین
+                if last_week and last_week in data["weeks"]:
+                    report = await close_attendance_week(last_week)
+                    if report and report["inactive_ids"]:
+                        # ارسال گزارش به ادمین‌ها
+                        for admin_id in ADMIN_IDS:
+                            try:
+                                await bot.send_message(
+                                    chat_id=admin_id,
+                                    text=(
+                                        f"📊 <b>گزارش پایان هفته‌ی حضور و غیاب</b>\n\n"
+                                        f"هفته‌ی: {report['week_key']}\n"
+                                        f"👥 کل اعضا: {report['total_members']}\n"
+                                        f"✅ ثبت‌شده: {report['attended_count']}\n"
+                                        f"❌ غایب: {report['inactive_count']}\n\n"
+                                        f"برای مشاهده‌ی لیست غایبان و حذف آنها، از پنل مدیریت استفاده کنید."
+                                    ),
+                                    reply_markup=InlineKeyboardMarkup(
+                                        inline_keyboard=[
+                                            [InlineKeyboardButton(text="👥 رفتن به حضور و غیاب", callback_data="admin:attendance_menu")]
+                                        ]
+                                    )
+                                )
+                            except Exception as e:
+                                logger.warning("ارسال گزارش به ادمین %s ممکن نشد: %s", admin_id, e)
+
+                # شروع هفته‌ی جدید
+                await start_attendance_week()
+
+        except Exception as e:
+            logger.error("خطا در scheduler حضور و غیاب: %s", e)
 
 
-async def stop_self_ping(app: web.Application) -> None:
-    task = app.get("self_ping_task")
+async def start_attendance_scheduler(app: web.Application) -> None:
+    app["attendance_scheduler_task"] = asyncio.create_task(attendance_scheduler_loop(app))
+
+
+async def stop_attendance_scheduler(app: web.Application) -> None:
+    task = app.get("attendance_scheduler_task")
     if task:
         task.cancel()
         try:
@@ -1226,7 +1876,10 @@ async def stop_self_ping(app: web.Application) -> None:
             pass
 
 
-# ---------- راه‌اندازی وب‌سرور (بدون تغییر) ----------
+# ==============================================================
+# راه‌اندازی وب‌سرور
+# ==============================================================
+
 async def on_startup(app: web.Application):
     await bot.set_webhook(
         WEBHOOK_URL,
@@ -1246,6 +1899,13 @@ async def on_startup(app: web.Application):
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
+    # یک بار در ابتدا سعی کن هفته‌ی جاری را شروع کنی (اگر قبلاً شروع نشده)
+    data = load_attendance_data()
+    current_week = get_current_week_key()
+    if data.get("current_week") != current_week:
+        logger.info("شروع هفته‌ی حضور و غیاب در زمان راه‌اندازی...")
+        await start_attendance_week()
+
 
 def create_app() -> web.Application:
     app = web.Application()
@@ -1253,13 +1913,16 @@ def create_app() -> web.Application:
     webapp_dir = Path(__file__).parent / "webapp"
     app.router.add_static("/webapp/", path=str(webapp_dir), show_index=False)
     app.router.add_post("/api/submit", handle_submit)
+    app.router.add_post("/api/attendance", handle_attendance)
     app.router.add_get("/health", handle_health)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
     app.on_startup.append(start_self_ping)
+    app.on_startup.append(start_attendance_scheduler)
     app.on_cleanup.append(stop_self_ping)
+    app.on_cleanup.append(stop_attendance_scheduler)
     return app
 
 
