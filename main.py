@@ -926,7 +926,7 @@ async def handle_generic_member_message(message: Message):
 
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — با Async Iterator (سازگار با aiogram 3.x)
+#  بخش حضور و غیاب هفتگی — نسخه‌ی نهایی با Async Iterator
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -944,20 +944,12 @@ async def save_attendance_data(data: dict) -> None:
 
 
 async def get_all_group_members(chat_id: int) -> list[int]:
-    """
-    دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator
-    (سازگار با aiogram 3.x)
-    """
+    """دریافت لیست عددی تمام اعضای گروه با استفاده از Async Iterator (سازگار با aiogram 3.x)"""
     members = []
     try:
-        # بررسی وجود متد get_chat_members
-        if not hasattr(bot, 'get_chat_members'):
-            raise AttributeError("متد get_chat_members در شیء Bot وجود ندارد. لطفاً aiogram را به نسخه‌ی 3.x به‌روز کنید.")
-        
         async for member in bot.get_chat_members(chat_id):
             if not member.user.is_bot:
                 members.append(member.user.id)
-            # برای جلوگیری از Rate Limit، هر ۱۰۰ عضو یک‌بار مکث کوتاه
             if len(members) % 100 == 0:
                 await asyncio.sleep(0.05)
     except AttributeError as e:
