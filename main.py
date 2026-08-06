@@ -3,7 +3,11 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی - گزارش فقط لیست حاضرین با جزئیات کامل
+نسخه‌ی نهایی با قابلیت‌های:
+- حضور و غیاب خودکار با یادآوری هر ۳ ساعت و پایان خودکار بعد از ۲۴ ساعت
+- تاریخ و ساعت شمسی + تهران
+- ارسال پیام مستقیم به کاربر با /sendmsg (فقط در چت خصوصی ربات)
+- پنل مدیریت کامل
 """
 
 import asyncio
@@ -12,12 +16,14 @@ import hmac
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl
 
+import jdatetime
+import pytz
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
@@ -46,7 +52,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 # --------------------------------------------------------------
-# ۱) تنظیمات
+# ۱) تنظیمات اولیه
 # --------------------------------------------------------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
@@ -85,6 +91,8 @@ dp = Dispatcher()
 _write_lock = asyncio.Lock()
 _pending_leave_polls: dict[str, int] = {}
 _pending_admin_replies: dict[int, int] = {}
+_attendance_tasks: dict[str, asyncio.Task] = {}
+
 try:
     NOTIFY_CHAT_ID_INT = int(NOTIFY_CHAT_ID) if NOTIFY_CHAT_ID else None
 except ValueError:
@@ -115,10 +123,23 @@ LEAVE_REASONS: list[tuple[str, str]] = [
     ),
 ]
 
+# ---------- زمان و تاریخ شمسی ----------
+TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
+def utc_to_tehran(utc_dt: datetime) -> datetime:
+    return utc_dt.astimezone(TEHRAN_TZ)
+
+def to_jalali(utc_dt: datetime) -> jdatetime.datetime:
+    tehran_dt = utc_to_tehran(utc_dt)
+    return jdatetime.datetime.fromgregorian(datetime=tehran_dt.replace(tzinfo=None))
+
+def format_jalali_datetime(utc_dt: datetime) -> str:
+    jalali = to_jalali(utc_dt)
+    return jalali.strftime("%Y/%m/%d %H:%M:%S")
+
+# ---------- توابع کمکی ----------
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
-
 
 def load_stats() -> dict:
     if not STATS_FILE.exists():
@@ -128,13 +149,11 @@ def load_stats() -> dict:
     except (json.JSONDecodeError, OSError):
         return {"total_joined": 0, "total_left": 0}
 
-
 async def increment_stat(field: str) -> None:
     async with _write_lock:
         stats = load_stats()
         stats[field] = stats.get(field, 0) + 1
         STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
-
 
 def load_phones() -> dict:
     if not PHONES_FILE.exists():
@@ -144,22 +163,14 @@ def load_phones() -> dict:
     except (json.JSONDecodeError, OSError):
         return {}
 
-
 async def save_phone(user_id: int, phone: str) -> None:
     async with _write_lock:
         phones = load_phones()
         phones[str(user_id)] = phone
         PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
 
-
 def get_saved_phone(user_id: int) -> str:
     return load_phones().get(str(user_id), "")
-
-
-class BroadcastStates(StatesGroup):
-    waiting_for_text = State()
-    confirming = State()
-
 
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
@@ -176,7 +187,6 @@ def collect_form_user_ids() -> set[int]:
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
     return user_ids
-
 
 async def build_stats_text() -> str:
     try:
@@ -204,7 +214,6 @@ async def build_stats_text() -> str:
         f"📉 نرخِ ریزشِ جمعیت: <b>{leave_rate:.1f}٪</b>\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
     )
-
 
 async def build_stats_detail_text() -> str:
     if not DATA_FILE.exists():
@@ -261,7 +270,6 @@ async def build_stats_detail_text() -> str:
         lines.append("هنوز کسی علایقش را ثبت نکرده.")
 
     return "\n".join(lines)
-
 
 def build_export_file() -> BufferedInputFile | None:
     phones = load_phones()
@@ -366,7 +374,7 @@ def build_export_file() -> BufferedInputFile | None:
     buffer.seek(0)
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
-
+# ---------- پنل مدیریت (دکمه‌ها) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -378,12 +386,10 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
-
 def admin_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")]]
     )
-
 
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
@@ -394,14 +400,12 @@ async def handle_start(message: Message):
         "درخواستِ عضویت در گروه را ثبت کنی. مسیرِ بعدی را برایت می‌گشایم."
     )
 
-
 def phone_request_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
-
 
 async def send_vpn_warning_and_form(user) -> None:
     try:
@@ -436,7 +440,6 @@ async def send_vpn_warning_and_form(user) -> None:
     except Exception as e:
         logger.warning("ارسال دکمه‌ی فرم به کاربر %s ممکن نشد: %s", user.id, e)
 
-
 # ---------- درخواست عضویت ----------
 @dp.chat_join_request()
 async def handle_join_request(join_request: ChatJoinRequest):
@@ -464,7 +467,6 @@ async def handle_join_request(join_request: ChatJoinRequest):
     except Exception as e:
         logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
 
-
 # ---------- دریافت شماره تلفن ----------
 @dp.message(F.contact)
 async def handle_contact_shared(message: Message):
@@ -482,7 +484,6 @@ async def handle_contact_shared(message: Message):
     await save_phone(user.id, contact.phone_number)
     await message.answer("مسیر باز شد ✅", reply_markup=ReplyKeyboardRemove())
     await send_vpn_warning_and_form(user)
-
 
 # ---------- رویداد تغییر وضعیت عضو ----------
 @dp.chat_member()
@@ -512,7 +513,6 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
         await increment_stat("total_left")
         await handle_member_left(user)
 
-
 async def notify_new_member(user) -> None:
     if not NOTIFY_CHAT_ID:
         return
@@ -528,7 +528,6 @@ async def notify_new_member(user) -> None:
     except Exception as e:
         logger.warning("ارسال گزارش عضو جدید ممکن نشد: %s", e)
 
-
 async def send_welcome_to_group(user) -> None:
     display_name = html_escape(user.full_name or user.first_name or "کاربر")
     user_mention = f"<a href='tg://user?id={user.id}'>{display_name}</a>"
@@ -542,7 +541,7 @@ async def send_welcome_to_group(user) -> None:
                 "🏛 آماده‌ای برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
-            disable_notification=True,  # <-- پیام بی‌صدا ارسال می‌شود
+            disable_notification=True,
         )
     except Exception as e:
         logger.warning("ارسال پیام خوش‌آمدگویی به گروه ممکن نشد: %s", e)
@@ -550,14 +549,12 @@ async def send_welcome_to_group(user) -> None:
 
     asyncio.create_task(_delete_message_later(sent.chat.id, sent.message_id, delay=30))
 
-
 async def _delete_message_later(chat_id: int, message_id: int, delay: int) -> None:
     await asyncio.sleep(delay)
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         logger.warning("حذفِ خودکارِ پیامِ خوش‌آمدگویی ممکن نشد: %s", e)
-
 
 async def handle_member_left(user) -> None:
     if NOTIFY_CHAT_ID:
@@ -603,7 +600,6 @@ async def handle_member_left(user) -> None:
     except Exception as e:
         logger.warning("نمی‌توان به کاربر خارج‌شده %s پیام داد: %s", user.id, e)
 
-
 @dp.poll_answer()
 async def handle_leave_poll_answer(poll_answer: PollAnswer):
     user_id = _pending_leave_polls.pop(poll_answer.poll_id, None)
@@ -620,8 +616,7 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
     except Exception as e:
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
-
-# ---------- پنل مدیریت ----------
+# ---------- پنل مدیریت (دستورات متنی) ----------
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -632,20 +627,17 @@ async def handle_admin_panel(message: Message, state: FSMContext):
         reply_markup=admin_panel_keyboard(),
     )
 
-
 @dp.message(Command("stats"))
 async def handle_stats(message: Message):
     if not is_admin(message.from_user.id):
         return
     await message.answer(await build_stats_text())
 
-
 @dp.message(Command("stats_detail"))
 async def handle_stats_detail(message: Message):
     if not is_admin(message.from_user.id):
         return
     await message.answer(await build_stats_detail_text())
-
 
 @dp.message(Command("export"))
 async def handle_export(message: Message):
@@ -656,7 +648,6 @@ async def handle_export(message: Message):
         await message.answer("هنوز هیچ کاربری شماره‌اش را تأیید نکرده است.")
         return
     await message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
-
 
 @dp.message(Command("broadcast"))
 async def handle_broadcast(message: Message, command: CommandObject):
@@ -682,7 +673,6 @@ async def handle_broadcast(message: Message, command: CommandObject):
         f"✅ ارسال همگانی تمام شد.\nموفق: <b>{sent}</b>\nناموفق: <b>{failed}</b>"
     )
 
-
 async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
     sent, failed = 0, 0
     for user_id in user_ids:
@@ -693,7 +683,6 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
             failed += 1
         await asyncio.sleep(0.05)
     return sent, failed
-
 
 # ---------- دکمه‌های پنل ----------
 @dp.callback_query(F.data == "admin:menu")
@@ -708,7 +697,6 @@ async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-
 @dp.callback_query(F.data == "admin:close")
 async def cb_admin_close(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -721,7 +709,6 @@ async def cb_admin_close(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.answer()
 
-
 @dp.callback_query(F.data == "admin:stats")
 async def cb_admin_stats(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -730,7 +717,6 @@ async def cb_admin_stats(callback: CallbackQuery):
     await callback.answer()
     await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
 
-
 @dp.callback_query(F.data == "admin:stats_detail")
 async def cb_admin_stats_detail(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
@@ -738,7 +724,6 @@ async def cb_admin_stats_detail(callback: CallbackQuery):
         return
     await callback.answer()
     await callback.message.edit_text(await build_stats_detail_text(), reply_markup=admin_back_keyboard())
-
 
 @dp.callback_query(F.data == "admin:export")
 async def cb_admin_export(callback: CallbackQuery):
@@ -752,8 +737,11 @@ async def cb_admin_export(callback: CallbackQuery):
         return
     await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
 
-
 # ---------- برادکست با پشتیبانی از مدیا ----------
+class BroadcastStates(StatesGroup):
+    waiting_for_text = State()
+    confirming = State()
+
 @dp.callback_query(F.data == "admin:broadcast")
 async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -768,7 +756,6 @@ async def cb_admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
         reply_markup=admin_back_keyboard(),
     )
     await callback.answer()
-
 
 @dp.message(BroadcastStates.waiting_for_text)
 async def handle_broadcast_text_input(message: Message, state: FSMContext):
@@ -810,7 +797,6 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
         reply_markup=confirm_keyboard,
     )
 
-
 @dp.callback_query(F.data == "admin:broadcast_confirm", BroadcastStates.confirming)
 async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -851,7 +837,6 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
         reply_markup=admin_back_keyboard(),
     )
 
-
 @dp.callback_query(F.data == "admin:broadcast_cancel", BroadcastStates.confirming)
 async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -860,7 +845,6 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
-
 
 # ---------- صندوق پیام اعضا ----------
 async def relay_message_to_admin(user, text: str) -> None:
@@ -884,7 +868,6 @@ async def relay_message_to_admin(user, text: str) -> None:
         _pending_admin_replies[sent.message_id] = user.id
     except Exception as e:
         logger.warning("ارسالِ پیامِ عضو به ادمین ممکن نشد: %s", e)
-
 
 @dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.reply_to_message)
 async def handle_admin_reply_via_native_reply(message: Message):
@@ -910,7 +893,6 @@ async def handle_admin_reply_via_native_reply(message: Message):
         logger.warning("ارسالِ پاسخِ ادمین به کاربر %s ممکن نشد: %s", target_user_id, e)
         await message.reply(f"❌ ارسال پاسخ ناموفق بود: {e}")
 
-
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
     if is_admin(message.from_user.id):
@@ -923,9 +905,8 @@ async def handle_generic_member_message(message: Message):
     await relay_message_to_admin(message.from_user, text)
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
-
 # ==============================================================
-#  بخش حضور و غیاب هفتگی — فقط لیست حاضرین با جزئیات
+#  بخش حضور و غیاب هفتگی (جدید)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -936,12 +917,118 @@ def load_attendance_data() -> dict:
     except (json.JSONDecodeError, OSError):
         return {"active": None}
 
-
 async def save_attendance_data(data: dict) -> None:
     async with _write_lock:
         ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
+# ---------- تسک‌های زمان‌بندی ----------
+async def _send_attendance_reminder(chat_id: int, main_message_id: int, data: dict):
+    active = data.get("active")
+    if not active:
+        return
+    last_msg_id = active.get("last_reminder_message_id")
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=last_msg_id)
+        except Exception as e:
+            logger.warning("حذف پیام یادآوری قبلی ممکن نشد: %s", e)
 
+    text = (
+        "⚠️ <b>یادآوری حضور هفتگی</b>\n\n"
+        "هنوز حضور خود را ثبت نکرده‌اید.\n"
+        "لطفاً با کلیک روی دکمه‌ی «✅ من اینجام» در پیام بالایی، حضور خود را تأیید کنید.\n\n"
+        "این پیام هر ۳ ساعت تکرار می‌شود تا پایان دوره‌ی ۲۴ ساعته."
+    )
+    try:
+        sent = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_to_message_id=main_message_id,
+        )
+        active["last_reminder_message_id"] = sent.message_id
+        await save_attendance_data(data)
+    except Exception as e:
+        logger.error("ارسال یادآوری ممکن نشد: %s", e)
+
+async def _attendance_reminder_task(chat_id: int, main_message_id: int):
+    data = load_attendance_data()
+    active = data.get("active")
+    if not active:
+        return
+
+    for i in range(1, 8):
+        await asyncio.sleep(3 * 3600)
+
+        data = load_attendance_data()
+        active = data.get("active")
+        if not active:
+            break
+
+        await _send_attendance_reminder(chat_id, main_message_id, data)
+        active["reminder_count"] = i
+        await save_attendance_data(data)
+
+    data = load_attendance_data()
+    active = data.get("active")
+    if active:
+        await _finish_attendance(chat_id)
+
+async def _finish_attendance(chat_id: int):
+    data = load_attendance_data()
+    active = data.get("active")
+    if not active:
+        return
+
+    participants = active.get("participants", [])
+    total = len(participants)
+
+    if total == 0:
+        await bot.send_message(chat_id=chat_id, text="📋 در این دوره هیچ‌کس حضور ثبت نکرد.")
+    else:
+        lines = [
+            f"📋 <b>لیست نهایی حاضرین در دوره‌ی حضور و غیاب</b>\n"
+            f"تعداد کل: <b>{total}</b> نفر\n\n"
+            "<b>👤 شرکت‌کنندگان:</b>"
+        ]
+        for p in participants:
+            uid = p["user_id"]
+            time_jalali = p.get("time", "نامشخص")
+            try:
+                member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+                name = member.user.full_name or str(uid)
+                username = f" @{member.user.username}" if member.user.username else ""
+                lines.append(f"• {name} (ID: <code>{uid}</code>){username} — ثبت در {time_jalali}")
+            except Exception:
+                lines.append(f"• کاربر با آیدی <code>{uid}</code> — ثبت در {time_jalali}")
+
+        if len(lines) <= 60:
+            await bot.send_message(chat_id=chat_id, text="\n".join(lines))
+        else:
+            plain = [l.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for l in lines]
+            with BytesIO() as f:
+                f.write("\n".join(plain).encode("utf-8"))
+                f.seek(0)
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=BufferedInputFile(f.read(), filename="لیست_نهایی_حاضرین.txt"),
+                    caption=f"📄 لیست کامل حاضرین (تعداد {total} نفر)"
+                )
+
+    data["active"] = None
+    await save_attendance_data(data)
+
+    task_key = f"reminder_{chat_id}"
+    if task_key in _attendance_tasks:
+        _attendance_tasks[task_key].cancel()
+        del _attendance_tasks[task_key]
+
+    await bot.send_message(
+        chat_id=chat_id,
+        text="⏰ <b>دوره‌ی حضور و غیاب به پایان رسید.</b>\n"
+             "از تمام شرکت‌کنندگان سپاسگزاریم. تا دوره‌ی بعدی."
+    )
+
+# ---------- دستورات حضور و غیاب ----------
 @dp.message(Command("attendance_start"))
 async def cmd_attendance_start(message: Message):
     if not is_admin(message.from_user.id):
@@ -955,19 +1042,22 @@ async def cmd_attendance_start(message: Message):
         await message.answer("یک دوره‌ی حضور و غیاب هم‌اکنون فعال است. ابتدا آن را با /attendance_end پایان دهید.")
         return
 
+    text = (
+        "📋 <b>ثبت حضور هفتگی</b>\n\n"
+        "⚠️ این پیام یک <b>دوره‌ی ۲۴ ساعته</b> برای شناسایی اعضای فعال است.\n"
+        "اگر در گروه فعال هستید، حتماً روی دکمه‌ی زیر کلیک کنید.\n\n"
+        "🔔 <b>یادآوری:</b> هر ۳ ساعت یک پیام یادآوری دریافت خواهید کرد تا پایان دوره.\n"
+        "پس از ۲۴ ساعت، لیست نهایی حاضرین اعلام می‌شود."
+    )
     try:
         sent_msg = await bot.send_message(
             chat_id=message.chat.id,
-            text=(
-                "📋 <b>ثبت حضور هفتگی</b>\n\n"
-                "اگر هنوز در گروه فعال هستید، لطفاً با کلیک روی دکمه‌ی زیر حضور خود را ثبت کنید.\n"
-                "این کار به ما کمک می‌کند اعضای فعال را شناسایی کنیم."
-            ),
+            text=text,
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="✅ من اینجام", callback_data="attendance:yes")]
                 ]
-            ),
+            )
         )
     except Exception as e:
         logger.error("خطا در ارسال پیام حضور: %s", e)
@@ -979,11 +1069,19 @@ async def cmd_attendance_start(message: Message):
         "message_id": sent_msg.message_id,
         "chat_id": message.chat.id,
         "participants": [],
+        "reminder_count": 0,
+        "last_reminder_message_id": None,
     }
     data["active"] = active_data
     await save_attendance_data(data)
-    await message.answer("✅ دوره‌ی حضور و غیاب شروع شد.")
 
+    task_key = f"reminder_{message.chat.id}"
+    if task_key in _attendance_tasks:
+        _attendance_tasks[task_key].cancel()
+    task = asyncio.create_task(_attendance_reminder_task(message.chat.id, sent_msg.message_id))
+    _attendance_tasks[task_key] = task
+
+    await message.answer("✅ دوره‌ی حضور و غیاب شروع شد. اولین یادآوری ۳ ساعت دیگر ارسال می‌شود.")
 
 @dp.message(Command("attendance_status"))
 async def cmd_attendance_status(message: Message):
@@ -995,14 +1093,19 @@ async def cmd_attendance_status(message: Message):
         await message.answer("هیچ دوره‌ی فعالی وجود ندارد.")
         return
 
-    started = active["started_at"]
+    started = format_jalali_datetime(datetime.fromisoformat(active["started_at"]))
     participants_count = len(active["participants"])
+    reminder_count = active.get("reminder_count", 0)
+    remaining = 8 - reminder_count
+    if remaining < 0:
+        remaining = 0
     await message.answer(
         f"📊 <b>وضعیت حضور و غیاب</b>\n\n"
         f"⏰ شروع: <code>{started}</code>\n"
-        f"👤 شرکت‌کنندگان: <b>{participants_count}</b> نفر"
+        f"👤 شرکت‌کنندگان: <b>{participants_count}</b> نفر\n"
+        f"🔔 تعداد یادآوری‌های ارسال‌شده: <b>{reminder_count}</b>\n"
+        f"⏳ یادآوری‌های باقی‌مانده: <b>{remaining}</b>"
     )
-
 
 @dp.message(Command("attendance_end"))
 async def cmd_attendance_end(message: Message):
@@ -1012,10 +1115,15 @@ async def cmd_attendance_end(message: Message):
     if data.get("active") is None:
         await message.answer("هیچ دوره‌ی فعالی برای پایان دادن وجود ندارد.")
         return
+
+    task_key = f"reminder_{message.chat.id}"
+    if task_key in _attendance_tasks:
+        _attendance_tasks[task_key].cancel()
+        del _attendance_tasks[task_key]
+
     data["active"] = None
     await save_attendance_data(data)
-    await message.answer("✅ دوره‌ی حضور و غیاب پایان یافت.")
-
+    await message.answer("✅ دوره‌ی حضور و غیاب به‌صورت دستی پایان یافت.")
 
 @dp.message(Command("attendance_report"))
 async def cmd_attendance_report(message: Message):
@@ -1024,47 +1132,41 @@ async def cmd_attendance_report(message: Message):
     data = load_attendance_data()
     active = data.get("active")
     if active is None:
-        await message.answer("هیچ دوره‌ی فعالی وجود ندارد. ابتدا با /attendance_start شروع کنید.")
+        await message.answer("هیچ دوره‌ی فعالی وجود ندارد.")
         return
 
-    participants = active["participants"]
-    
+    participants = active.get("participants", [])
     if not participants:
         await message.answer("📋 تا الان کسی حضور خود را ثبت نکرده است.")
         return
 
-    # دریافت جزئیات هر شرکت‌کننده
-    report_lines = [
+    lines = [
         f"📋 <b>لیست حاضرین در دوره‌ی حضور و غیاب</b>\n"
-        f"تعداد کل شرکت‌کنندگان: <b>{len(participants)}</b> نفر\n\n"
-        "<b>👤 لیست شرکت‌کنندگان:</b>"
+        f"تعداد کل: <b>{len(participants)}</b> نفر\n\n"
+        "<b>👤 شرکت‌کنندگان:</b>"
     ]
-
-    for uid in participants:
+    for p in participants:
+        uid = p["user_id"]
+        time_jalali = p.get("time", "نامشخص")
         try:
-            chat_member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
-            user = chat_member.user
-            name = user.full_name or str(uid)
-            username = f" @{user.username}" if user.username else ""
-            # فقط آیدی و نام را نمایش می‌دهیم
-            report_lines.append(f"• {name} (ID: <code>{uid}</code>){username}")
+            member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+            name = member.user.full_name or str(uid)
+            username = f" @{member.user.username}" if member.user.username else ""
+            lines.append(f"• {name} (ID: <code>{uid}</code>){username} — ثبت در {time_jalali}")
         except Exception:
-            report_lines.append(f"• کاربر با آیدی: <code>{uid}</code> (اطلاعات در دسترس نیست)")
+            lines.append(f"• کاربر با آیدی <code>{uid}</code> — ثبت در {time_jalali}")
 
-    # اگر تعداد شرکت‌کنندگان زیاد بود، به صورت فایل ارسال شود
-    if len(participants) <= 50:
-        await message.answer("\n".join(report_lines))
+    if len(lines) <= 50:
+        await message.answer("\n".join(lines))
     else:
+        plain = [l.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for l in lines]
         with BytesIO() as f:
-            # فایل را بدون تگ‌های HTML ذخیره می‌کنیم
-            plain_lines = [line.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for line in report_lines]
-            f.write("\n".join(plain_lines).encode("utf-8"))
+            f.write("\n".join(plain).encode("utf-8"))
             f.seek(0)
             await message.answer_document(
                 BufferedInputFile(f.read(), filename="لیست_حاضرین.txt"),
                 caption=f"📄 لیست کامل حاضرین (تعداد {len(participants)} نفر)"
             )
-
 
 @dp.callback_query(F.data == "attendance:yes")
 async def cb_attendance_yes(callback: CallbackQuery):
@@ -1075,17 +1177,101 @@ async def cb_attendance_yes(callback: CallbackQuery):
         await callback.answer("دوره‌ی حضور و غیاب فعال نیست.", show_alert=True)
         return
 
-    if user_id in active["participants"]:
-        await callback.answer("✅ حضور شما قبلاً ثبت شده است.")
-        return
+    for p in active["participants"]:
+        if p["user_id"] == user_id:
+            await callback.answer("✅ حضور شما قبلاً ثبت شده است.")
+            return
 
-    active["participants"].append(user_id)
+    now_utc = datetime.utcnow()
+    time_jalali = format_jalali_datetime(now_utc)
+    active["participants"].append({"user_id": user_id, "time": time_jalali})
     await save_attendance_data(data)
     await callback.answer("✅ حضور شما ثبت شد.", show_alert=False)
 
+# ---------- بازیابی دوره در استارتاپ ----------
+async def restore_attendance_tasks():
+    data = load_attendance_data()
+    active = data.get("active")
+    if not active:
+        return
+    chat_id = active["chat_id"]
+    message_id = active["message_id"]
+    started_at = datetime.fromisoformat(active["started_at"])
+    now = datetime.utcnow()
+    elapsed = (now - started_at).total_seconds()
+
+    if elapsed >= 24 * 3600:
+        await _finish_attendance(chat_id)
+        return
+
+    reminder_count = active.get("reminder_count", 0)
+    if reminder_count < 7:
+        next_reminder_seconds = (reminder_count + 1) * 3 * 3600 - elapsed
+        if next_reminder_seconds < 0:
+            next_reminder_seconds = 0
+        async def delayed_start():
+            await asyncio.sleep(next_reminder_seconds)
+            await _attendance_reminder_task(chat_id, message_id)
+        task = asyncio.create_task(delayed_start())
+        _attendance_tasks[f"reminder_{chat_id}"] = task
+        logger.info("دوره‌ی حضور و غیاب بازیابی شد. یادآوری بعدی در %s ثانیه.", next_reminder_seconds)
+    else:
+        remaining_to_end = 24 * 3600 - elapsed
+        if remaining_to_end > 0:
+            async def delayed_end():
+                await asyncio.sleep(remaining_to_end)
+                await _finish_attendance(chat_id)
+            task = asyncio.create_task(delayed_end())
+            _attendance_tasks[f"reminder_{chat_id}"] = task
+            logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
 # ==============================================================
-#  اعتبارسنجی initData و دریافت فرم
+#  ارسال پیام مستقیم به کاربر (فقط در چت خصوصی ربات)
+# ==============================================================
+@dp.message(Command("sendmsg"))
+async def cmd_sendmsg(message: Message, command: CommandObject):
+    if not is_admin(message.from_user.id):
+        return
+    # این دستور فقط در چت خصوصی کار می‌کند
+    if message.chat.type != "private":
+        await message.answer("این دستور فقط در چت خصوصی ربات قابل استفاده است.")
+        return
+
+    args = command.args
+    if not args:
+        await message.answer(
+            "فرمت: /sendmsg <user_id یا @username> <متن پیام>\n"
+            "مثال: /sendmsg 123456789 سلام، لطفاً پاسخ دهید.\n"
+            "مثال: /sendmsg @Ali_Arch فایل پروژه را بررسی کنید."
+        )
+        return
+    parts = args.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("لطفاً هم کاربر و هم پیام را وارد کنید.")
+        return
+    user_input, text = parts[0], parts[1]
+
+    user_id = None
+    if user_input.isdigit():
+        user_id = int(user_input)
+    else:
+        # حذف @ اضافی
+        username = user_input.lstrip('@')
+        try:
+            chat = await bot.get_chat(f"@{username}")
+            user_id = chat.id
+        except Exception as e:
+            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}")
+            return
+
+    try:
+        await bot.send_message(chat_id=user_id, text=text)
+        await message.answer(f"✅ پیام به کاربر {user_input} ارسال شد.")
+    except Exception as e:
+        await message.answer(f"❌ خطا در ارسال پیام: {e}")
+
+# ==============================================================
+#  اعتبارسنجی initData و دریافت فرم (وب‌هوک)
 # ==============================================================
 
 def validate_init_data(init_data: str):
@@ -1109,7 +1295,6 @@ def validate_init_data(init_data: str):
     if not user_raw:
         return None
     return json.loads(user_raw)
-
 
 async def handle_submit(request: web.Request) -> web.Response:
     try:
@@ -1181,11 +1366,9 @@ async def handle_submit(request: web.Request) -> web.Response:
 
     return web.json_response({"ok": approved})
 
-
 # ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
-
 
 async def self_ping_loop(app: web.Application) -> None:
     import aiohttp
@@ -1199,10 +1382,8 @@ async def self_ping_loop(app: web.Application) -> None:
             except Exception as e:
                 logger.warning("پینگِ خودکار ناموفق بود: %s", e)
 
-
 async def start_self_ping(app: web.Application) -> None:
     app["self_ping_task"] = asyncio.create_task(self_ping_loop(app))
-
 
 async def stop_self_ping(app: web.Application) -> None:
     task = app.get("self_ping_task")
@@ -1212,7 +1393,6 @@ async def stop_self_ping(app: web.Application) -> None:
             await task
         except asyncio.CancelledError:
             pass
-
 
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
@@ -1234,6 +1414,8 @@ async def on_startup(app: web.Application):
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
+    # بازیابی دوره‌ی حضور و غیاب
+    await restore_attendance_tasks()
 
 def create_app() -> web.Application:
     app = web.Application()
@@ -1249,7 +1431,6 @@ def create_app() -> web.Application:
     app.on_startup.append(start_self_ping)
     app.on_cleanup.append(stop_self_ping)
     return app
-
 
 if __name__ == "__main__":
     web.run_app(create_app(), host="0.0.0.0", port=PORT)
