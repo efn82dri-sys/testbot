@@ -12,7 +12,6 @@ import hmac
 import json
 import logging
 import os
-import shutil
 from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
@@ -67,7 +66,6 @@ WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/index.html"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
 
-# مسیرهای فایل‌ها
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
@@ -75,8 +73,6 @@ PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
-BACKUP_DIR = Path(__file__).parent / "backups"
-BACKUP_DIR.mkdir(exist_ok=True)
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -406,18 +402,6 @@ def build_export_file() -> BufferedInputFile | None:
     buffer.seek(0)
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
-# ---------- پشتیبان‌گیری خودکار ----------
-async def auto_backup():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for file in [DATA_FILE, PHONES_FILE, STATS_FILE, ATTENDANCE_FILE, BOT_STATE_FILE]:
-        if file.exists():
-            backup_file = BACKUP_DIR / f"{file.stem}_{timestamp}.json"
-            shutil.copy(file, backup_file)
-    for backup in BACKUP_DIR.glob("*.json"):
-        if (datetime.now() - datetime.fromtimestamp(backup.stat().st_mtime)).days > 30:
-            backup.unlink()
-    logger.info("پشتیبان‌گیری خودکار انجام شد.")
-
 # ---------- مدیریت منوی پویا ----------
 def load_menu_config() -> dict:
     if not MENU_CONFIG_FILE.exists():
@@ -488,13 +472,9 @@ def topics_panel_keyboard() -> InlineKeyboardMarkup:
 
 # ---------- پنل کاربری شیشه‌ای ----------
 def user_panel_keyboard() -> InlineKeyboardMarkup:
-    """ساخت پنل کاربری با دکمه‌های شیشه‌ای"""
     config = load_menu_config()
     items = config["menu_items"]
-    
-    # حذف دکمه‌های اضافی (تنظیمات، لینک دعوت، شبکه‌های اجتماعی)
     filtered_keys = ["join", "topics", "contact_admin", "my_status", "announcements", "faq", "social"]
-    
     buttons = []
     for i in range(0, len(filtered_keys), 2):
         row = []
@@ -504,11 +484,10 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
             key2 = filtered_keys[i+1]
             row.append(InlineKeyboardButton(text=items[key2]["label"], callback_data=f"menu:{key2}"))
         buttons.append(row)
-    
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# ---------- پنل ادمین (مرتب و حرفه‌ای) ----------
+# ---------- پنل ادمین ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -526,7 +505,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit"),
-                InlineKeyboardButton(text="💾 پشتیبان‌گیری", callback_data="admin:backup"),
+                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user"),
             ],
             [
                 InlineKeyboardButton(text="❌ بستن", callback_data="admin:close"),
@@ -586,15 +565,11 @@ async def process_pending_requests():
     await save_bot_state(state)
     logger.info("پردازش درخواست‌های معلق پایان یافت")
 
-# ---------- نشانگر تایپ و پردازش ----------
+# ---------- نشانگر تایپ ----------
 async def send_with_action(chat_id: int, action: str = "typing", delay: float = 1.0):
     await bot.send_chat_action(chat_id=chat_id, action=action)
     if delay > 0:
         await asyncio.sleep(delay)
-
-async def send_message_with_typing(chat_id: int, text: str, delay: float = 1.0, **kwargs):
-    await send_with_action(chat_id, "typing", delay)
-    return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
 
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
@@ -980,15 +955,6 @@ async def cb_admin_export(callback: CallbackQuery):
         return
     await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
 
-@dp.callback_query(F.data == "admin:backup")
-async def cb_admin_backup(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("دسترسی ندارید.", show_alert=True)
-        return
-    await callback.answer("⏳ در حال تهیه پشتیبان...")
-    await auto_backup()
-    await callback.message.answer("✅ پشتیبان‌گیری انجام شد.", reply_markup=admin_back_keyboard())
-
 # ---------- برادکست با پشتیبانی از مدیا ----------
 class BroadcastStates(StatesGroup):
     waiting_for_text = State()
@@ -1183,7 +1149,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
     # پردازش ویژه برای دکمه‌های خاص
     if key == "topics":
-        # نمایش پنل تاپیک‌ها
         await callback.message.edit_text(
             "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"
             "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",
@@ -1208,19 +1173,20 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         user_id = callback.from_user.id
         await send_with_action(callback.message.chat.id, "typing", 1.0)
         
-        is_member = is_user_member(user_id)
+        # تلاش برای دریافت اطلاعات عضویت
+        is_member = False
+        join_date = "نامشخص"
+        try:
+            member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
+            is_member = member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
+            if member.joined_date:
+                join_date = format_jalali_datetime(member.joined_date)
+        except Exception:
+            # در صورت عدم دسترسی، فرض می‌کنیم کاربر عضو است (چون به این مرحله رسیده)
+            is_member = True
+        
         form_completed = is_form_completed(user_id)
         phone = get_saved_phone(user_id)
-        
-        # دریافت تاریخ و ساعت ورود
-        join_date = "نامشخص"
-        if is_member:
-            try:
-                member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
-                if member.joined_date:
-                    join_date = format_jalali_datetime(member.joined_date)
-            except Exception:
-                pass
         
         status_parts = []
         if is_member:
@@ -1249,7 +1215,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         announcements = config["settings"].get("announcements", [])
         announcement_files = config["settings"].get("announcement_files", [])
         
-        # نمایش متن‌ها
         if announcements:
             announcements_text = "\n".join([f"▪️ {a}" for a in announcements])
         else:
@@ -1259,10 +1224,9 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             announcements=announcements_text
         )
         
-        # ارسال پیام با دکمه برگشت
         await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
         
-        # ارسال فایل‌های ضمیمه شده (اگر وجود داشته باشند)
+        # ارسال فایل‌های ضمیمه
         for file_id in announcement_files:
             try:
                 await callback.message.answer_document(document=file_id)
@@ -1287,7 +1251,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         
         await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
         
-        # ارسال فایل‌های ضمیمه شده
         for file_id in faq_files:
             try:
                 await callback.message.answer_document(document=file_id)
@@ -1534,7 +1497,151 @@ async def handle_faq_file(message: Message, state: FSMContext):
     await message.answer("✅ فایل به سوالات متداول اضافه شد.", reply_markup=admin_menu_edit_keyboard())
     await state.clear()
 
-# ---------- ارسال مستقیم به کاربر (با پشتیبانی از فایل) ----------
+# ---------- حذف کاربر (پنل ادمین) ----------
+class DeleteUserStates(StatesGroup):
+    waiting_for_user_id = State()
+    confirming = State()
+
+@dp.callback_query(F.data == "admin:delete_user")
+async def cb_delete_user_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(DeleteUserStates.waiting_for_user_id)
+    await callback.message.edit_text(
+        "🗑 <b>حذف کاربر از گروه</b>\n\n"
+        "آیدی عددی یا @username کاربر را وارد کنید:\n"
+        "مثال: 123456789  یا  @Ali_Arch\n\n"
+        "⚠️ کاربر از گروه اخراج شده و تمام اطلاعاتش (فرم، شماره تلفن) حذف می‌شود.\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard()
+    )
+    await callback.answer()
+
+@dp.message(DeleteUserStates.waiting_for_user_id)
+async def delete_user_identifier(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    identifier = message.text.strip()
+    if not identifier:
+        await message.answer("لطفاً یک شناسه معتبر وارد کنید.")
+        return
+
+    if identifier.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    user_id = None
+    if identifier.isdigit():
+        user_id = int(identifier)
+    else:
+        username = identifier.lstrip('@')
+        try:
+            chat = await bot.get_chat(f"@{username}")
+            user_id = chat.id
+        except Exception as e:
+            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}\nلطفاً دوباره وارد کنید.")
+            return
+
+    # ذخیره user_id در state
+    await state.update_data(target_user_id=user_id, target_identifier=identifier)
+    await state.set_state(DeleteUserStates.confirming)
+    
+    # دریافت اطلاعات کاربر برای نمایش
+    try:
+        user = await bot.get_chat(user_id)
+        display = user.full_name or str(user_id)
+        await state.update_data(target_display=display)
+        confirm_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:delete_cancel")],
+            ]
+        )
+        await message.answer(
+            f"⚠️ آیا از حذف کاربر <b>{html_escape(display)}</b> (آیدی: <code>{user_id}</code>) مطمئنید؟\n"
+            "این عملیات غیرقابل بازگشت است.",
+            reply_markup=confirm_keyboard
+        )
+    except Exception as e:
+        await message.answer(f"❌ خطا در دریافت اطلاعات کاربر: {e}")
+        await state.clear()
+
+@dp.callback_query(F.data == "admin:delete_confirm", DeleteUserStates.confirming)
+async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+
+    data = await state.get_data()
+    user_id = data.get("target_user_id")
+    display = data.get("target_display", "کاربر")
+    if not user_id:
+        await callback.message.edit_text("خطا: کاربر مشخص نیست.")
+        await state.clear()
+        return
+
+    # اجرای عملیات حذف
+    try:
+        # اخراج از گروه
+        await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
+        # حذف اطلاعات از فایل‌ها
+        async with _write_lock:
+            # حذف از phones.json
+            phones = load_phones()
+            if str(user_id) in phones:
+                del phones[str(user_id)]
+                PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
+            
+            # حذف از submissions.jsonl (بازنویسی فایل)
+            if DATA_FILE.exists():
+                new_lines = []
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                            if record.get("user_id") != user_id:
+                                new_lines.append(line)
+                        except json.JSONDecodeError:
+                            continue
+                with open(DATA_FILE, "w", encoding="utf-8") as f:
+                    f.write("\n".join(new_lines))
+                if new_lines:
+                    f.write("\n")
+            
+            # به‌روزرسانی کش
+            if str(user_id) in _user_cache:
+                del _user_cache[str(user_id)]
+        
+        await callback.message.edit_text(
+            f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد."
+        )
+        await state.clear()
+        # نمایش پنل ادمین
+        await callback.message.answer(
+            "🛠 پنل مدیریت",
+            reply_markup=admin_panel_keyboard()
+        )
+    except Exception as e:
+        logger.error(f"خطا در حذف کاربر {user_id}: {e}")
+        await callback.message.edit_text(f"❌ خطا در حذف کاربر: {e}")
+        await state.clear()
+
+@dp.callback_query(F.data == "admin:delete_cancel", DeleteUserStates.confirming)
+async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    await callback.message.edit_text("عملیات حذف لغو شد.", reply_markup=admin_panel_keyboard())
+    await callback.answer()
+
+# ---------- ارسال مستقیم به کاربر ----------
 class AdminSendMsgStates(StatesGroup):
     waiting_for_identifier = State()
     waiting_for_message = State()
@@ -2187,7 +2294,6 @@ async def on_startup(app: web.Application):
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
     await restore_attendance_tasks()
-    await auto_backup()
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
 def create_app() -> web.Application:
