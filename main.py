@@ -3,14 +3,7 @@
 ====================================================================
  ربات تلگرام «تایید عضویت» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخه‌ی نهایی با قابلیت‌های:
-- حضور و غیاب خودکار با یادآوری هر ۳ ساعت و پایان خودکار بعد از ۲۴ ساعت
-- تاریخ و ساعت شمسی + تهران
-- ارسال پیام مستقیم به کاربر با پشتیبانی از فایل (عکس، سند، ویدئو، ...)
-- خاموش/روشن کردن ربات با ذخیره‌ی درخواست‌های معلق
-- منوی تعاملی دوستونه با مدیریت پویا از پنل ادمین
-- مدیریت خطاهای سراسری با پیام‌های کاربرپسند
-- نشانگر تایپ و آپلود برای تجربه‌ی کاربری بهتر
+نسخهٔ نهایی با پنل کاربری شیشه‌ای و مدیریت پویا
 """
 
 import asyncio
@@ -96,7 +89,6 @@ REFERRAL_LABELS = {
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ذخیره‌سازی FSM در حافظه
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=storage)
@@ -203,7 +195,6 @@ def collect_form_user_ids() -> set[int]:
     return user_ids
 
 def is_user_member(user_id: int) -> bool:
-    """بررسی اینکه کاربر عضو گروه است یا خیر"""
     try:
         member = asyncio.run(bot.get_chat_member(GROUP_CHAT_ID, user_id))
         return member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
@@ -211,11 +202,9 @@ def is_user_member(user_id: int) -> bool:
         return False
 
 def is_form_completed(user_id: int) -> bool:
-    """بررسی اینکه کاربر فرم را تکمیل کرده است یا خیر"""
     return str(user_id) in _user_cache
 
 def cache_users():
-    """ذخیره‌سازی کاربران در حافظه برای دسترسی سریع"""
     if not DATA_FILE.exists():
         return
     with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -229,7 +218,6 @@ def cache_users():
             except (json.JSONDecodeError, KeyError):
                 continue
 
-# بارگذاری کش در ابتدا
 cache_users()
 
 async def build_stats_text() -> str:
@@ -420,14 +408,11 @@ def build_export_file() -> BufferedInputFile | None:
 
 # ---------- پشتیبان‌گیری خودکار ----------
 async def auto_backup():
-    """پشتیبان‌گیری خودکار از فایل‌های داده"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     for file in [DATA_FILE, PHONES_FILE, STATS_FILE, ATTENDANCE_FILE, BOT_STATE_FILE, MENU_CONFIG_FILE]:
         if file.exists():
             backup_file = BACKUP_DIR / f"{file.stem}_{timestamp}.json"
             shutil.copy(file, backup_file)
-    
-    # حذف پشتیبان‌های قدیمی‌تر از ۳۰ روز
     for backup in BACKUP_DIR.glob("*.json"):
         if (datetime.now() - datetime.fromtimestamp(backup.stat().st_mtime)).days > 30:
             backup.unlink()
@@ -435,7 +420,6 @@ async def auto_backup():
 
 # ---------- مدیریت منوی پویا ----------
 def load_menu_config() -> dict:
-    """بارگذاری تنظیمات منو از فایل"""
     if not MENU_CONFIG_FILE.exists():
         default_config = {
             "menu_items": {
@@ -477,41 +461,23 @@ async def save_menu_config(config: dict) -> None:
     async with _write_lock:
         MENU_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def get_menu_label(key: str) -> str:
-    """دریافت برچسب دکمه از تنظیمات"""
-    config = load_menu_config()
-    return config["menu_items"].get(key, {}).get("label", key)
-
-def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """ساخت صفحه‌کلید منوی اصلی (دو ردیفه)"""
+# ---------- پنل کاربری شیشه‌ای (InlineKeyboard) ----------
+def user_panel_keyboard() -> InlineKeyboardMarkup:
+    """ساخت پنل کاربری با دکمه‌های شیشه‌ای از تنظیمات منو"""
     config = load_menu_config()
     items = config["menu_items"]
-    
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text=items["join"]["label"]),
-                KeyboardButton(text=items["topics"]["label"]),
-            ],
-            [
-                KeyboardButton(text=items["contact_admin"]["label"]),
-                KeyboardButton(text=items["invite_link"]["label"]),
-            ],
-            [
-                KeyboardButton(text=items["my_status"]["label"]),
-                KeyboardButton(text=items["announcements"]["label"]),
-            ],
-            [
-                KeyboardButton(text=items["faq"]["label"]),
-                KeyboardButton(text=items["social"]["label"]),
-            ],
-            [
-                KeyboardButton(text=items["settings"]["label"]),
-            ],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-    )
+    buttons = []
+    # دو ستونه کردن دکمه‌ها
+    keys = list(items.keys())
+    for i in range(0, len(keys), 2):
+        row = []
+        row.append(InlineKeyboardButton(text=items[keys[i]]["label"], callback_data=f"menu:{keys[i]}"))
+        if i+1 < len(keys):
+            row.append(InlineKeyboardButton(text=items[keys[i+1]]["label"], callback_data=f"menu:{keys[i+1]}"))
+        buttons.append(row)
+    # دکمه‌ی بستن (اختیاری)
+    buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # ---------- مدیریت وضعیت ربات (خاموش/روشن) ----------
 def load_bot_state() -> dict:
@@ -527,7 +493,6 @@ async def save_bot_state(state: dict) -> None:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
 async def process_pending_requests():
-    """پردازش درخواست‌های عضویت معلق هنگام روشن شدن ربات"""
     state = load_bot_state()
     pending = state.get("pending_requests", [])
     if not pending:
@@ -554,25 +519,13 @@ async def process_pending_requests():
 
 # ---------- نشانگر تایپ و پردازش ----------
 async def send_with_action(chat_id: int, action: str = "typing", delay: float = 1.0):
-    """ارسال نشانگر وضعیت به کاربر"""
     await bot.send_chat_action(chat_id=chat_id, action=action)
     if delay > 0:
         await asyncio.sleep(delay)
 
 async def send_message_with_typing(chat_id: int, text: str, delay: float = 1.0, **kwargs):
-    """ارسال پیام با نشانگر تایپ"""
     await send_with_action(chat_id, "typing", delay)
     return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
-
-async def send_document_with_uploading(chat_id: int, document, **kwargs):
-    """ارسال سند با نشانگر آپلود"""
-    await send_with_action(chat_id, "upload_document", 0.5)
-    return await bot.send_document(chat_id=chat_id, document=document, **kwargs)
-
-async def send_photo_with_uploading(chat_id: int, photo, **kwargs):
-    """ارسال عکس با نشانگر آپلود"""
-    await send_with_action(chat_id, "upload_photo", 0.5)
-    return await bot.send_photo(chat_id=chat_id, photo=photo, **kwargs)
 
 # ---------- پنل مدیریت (دکمه‌های دوستونه) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
@@ -623,11 +576,10 @@ async def handle_start(message: Message):
     user_id = message.from_user.id
     await send_with_action(message.chat.id, "typing", 0.5)
     
-    # بررسی اینکه کاربر عضو است یا فرم را تکمیل کرده
     if is_form_completed(user_id) or is_user_member(user_id):
         await message.answer(
-            "🏛 به رواق خوش آمدید.\nاز منوی زیر یکی از گزینه‌ها را انتخاب کنید:",
-            reply_markup=main_menu_keyboard()
+            "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+            reply_markup=user_panel_keyboard()
         )
     else:
         await message.answer(
@@ -787,15 +739,9 @@ async def notify_new_member(user) -> None:
         logger.warning("ارسال گزارش عضو جدید ممکن نشد: %s", e)
 
 async def send_welcome_to_group(user) -> None:
+    # نسخهٔ قبلی (بدون دکمه‌های اضافی)
     display_name = html_escape(user.full_name or user.first_name or "کاربر")
     user_mention = f"<a href='tg://user?id={user.id}'>{display_name}</a>"
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📚 مشاهده تاپیک‌ها", callback_data="show_topics")],
-            [InlineKeyboardButton(text="📞 ارتباط با ادمین", callback_data="contact_admin")],
-            [InlineKeyboardButton(text="🏛 ورود به کافه معماری", url="https://t.me/c/4388421316/95")],
-        ]
-    )
     try:
         sent = await bot.send_message(
             chat_id=GROUP_CHAT_ID,
@@ -806,7 +752,6 @@ async def send_welcome_to_group(user) -> None:
                 "🏛 آماده‌ای برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
             disable_notification=True,
         )
     except Exception as e:
@@ -955,7 +900,7 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
         await asyncio.sleep(0.05)
     return sent, failed
 
-# ---------- دکمه‌های پنل ----------
+# ---------- دکمه‌های پنل ادمین ----------
 @dp.callback_query(F.data == "admin:menu")
 async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -1183,136 +1128,154 @@ async def handle_generic_member_message(message: Message):
     text = message.text or message.caption
     if not text or text.startswith("/"):
         return
-    
-    # اگر یکی از دکمه‌های منو بود، هندلرهای اختصاصی آن را مدیریت می‌کنند
-    config = load_menu_config()
-    menu_labels = [item["label"] for item in config["menu_items"].values()]
-    if text in menu_labels:
-        return
 
     await relay_message_to_admin(message.from_user, text)
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
-# ---------- منوی تعاملی (هندلرهای دکمه‌ها) ----------
-@dp.message(F.text == load_menu_config()["menu_items"]["join"]["label"])
-async def handle_join_button(message: Message):
-    config = load_menu_config()
-    response = config["menu_items"]["join"]["response"].format(
-        invite_link=config["settings"]["group_invite_link"]
-    )
-    await send_message_with_typing(message.chat.id, response, 0.5)
+# ---------- پنل کاربری (هندلرهای دکمه‌های شیشه‌ای) ----------
+class ContactAdminStates(StatesGroup):
+    waiting_for_message = State()
 
-@dp.message(F.text == load_menu_config()["menu_items"]["topics"]["label"])
-async def handle_topics_button(message: Message):
-    config = load_menu_config()
-    response = config["menu_items"]["topics"]["response"]
-    await send_message_with_typing(message.chat.id, response, 0.5)
+@dp.callback_query(F.data == "menu:close")
+async def cb_menu_close(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer("پنل بسته شد.")
 
-@dp.message(F.text == load_menu_config()["menu_items"]["contact_admin"]["label"])
-async def handle_contact_admin_button(message: Message):
-    await send_message_with_typing(
-        message.chat.id,
-        "📞 پیام خود را تایپ کنید تا برای ادمین ارسال شود.\n"
-        "(برای لغو، /cancel بفرستید)",
-        0.5
-    )
-    # وضعیت کاربر در حالت انتظار پیام قرار می‌گیرد
-    # اما چون این دکمه از منوی اصلی است، با State عمومی کار می‌کند
-
-@dp.message(F.text == load_menu_config()["menu_items"]["invite_link"]["label"])
-async def handle_invite_link_button(message: Message):
-    config = load_menu_config()
-    response = config["menu_items"]["invite_link"]["response"].format(
-        invite_link=config["settings"]["group_invite_link"]
-    )
-    await send_message_with_typing(message.chat.id, response, 0.5)
-
-@dp.message(F.text == load_menu_config()["menu_items"]["my_status"]["label"])
-async def handle_my_status_button(message: Message):
-    user_id = message.from_user.id
-    await send_with_action(message.chat.id, "typing", 1.0)
-    
-    is_member = is_user_member(user_id)
-    form_completed = is_form_completed(user_id)
-    phone = get_saved_phone(user_id)
-    
-    status_parts = []
-    if is_member:
-        status_parts.append("✅ عضو گروه هستید")
-    else:
-        status_parts.append("❌ عضو گروه نیستید")
-    
-    if form_completed:
-        status_parts.append("✅ فرم عضویت را تکمیل کرده‌اید")
-    else:
-        status_parts.append("❌ فرم عضویت را تکمیل نکرده‌اید")
-    
-    if phone:
-        status_parts.append(f"📱 شماره تلفن: {phone}")
-    else:
-        status_parts.append("❌ شماره تلفن ثبت نشده")
+@dp.callback_query(F.data.startswith("menu:"))
+async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
+    key = callback.data.split(":", 1)[1]
+    if key == "close":
+        return  # handled above
     
     config = load_menu_config()
-    response = config["menu_items"]["my_status"]["response"].format(
-        status="\n".join(status_parts)
-    )
-    await message.answer(response)
+    item = config["menu_items"].get(key)
+    if not item:
+        await callback.answer("گزینه‌ای یافت نشد.")
+        return
 
-@dp.message(F.text == load_menu_config()["menu_items"]["announcements"]["label"])
-async def handle_announcements_button(message: Message):
-    config = load_menu_config()
-    announcements = config["settings"].get("announcements", [])
-    if not announcements:
-        announcements_text = "📢 هیچ اطلاعیه‌ای وجود ندارد."
-    else:
-        announcements_text = "\n".join([f"▪️ {a}" for a in announcements])
-    response = config["menu_items"]["announcements"]["response"].format(
-        announcements=announcements_text
-    )
-    await send_message_with_typing(message.chat.id, response, 0.5)
+    # پردازش ویژه برای گزینه‌های خاص
+    if key == "contact_admin":
+        await state.set_state(ContactAdminStates.waiting_for_message)
+        await callback.message.edit_text(
+            "📞 پیام خود را تایپ کنید تا برای ادمین ارسال شود.\n"
+            "(برای لغو، /cancel بفرستید)",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back")]]
+            )
+        )
+        await callback.answer()
+        return
 
-@dp.message(F.text == load_menu_config()["menu_items"]["faq"]["label"])
-async def handle_faq_button(message: Message):
-    config = load_menu_config()
-    faq_items = config["settings"].get("faq", [])
-    if not faq_items:
-        faq_text = "هنوز سوالی ثبت نشده است."
-    else:
-        faq_text = "\n".join([f"❓ {item['q']}\n📝 {item['a']}" for item in faq_items])
-    response = config["menu_items"]["faq"]["response"].format(
-        faq_list=faq_text
-    )
-    await send_message_with_typing(message.chat.id, response, 0.5)
+    if key == "my_status":
+        user_id = callback.from_user.id
+        await send_with_action(callback.message.chat.id, "typing", 1.0)
+        
+        is_member = is_user_member(user_id)
+        form_completed = is_form_completed(user_id)
+        phone = get_saved_phone(user_id)
+        
+        status_parts = []
+        if is_member:
+            status_parts.append("✅ عضو گروه هستید")
+        else:
+            status_parts.append("❌ عضو گروه نیستید")
+        
+        if form_completed:
+            status_parts.append("✅ فرم عضویت را تکمیل کرده‌اید")
+        else:
+            status_parts.append("❌ فرم عضویت را تکمیل نکرده‌اید")
+        
+        if phone:
+            status_parts.append(f"📱 شماره تلفن: {phone}")
+        else:
+            status_parts.append("❌ شماره تلفن ثبت نشده")
+        
+        response = item["response"].format(
+            status="\n".join(status_parts)
+        )
+        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+        await callback.answer()
+        return
 
-@dp.message(F.text == load_menu_config()["menu_items"]["social"]["label"])
-async def handle_social_button(message: Message):
-    config = load_menu_config()
-    social = config["settings"]["social"]
-    response = config["menu_items"]["social"]["response"].format(
-        instagram=social.get("instagram", ""),
-        channel=social.get("channel", "")
-    )
-    await send_message_with_typing(message.chat.id, response, 0.5)
+    if key == "announcements":
+        announcements = config["settings"].get("announcements", [])
+        if not announcements:
+            announcements_text = "📢 هیچ اطلاعیه‌ای وجود ندارد."
+        else:
+            announcements_text = "\n".join([f"▪️ {a}" for a in announcements])
+        response = item["response"].format(
+            announcements=announcements_text
+        )
+        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+        await callback.answer()
+        return
 
-@dp.message(F.text == load_menu_config()["menu_items"]["settings"]["label"])
-async def handle_settings_button(message: Message):
-    config = load_menu_config()
-    notifications = config["settings"].get("notifications_enabled", True)
-    status = "فعال ✅" if notifications else "غیرفعال ❌"
-    response = config["menu_items"]["settings"]["response"].format(
-        settings_status=f"دریافت پیام‌های همگانی: {status}"
-    )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🔕 خاموش کردن نوتیفیکیشن‌ها" if notifications else "🔔 روشن کردن نوتیفیکیشن‌ها",
-                    callback_data="toggle_notifications"
-                )
+    if key == "faq":
+        faq_items = config["settings"].get("faq", [])
+        if not faq_items:
+            faq_text = "هنوز سوالی ثبت نشده است."
+        else:
+            faq_text = "\n".join([f"❓ {item['q']}\n📝 {item['a']}" for item in faq_items])
+        response = item["response"].format(
+            faq_list=faq_text
+        )
+        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+        await callback.answer()
+        return
+
+    if key == "social":
+        social = config["settings"]["social"]
+        response = item["response"].format(
+            instagram=social.get("instagram", ""),
+            channel=social.get("channel", "")
+        )
+        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+        await callback.answer()
+        return
+
+    if key == "settings":
+        notifications = config["settings"].get("notifications_enabled", True)
+        status = "فعال ✅" if notifications else "غیرفعال ❌"
+        response = item["response"].format(
+            settings_status=f"دریافت پیام‌های همگانی: {status}"
+        )
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔕 خاموش کردن نوتیفیکیشن‌ها" if notifications else "🔔 روشن کردن نوتیفیکیشن‌ها",
+                        callback_data="toggle_notifications"
+                    )
+                ],
+                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back")]
             ]
-        ]
+        )
+        await callback.message.edit_text(response, reply_markup=keyboard)
+        await callback.answer()
+        return
+
+    # گزینه‌های دیگر (join, topics, invite_link) که نیاز به formatting دارند
+    if key == "join" or key == "invite_link":
+        response = item["response"].format(
+            invite_link=config["settings"]["group_invite_link"]
+        )
+    else:
+        response = item["response"]  # topics بدون placeholder
+
+    await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+    await callback.answer()
+
+@dp.callback_query(F.data == "menu:back")
+async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=user_panel_keyboard()
     )
-    await send_message_with_typing(message.chat.id, response, 0.5, reply_markup=keyboard)
+    await callback.answer()
 
 @dp.callback_query(F.data == "toggle_notifications")
 async def cb_toggle_notifications(callback: CallbackQuery):
@@ -1322,24 +1285,19 @@ async def cb_toggle_notifications(callback: CallbackQuery):
     await save_menu_config(config)
     status = "فعال ✅" if not current else "غیرفعال ❌"
     await callback.answer(f"نوتیفیکیشن‌ها {status} شد.")
-    await callback.message.edit_text(
-        f"⚙️ تنظیمات به‌روز شد.\nوضعیت: {status}",
-        reply_markup=admin_back_keyboard()
-    )
+    # بازگشت به پنل تنظیمات
+    await cb_menu_back(callback, None)  # با state=None
 
-@dp.callback_query(F.data == "show_topics")
-async def cb_show_topics(callback: CallbackQuery):
-    await callback.answer()
-    config = load_menu_config()
-    response = config["menu_items"]["topics"]["response"]
-    await callback.message.answer(response)
+@dp.message(ContactAdminStates.waiting_for_message)
+async def handle_contact_admin_message(message: Message, state: FSMContext):
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=user_panel_keyboard())
+        return
 
-@dp.callback_query(F.data == "contact_admin")
-async def cb_contact_admin(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer(
-        "📞 پیام خود را تایپ کنید تا برای ادمین ارسال شود."
-    )
+    await relay_message_to_admin(message.from_user, message.text)
+    await message.answer("✅ پیام شما به ادمین ارسال شد.", reply_markup=user_panel_keyboard())
+    await state.clear()
 
 # ---------- مدیریت پویای منو (پنل ادمین) ----------
 class MenuEditStates(StatesGroup):
@@ -1419,11 +1377,7 @@ async def handle_edit_item_text(message: Message, state: FSMContext):
     await save_menu_config(config)
     await message.answer(f"✅ متن دکمه‌ی «{config['menu_items'][key]['label']}» به‌روز شد.")
     await state.clear()
-    # بازگشت به منوی ویرایش
-    await message.answer(
-        "🛠 مدیریت منو",
-        reply_markup=admin_menu_edit_keyboard()
-    )
+    await message.answer("🛠 مدیریت منو", reply_markup=admin_menu_edit_keyboard())
 
 @dp.callback_query(F.data == "admin:edit_invite_link")
 async def cb_edit_invite_link(callback: CallbackQuery, state: FSMContext):
@@ -1570,7 +1524,7 @@ async def handle_edit_social(message: Message, state: FSMContext):
     await message.answer("✅ شبکه‌های اجتماعی به‌روز شدند.", reply_markup=admin_menu_edit_keyboard())
     await state.clear()
 
-# ---------- ارسال پیام مستقیم به کاربر (از پنل ادمین - با پشتیبانی از فایل) ----------
+# ---------- ارسال مستقیم به کاربر (با پشتیبانی از فایل) ----------
 class AdminSendMsgStates(StatesGroup):
     waiting_for_identifier = State()
     waiting_for_message = State()
@@ -1655,99 +1609,36 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
     try:
         if message.text:
             await bot.send_message(chat_id=user_id, text=message.text)
-            
         elif message.photo:
-            await bot.send_photo(
-                chat_id=user_id, 
-                photo=message.photo[-1].file_id, 
-                caption=caption
-            )
-            
+            await bot.send_photo(chat_id=user_id, photo=message.photo[-1].file_id, caption=caption)
         elif message.document:
-            await bot.send_document(
-                chat_id=user_id, 
-                document=message.document.file_id, 
-                caption=caption,
-                file_name=message.document.file_name
-            )
-            
+            await bot.send_document(chat_id=user_id, document=message.document.file_id, caption=caption, file_name=message.document.file_name)
         elif message.video:
-            await bot.send_video(
-                chat_id=user_id, 
-                video=message.video.file_id, 
-                caption=caption,
-                supports_streaming=True
-            )
-            
+            await bot.send_video(chat_id=user_id, video=message.video.file_id, caption=caption, supports_streaming=True)
         elif message.audio:
-            await bot.send_audio(
-                chat_id=user_id, 
-                audio=message.audio.file_id, 
-                caption=caption,
-                performer=message.audio.performer,
-                title=message.audio.title
-            )
-            
+            await bot.send_audio(chat_id=user_id, audio=message.audio.file_id, caption=caption, performer=message.audio.performer, title=message.audio.title)
         elif message.voice:
-            await bot.send_voice(
-                chat_id=user_id, 
-                voice=message.voice.file_id, 
-                caption=caption
-            )
-            
+            await bot.send_voice(chat_id=user_id, voice=message.voice.file_id, caption=caption)
         elif message.video_note:
-            await bot.send_video_note(
-                chat_id=user_id, 
-                video_note=message.video_note.file_id
-            )
-            
+            await bot.send_video_note(chat_id=user_id, video_note=message.video_note.file_id)
         elif message.sticker:
-            await bot.send_sticker(
-                chat_id=user_id, 
-                sticker=message.sticker.file_id
-            )
-            
+            await bot.send_sticker(chat_id=user_id, sticker=message.sticker.file_id)
         elif message.animation:
-            await bot.send_animation(
-                chat_id=user_id, 
-                animation=message.animation.file_id, 
-                caption=caption
-            )
-            
+            await bot.send_animation(chat_id=user_id, animation=message.animation.file_id, caption=caption)
         elif message.contact:
-            await bot.send_contact(
-                chat_id=user_id,
-                phone_number=message.contact.phone_number,
-                first_name=message.contact.first_name,
-                last_name=message.contact.last_name
-            )
-            
+            await bot.send_contact(chat_id=user_id, phone_number=message.contact.phone_number, first_name=message.contact.first_name, last_name=message.contact.last_name)
         elif message.location:
-            await bot.send_location(
-                chat_id=user_id,
-                latitude=message.location.latitude,
-                longitude=message.location.longitude
-            )
-            
+            await bot.send_location(chat_id=user_id, latitude=message.location.latitude, longitude=message.location.longitude)
         elif message.poll:
-            await bot.send_poll(
-                chat_id=user_id,
-                question=message.poll.question,
-                options=[opt.text for opt in message.poll.options],
-                is_anonymous=message.poll.is_anonymous,
-                type=message.poll.type
-            )
-            
+            await bot.send_poll(chat_id=user_id, question=message.poll.question, options=[opt.text for opt in message.poll.options], is_anonymous=message.poll.is_anonymous, type=message.poll.type)
         else:
             await message.answer("❌ این نوع فایل پشتیبانی نمی‌شود.")
             return
 
         await message.answer(f"✅ پیام به <b>{html_escape(display)}</b> ارسال شد.")
-        
     except Exception as e:
         logger.error(f"خطا در ارسال پیام به {user_id}: {e}")
         await message.answer(f"❌ خطا در ارسال پیام: {e}")
-    
     await state.clear()
 
 # ---------- خاموش/روشن کردن ربات ----------
@@ -1774,7 +1665,7 @@ async def cb_admin_toggle_bot(callback: CallbackQuery, state: FSMContext):
         asyncio.create_task(process_pending_requests())
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی
+#  بخش حضور و غیاب (همانند قبل)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -2146,9 +2037,7 @@ async def handle_submit(request: web.Request) -> web.Response:
         with open(DATA_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     
-    # به‌روزرسانی کش
     _user_cache[str(user_id)] = record
-
     logger.info("فرم کاربر %s ذخیره شد.", user_id)
 
     approved = False
@@ -2159,13 +2048,6 @@ async def handle_submit(request: web.Request) -> web.Response:
         logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user_id, e)
 
     try:
-        keyboard = None
-        if GROUP_INVITE_LINK:
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="ورود به گروه ↩️", url=GROUP_INVITE_LINK)]
-                ]
-            )
         if approved:
             await bot.send_message(
                 chat_id=user_id,
@@ -2174,9 +2056,9 @@ async def handle_submit(request: web.Request) -> web.Response:
                     "از این لحظه، تو یکی از ساکنانِ این رواقی. کتابخانه‌ی "
                     "فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
                     "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد.\n\n"
-                    "از منوی زیر برای دسترسی به امکانات استفاده کنید:"
+                    "از پنل زیر برای دسترسی به امکانات استفاده کنید:"
                 ),
-                reply_markup=main_menu_keyboard(),
+                reply_markup=user_panel_keyboard(),
             )
         else:
             await bot.send_message(
@@ -2220,7 +2102,7 @@ async def stop_self_ping(app: web.Application) -> None:
             pass
 
 # ==============================================================
-#  مدیریت خطاهای سراسری (Global Error Handler)
+#  مدیریت خطاهای سراسری
 # ==============================================================
 
 @dp.errors()
@@ -2250,7 +2132,7 @@ async def global_error_handler(update: Update, exception: Exception):
                 ),
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text="📞 ارتباط با ادمین", callback_data="contact_admin")]
+                        [InlineKeyboardButton(text="📞 ارتباط با ادمین", callback_data="menu:contact_admin")]
                     ]
                 )
             )
