@@ -3,7 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با پنل کاربری و مدیریت پیشرفته
+نسخهٔ نهایی با اصلاحات:
+- رفع باگ تشخیص عضویت (is_user_member)
+- سیستم حضور و غیاب با خروجی اکسل و ارسال فقط به ادمین
+- مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
+- دکمه‌ی «دعوت از دوستان» در پنل کاربری
+- اسپینر لودینگ در فرم و رفع باگ تیک قوانین
 """
 
 import asyncio
@@ -190,12 +195,8 @@ def collect_form_user_ids() -> set[int]:
                 continue
     return user_ids
 
+# ✅ اصلاح: تابع is_user_member به‌صورت async واقعی
 async def is_user_member(user_id: int) -> bool:
-    # نکته: قبلاً اینجا از asyncio.run(...) استفاده شده بود که چون این
-    # تابع همیشه از داخل یک event loop که از قبل در حال اجراست صدا زده
-    # می‌شود (مثلاً از داخل handle_start)، همیشه RuntimeError می‌داد و
-    # نتیجه‌اش این بود که تابع همیشه False برمی‌گرداند. حالا تابع خودش
-    # async است و مستقیماً await می‌شود.
     try:
         member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
         return member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
@@ -409,18 +410,15 @@ def build_export_file() -> BufferedInputFile | None:
 
 # ---------- مدیریت منوی پویا ----------
 def migrate_menu_config(config: dict) -> dict:
-    """به‌روزرسانی تنظیمات پیش‌فرض برای نسخه‌های قدیمی"""
     if "menu_items" not in config:
         config["menu_items"] = {}
     if "settings" not in config:
         config["settings"] = {}
 
-    # تغییر نام دکمه «عضویت در گروه» به «دعوت از دوستان»
     if "join" in config["menu_items"]:
         if config["menu_items"]["join"].get("label") == "📝 عضویت در گروه":
             config["menu_items"]["join"]["label"] = "👥 دعوت از دوستان"
 
-    # اطمینان از وجود کلیدهای دیگر
     defaults = {
         "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
         "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
@@ -626,12 +624,12 @@ async def send_with_action(chat_id: int, action: str = "typing", delay: float = 
     if delay > 0:
         await asyncio.sleep(delay)
 
-# ---------- دستور /start ----------
+# ---------- دستور /start (اصلاح‌شده) ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message):
     user_id = message.from_user.id
     await send_with_action(message.chat.id, "typing", 0.5)
-    
+
     if is_form_completed(user_id) or await is_user_member(user_id):
         await message.answer(
             "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
@@ -958,16 +956,13 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
 # ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
 @dp.callback_query(F.data.startswith("admin:"))
 async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext):
-    # بررسی دسترسی ادمین
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
 
-    # استخراج بخش بعد از "admin:"
     action = callback.data.split(":", 1)[1]
     logger.info(f"ادمین {callback.from_user.id} درخواست {action} کرد")
 
-    # ---------- منوی اصلی و بازگشت ----------
     if action == "menu":
         await state.clear()
         status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
@@ -987,7 +982,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer("پنل بسته شد.")
         return
 
-    # ---------- آمار ----------
     if action == "stats":
         await callback.answer()
         await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
@@ -998,7 +992,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.message.edit_text(await build_stats_detail_text(), reply_markup=admin_back_keyboard())
         return
 
-    # ---------- خروجی اکسل ----------
     if action == "export":
         await callback.answer("⏳ در حال ساخت فایل اکسل...")
         await send_with_action(callback.message.chat.id, "upload_document", 1.0)
@@ -1009,7 +1002,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
         return
 
-    # ---------- برادکست ----------
     if action == "broadcast":
         await state.set_state(BroadcastStates.waiting_for_text)
         await callback.message.edit_text(
@@ -1022,18 +1014,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    if action == "broadcast_confirm":
-        # این مورد در حالت FSM جداگانه مدیریت می‌شود
-        # اما برای امنیت، اگر به اینجا رسیدیم، به منو برگردیم
-        await callback.answer("لطفاً از طریق منوی برادکست اقدام کنید.")
-        return
-
-    if action == "broadcast_cancel":
-        # مشابه بالا
-        await callback.answer("لغو شد.")
-        return
-
-    # ---------- ارسال مستقیم ----------
     if action == "sendmsg":
         await state.set_state(AdminSendMsgStates.waiting_for_identifier)
         await callback.message.edit_text(
@@ -1047,7 +1027,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # ---------- خاموش/روشن ----------
     if action == "toggle_bot":
         state_data = load_bot_state()
         new_enabled = not state_data.get("enabled", True)
@@ -1066,7 +1045,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             asyncio.create_task(process_pending_requests())
         return
 
-    # ---------- مدیریت محتوا ----------
     if action == "menu_edit":
         await state.clear()
         await callback.message.edit_text(
@@ -1077,7 +1055,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # ---------- ویرایش اطلاعیه‌ها ----------
     if action == "edit_announcements":
         await state.set_state(ContentEditStates.editing_announcements)
         config = load_menu_config()
@@ -1116,7 +1093,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         config["settings"]["announcement_files"] = []
         await save_menu_config(config)
         await callback.answer("✅ همه اطلاعیه‌ها حذف شدند.")
-        # بازگشت به صفحه ویرایش
         await handle_all_admin_callbacks(
             CallbackQuery(
                 id=callback.id,
@@ -1143,7 +1119,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # ---------- ویرایش سوالات متداول ----------
     if action == "edit_faq":
         await state.set_state(ContentEditStates.editing_faq)
         config = load_menu_config()
@@ -1210,7 +1185,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # ---------- حذف کاربر ----------
     if action == "delete_user":
         await state.set_state(DeleteUserStates.waiting_for_user_id)
         await callback.message.edit_text(
@@ -1224,13 +1198,9 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # اگر هیچکدام نبود، خطا
     await callback.answer("❌ گزینه نامعتبر", show_alert=True)
 
-# ---------- هندلرهای اختصاصی برای FSM (برادکست، ارسال مستقیم، حذف کاربر) ----------
-# این هندلرها خارج از حلقه‌ی اصلی admin قرار می‌گیرند تا با state کار کنند.
-
-# ---------- برادکست با پشتیبانی از مدیا ----------
+# ---------- هندلرهای اختصاصی برای FSM ----------
 class BroadcastStates(StatesGroup):
     waiting_for_text = State()
     confirming = State()
@@ -1384,7 +1354,7 @@ async def handle_generic_member_message(message: Message):
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 # ==============================================================
-#  بخش پنل کاربری (هندلرهای دکمه‌های شیشه‌ای)
+#  بخش پنل کاربری
 # ==============================================================
 
 class ContactAdminStates(StatesGroup):
@@ -1412,7 +1382,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
     if key in ["close", "back"]:
         return
-    
+
     config = load_menu_config()
     item = config["menu_items"].get(key)
     if not item:
@@ -1448,24 +1418,23 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             display_name = user.full_name or user.first_name or "کاربر"
         except Exception:
             display_name = "کاربر"
-        
+
+        # نکته: تلگرام تاریخِ دقیقِ عضویت را در اختیار بات‌ها نمی‌گذارد،
+        # پس فقط خودِ وضعیتِ عضویت (که مستقیم و لحظه‌ای از تلگرام گرفته
+        # می‌شود، نه از دیتای محلیِ ما) را نشان می‌دهیم.
         is_member = False
-        join_date = "نامشخص"
         try:
             member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
             is_member = member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
-            if member.joined_date:
-                join_date = format_jalali_datetime(member.joined_date)
-        except Exception:
-            is_member = True
-        
+        except Exception as e:
+            logger.warning("گرفتن وضعیت عضویت کاربر %s ممکن نشد: %s", user_id, e)
+            is_member = False
+
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-            if join_date != "نامشخص":
-                status_text += f"\n📅 تاریخ ورود: {join_date}"
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
-        
+
         await callback.message.edit_text(
             status_text,
             reply_markup=user_panel_keyboard()
@@ -1476,48 +1445,48 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     if key == "announcements":
         announcements = config["settings"].get("announcements", [])
         announcement_files = config["settings"].get("announcement_files", [])
-        
+
         if announcements:
             announcements_text = "\n".join([f"▪️ {a}" for a in announcements])
         else:
             announcements_text = "📢 هیچ اطلاعیه‌ای وجود ندارد."
-        
+
         response = item["response"].format(
             announcements=announcements_text
         )
-        
+
         await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
-        
+
         for file_id in announcement_files:
             try:
                 await callback.message.answer_document(document=file_id)
             except Exception:
                 pass
-        
+
         await callback.answer()
         return
 
     if key == "faq":
         faq_items = config["settings"].get("faq", [])
         faq_files = config["settings"].get("faq_files", [])
-        
+
         if faq_items:
             faq_text = "\n".join([f"❓ {item['q']}\n📝 {item['a']}" for item in faq_items])
         else:
             faq_text = "هنوز سوالی ثبت نشده است."
-        
+
         response = item["response"].format(
             faq_list=faq_text
         )
-        
+
         await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
-        
+
         for file_id in faq_files:
             try:
                 await callback.message.answer_document(document=file_id)
             except Exception:
                 pass
-        
+
         await callback.answer()
         return
 
@@ -1619,24 +1588,24 @@ async def handle_delete_faq_number(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("برای ادامه، روی دکمه‌ی «ویرایش سوالات متداول» کلیک کنید.", reply_markup=admin_menu_edit_keyboard())
 
-# ---------- هندلرهای ویرایش محتوا (جایگزینی متن) ----------
+# ---------- هندلرهای ویرایش محتوا ----------
 @dp.message(ContentEditStates.editing_announcements)
 async def handle_edit_announcements(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    
+
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    
+
     config = load_menu_config()
-    
+
     if message.text:
         lines = [line.strip() for line in message.text.split("\n") if line.strip()]
         if lines:
             config["settings"]["announcements"] = lines
-    
+
     file_id = None
     if message.document:
         file_id = message.document.file_id
@@ -1646,34 +1615,34 @@ async def handle_edit_announcements(message: Message, state: FSMContext):
         file_id = message.video.file_id
     elif message.audio:
         file_id = message.audio.file_id
-    
+
     if file_id:
         if "announcement_files" not in config["settings"]:
             config["settings"]["announcement_files"] = []
         config["settings"]["announcement_files"].append(file_id)
         await message.answer("✅ فایل با موفقیت ضمیمه شد.")
-    
+
     await save_menu_config(config)
-    
+
     if message.text:
         await message.answer(f"✅ {len(config['settings']['announcements'])} اطلاعیه ثبت شد.", reply_markup=admin_menu_edit_keyboard())
     else:
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
-    
+
     await state.clear()
 
 @dp.message(ContentEditStates.editing_faq)
 async def handle_edit_faq(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    
+
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    
+
     config = load_menu_config()
-    
+
     if message.text:
         lines = [line.strip() for line in message.text.split("\n") if line.strip()]
         faq_items = []
@@ -1683,7 +1652,7 @@ async def handle_edit_faq(message: Message, state: FSMContext):
                 faq_items.append({"q": q.strip(), "a": a.strip()})
         if faq_items:
             config["settings"]["faq"] = faq_items
-    
+
     file_id = None
     if message.document:
         file_id = message.document.file_id
@@ -1693,20 +1662,20 @@ async def handle_edit_faq(message: Message, state: FSMContext):
         file_id = message.video.file_id
     elif message.audio:
         file_id = message.audio.file_id
-    
+
     if file_id:
         if "faq_files" not in config["settings"]:
             config["settings"]["faq_files"] = []
         config["settings"]["faq_files"].append(file_id)
         await message.answer("✅ فایل با موفقیت ضمیمه شد.")
-    
+
     await save_menu_config(config)
-    
+
     if message.text:
         await message.answer(f"✅ {len(config['settings']['faq'])} سوال و پاسخ ثبت شد.", reply_markup=admin_menu_edit_keyboard())
     else:
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
-    
+
     await state.clear()
 
 # ==============================================================
@@ -1746,7 +1715,7 @@ async def delete_user_identifier(message: Message, state: FSMContext):
 
     await state.update_data(target_user_id=user_id, target_identifier=identifier)
     await state.set_state(DeleteUserStates.confirming)
-    
+
     try:
         user = await bot.get_chat(user_id)
         display = user.full_name or str(user_id)
@@ -1787,7 +1756,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
             if str(user_id) in phones:
                 del phones[str(user_id)]
                 PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
-            
+
             if DATA_FILE.exists():
                 new_lines = []
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -1805,10 +1774,10 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                     f.write("\n".join(new_lines))
                     if new_lines:
                         f.write("\n")
-            
+
             if str(user_id) in _user_cache:
                 del _user_cache[str(user_id)]
-        
+
         await callback.message.edit_text(f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.")
         await state.clear()
         await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
@@ -1827,7 +1796,7 @@ async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # ==============================================================
-#  بخش ارسال مستقیم به کاربر (ادمین)
+#  بخش ارسال مستقیم به کاربر
 # ==============================================================
 
 class AdminSendMsgStates(StatesGroup):
@@ -1931,7 +1900,7 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
     await state.clear()
 
 # ==============================================================
-#  بخش حضور و غیاب
+#  بخش حضور و غیاب (با خروجی اکسل و ارسال فقط به ادمین)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -1945,6 +1914,50 @@ def load_attendance_data() -> dict:
 async def save_attendance_data(data: dict) -> None:
     async with _write_lock:
         ATTENDANCE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+async def build_attendance_excel(participants: list) -> BufferedInputFile:
+    """ساخت فایل اکسل از لیست شرکت‌کنندگان حضور و غیاب"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "لیست حاضرین"
+    sheet.sheet_view.rightToLeft = True
+
+    headers = ["ردیف", "نام کامل", "آیدی عددی", "یوزرنیم", "تاریخ ثبت (شمسی)"]
+    sheet.append(headers)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="14532F", end_color="14532F", fill_type="solid")
+    for cell in sheet[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for i, p in enumerate(participants, 1):
+        uid = p["user_id"]
+        time_jalali = p.get("time", "نامشخص")
+
+        try:
+            member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+            name = member.user.full_name or str(uid)
+            username = f"@{member.user.username}" if member.user.username else ""
+        except Exception:
+            name = f"کاربر {uid}"
+            username = ""
+
+        sheet.append([i, name, uid, username, time_jalali])
+
+    col_widths = [8, 30, 18, 20, 22]
+    for idx, width in enumerate(col_widths, 1):
+        sheet.column_dimensions[get_column_letter(idx)].width = width
+
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return BufferedInputFile(buffer.read(), filename="لیست_حاضرین_نهایی.xlsx")
 
 async def _send_attendance_reminder(chat_id: int, main_message_id: int, data: dict):
     active = data.get("active")
@@ -2003,53 +2016,82 @@ async def _finish_attendance(chat_id: int):
     if not active:
         return
 
+    admin_id = active.get("admin_id", chat_id)  # اگر admin_id ثبت نشده بود، به همان گروه بفرست
     participants = active.get("participants", [])
     total = len(participants)
 
+    # حذف پیام یادآوری آخر
+    last_reminder = active.get("last_reminder_message_id")
+    if last_reminder:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=last_reminder)
+        except Exception:
+            pass
+
+    # -------- ارسال گزارش به ادمین --------
     if total == 0:
-        await bot.send_message(chat_id=chat_id, text="📋 در این دوره هیچ‌کس حضور ثبت نکرد.")
+        await bot.send_message(
+            chat_id=admin_id,
+            text="📋 در این دوره هیچ‌کس حضور ثبت نکرد."
+        )
     else:
-        lines = [
-            f"📋 <b>لیست نهایی حاضرین در دوره‌ی حضور و غیاب</b>\n"
-            f"تعداد کل: <b>{total}</b> نفر\n\n"
-            "<b>👤 شرکت‌کنندگان:</b>"
-        ]
-        for p in participants:
-            uid = p["user_id"]
-            time_jalali = p.get("time", "نامشخص")
-            try:
-                member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
-                name = member.user.full_name or str(uid)
-                username = f" @{member.user.username}" if member.user.username else ""
-                lines.append(f"• {name} (ID: <code>{uid}</code>){username} — ثبت در {time_jalali}")
-            except Exception:
-                lines.append(f"• کاربر با آیدی <code>{uid}</code> — ثبت در {time_jalali}")
+        # خلاصه
+        await bot.send_message(
+            chat_id=admin_id,
+            text=f"📋 <b>دوره‌ی حضور و غیاب به پایان رسید.</b>\nتعداد کل شرکت‌کنندگان: <b>{total}</b> نفر"
+        )
 
-        if len(lines) <= 60:
-            await bot.send_message(chat_id=chat_id, text="\n".join(lines))
+        # اگر بیش از ۳۰ نفر باشد، فایل اکسل ارسال شود
+        if total > 30:
+            excel_file = await build_attendance_excel(participants)
+            await bot.send_document(
+                chat_id=admin_id,
+                document=excel_file,
+                caption=f"📄 لیست کامل {total} نفر شرکت‌کننده"
+            )
         else:
-            plain = [l.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for l in lines]
-            with BytesIO() as f:
-                f.write("\n".join(plain).encode("utf-8"))
-                f.seek(0)
-                await bot.send_document(
-                    chat_id=chat_id,
-                    document=BufferedInputFile(f.read(), filename="لیست_نهایی_حاضرین.txt"),
-                    caption=f"📄 لیست کامل حاضرین (تعداد {total} نفر)"
-                )
+            # کمتر یا مساوی ۳۰ نفر → لیست متنی
+            lines = ["👤 <b>شرکت‌کنندگان:</b>"]
+            for p in participants:
+                uid = p["user_id"]
+                time_jalali = p.get("time", "نامشخص")
+                try:
+                    member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+                    name = member.user.full_name or str(uid)
+                    username = f" @{member.user.username}" if member.user.username else ""
+                    lines.append(f"• {name} (ID: <code>{uid}</code>){username} — ثبت در {time_jalali}")
+                except Exception:
+                    lines.append(f"• کاربر با آیدی <code>{uid}</code> — ثبت در {time_jalali}")
 
+            text = "\n".join(lines)
+            if len(text) < 4000:
+                await bot.send_message(chat_id=admin_id, text=text)
+            else:
+                # اگر خیلی طولانی شد، فایل متنی بفرست
+                plain = [l.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for l in lines]
+                with BytesIO() as f:
+                    f.write("\n".join(plain).encode("utf-8"))
+                    f.seek(0)
+                    await bot.send_document(
+                        chat_id=admin_id,
+                        document=BufferedInputFile(f.read(), filename="لیست_حاضرین.txt"),
+                        caption=f"📄 لیست کامل حاضرین (تعداد {total} نفر)"
+                    )
+
+    # پاک کردن دوره از فایل
     data["active"] = None
     await save_attendance_data(data)
 
+    # لغو تسک یادآوری
     task_key = f"reminder_{chat_id}"
     if task_key in _attendance_tasks:
         _attendance_tasks[task_key].cancel()
         del _attendance_tasks[task_key]
 
+    # تأکید بر ارسال گزارش
     await bot.send_message(
-        chat_id=chat_id,
-        text="⏰ <b>دوره‌ی حضور و غیاب به پایان رسید.</b>\n"
-             "از تمام شرکت‌کنندگان سپاسگزاریم. تا دوره‌ی بعدی."
+        chat_id=admin_id,
+        text="✅ گزارش نهایی حضور و غیاب ارسال شد."
     )
 
 @dp.message(Command("attendance_start"))
@@ -2087,10 +2129,12 @@ async def cmd_attendance_start(message: Message):
         await message.answer("خطا در ارسال پیام حضور.")
         return
 
+    # ذخیره داده‌های دوره با admin_id
     active_data = {
         "started_at": datetime.utcnow().isoformat(),
         "message_id": sent_msg.message_id,
         "chat_id": message.chat.id,
+        "admin_id": message.from_user.id,  # ← ذخیره ادمین
         "participants": [],
         "reminder_count": 0,
         "last_reminder_message_id": None,
@@ -2139,14 +2183,9 @@ async def cmd_attendance_end(message: Message):
         await message.answer("هیچ دوره‌ی فعالی برای پایان دادن وجود ندارد.")
         return
 
-    task_key = f"reminder_{message.chat.id}"
-    if task_key in _attendance_tasks:
-        _attendance_tasks[task_key].cancel()
-        del _attendance_tasks[task_key]
-
-    data["active"] = None
-    await save_attendance_data(data)
-    await message.answer("✅ دوره‌ی حضور و غیاب به‌صورت دستی پایان یافت.")
+    # پایان دادن و ارسال گزارش به ادمین
+    await _finish_attendance(message.chat.id)
+    await message.answer("✅ دوره‌ی حضور و غیاب به‌صورت دستی پایان یافت و گزارش برای شما ارسال شد.")
 
 @dp.message(Command("attendance_report"))
 async def cmd_attendance_report(message: Message):
@@ -2163,33 +2202,27 @@ async def cmd_attendance_report(message: Message):
         await message.answer("📋 تا الان کسی حضور خود را ثبت نکرده است.")
         return
 
-    lines = [
-        f"📋 <b>لیست حاضرین در دوره‌ی حضور و غیاب</b>\n"
-        f"تعداد کل: <b>{len(participants)}</b> نفر\n\n"
-        "<b>👤 شرکت‌کنندگان:</b>"
-    ]
-    for p in participants:
-        uid = p["user_id"]
-        time_jalali = p.get("time", "نامشخص")
-        try:
-            member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
-            name = member.user.full_name or str(uid)
-            username = f" @{member.user.username}" if member.user.username else ""
-            lines.append(f"• {name} (ID: <code>{uid}</code>){username} — ثبت در {time_jalali}")
-        except Exception:
-            lines.append(f"• کاربر با آیدی <code>{uid}</code> — ثبت در {time_jalali}")
-
-    if len(lines) <= 50:
-        await message.answer("\n".join(lines))
+    # ارسال گزارش موقت به ادمین (بدون پایان دادن به دوره)
+    total = len(participants)
+    if total > 30:
+        excel_file = await build_attendance_excel(participants)
+        await message.answer_document(
+            document=excel_file,
+            caption=f"📄 لیست حاضرین تا این لحظه (تعداد {total} نفر)"
+        )
     else:
-        plain = [l.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "") for l in lines]
-        with BytesIO() as f:
-            f.write("\n".join(plain).encode("utf-8"))
-            f.seek(0)
-            await message.answer_document(
-                BufferedInputFile(f.read(), filename="لیست_حاضرین.txt"),
-                caption=f"📄 لیست کامل حاضرین (تعداد {len(participants)} نفر)"
-            )
+        lines = ["📋 لیست حاضرین تا این لحظه:"]
+        for p in participants:
+            uid = p["user_id"]
+            time_jalali = p.get("time", "نامشخص")
+            try:
+                member = await bot.get_chat_member(GROUP_CHAT_ID, uid)
+                name = member.user.full_name or str(uid)
+                username = f" @{member.user.username}" if member.user.username else ""
+                lines.append(f"• {name} (ID: {uid}){username} — ثبت در {time_jalali}")
+            except Exception:
+                lines.append(f"• کاربر با آیدی {uid} — ثبت در {time_jalali}")
+        await message.answer("\n".join(lines))
 
 @dp.callback_query(F.data == "attendance:yes")
 async def cb_attendance_yes(callback: CallbackQuery):
@@ -2302,7 +2335,7 @@ async def handle_submit(request: web.Request) -> web.Response:
     async with _write_lock:
         with open(DATA_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    
+
     _user_cache[str(user_id)] = record
     logger.info("فرم کاربر %s ذخیره شد.", user_id)
 
@@ -2374,17 +2407,17 @@ async def stop_self_ping(app: web.Application) -> None:
 @dp.errors()
 async def global_error_handler(update: Update, exception: Exception):
     logger.error(f"❌ خطای سراسری: {exception}", exc_info=True)
-    
+
     user_id = None
     chat_id = None
-    
+
     if update.message:
         user_id = update.message.from_user.id
         chat_id = update.message.chat.id
     elif update.callback_query:
         user_id = update.callback_query.from_user.id
         chat_id = update.callback_query.message.chat.id
-    
+
     if chat_id:
         try:
             await bot.send_message(
@@ -2404,7 +2437,7 @@ async def global_error_handler(update: Update, exception: Exception):
             )
         except Exception as e:
             logger.error(f"ارسال پیام خطا به کاربر ممکن نشد: {e}")
-    
+
     if NOTIFY_CHAT_ID_INT and user_id:
         try:
             error_summary = f"{exception.__class__.__name__}: {str(exception)[:100]}"
@@ -2419,7 +2452,7 @@ async def global_error_handler(update: Update, exception: Exception):
             )
         except Exception as e:
             logger.error(f"ارسال گزارش خطا به ادمین ممکن نشد: {e}")
-    
+
     return True
 
 # ---------- راه‌اندازی وب‌سرور ----------
