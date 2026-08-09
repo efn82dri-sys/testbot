@@ -3,11 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با قابلیت‌های پیشرفته:
+نسخهٔ نهایی با قابلیت‌های پیشرفته و اصلاحات:
 - یادآوری خودکار تکمیل فرم (۱ ساعت پس از ارسال شماره)
-- داشبورد مدیریتی با خلاصه آمار لحظه‌ای
+- داشبورد مدیریتی با خلاصه آمار لحظه‌ای (راست‌چین)
 - پاسخ به پیام کاربران با یک دکمه (بدون نیاز به ریپلای)
-- ویرایش منوی پویا با رابط گفت‌وگویی مرحله‌به‌مرحله
+- ویرایش منوی پویا (فقط اطلاعیه‌ها و سوالات متداول) با رابط گفت‌وگویی مرحله‌به‌مرحله
+- رفع باگ‌های FSM در ویرایش منو
 """
 
 import asyncio
@@ -77,7 +78,7 @@ PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
-REMINDER_FILE = Path(__file__).parent / "data" / "reminders.json"   # جدید
+REMINDER_FILE = Path(__file__).parent / "data" / "reminders.json"
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -99,7 +100,7 @@ _pending_leave_polls: dict[str, int] = {}
 _pending_admin_replies: dict[int, int] = {}
 _attendance_tasks: dict[str, asyncio.Task] = {}
 _user_cache: dict[str, dict] = {}
-_pending_form_reminders: dict[int, asyncio.Task] = {}  # جدید: برای لغو تسک‌های یادآوری
+_pending_form_reminders: dict[int, asyncio.Task] = {}
 
 try:
     NOTIFY_CHAT_ID_INT = int(NOTIFY_CHAT_ID) if NOTIFY_CHAT_ID else None
@@ -244,13 +245,11 @@ async def remove_reminder(user_id: int) -> None:
         REMINDER_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 async def _schedule_form_reminder(user_id: int) -> None:
-    """برنامه‌ریزی یادآوری ۱ ساعت بعد از ارسال دکمه‌ی فرم"""
     if user_id in _pending_form_reminders:
         _pending_form_reminders[user_id].cancel()
 
     async def reminder_task():
-        await asyncio.sleep(3600)  # ۱ ساعت
-        # بررسی اینکه آیا فرم هنوز تکمیل نشده
+        await asyncio.sleep(3600)
         if not is_form_completed(user_id):
             try:
                 await bot.send_message(
@@ -275,7 +274,6 @@ async def _schedule_form_reminder(user_id: int) -> None:
                 logger.warning("ارسال یادآوری به کاربر %s ممکن نشد: %s", user_id, e)
         else:
             logger.info("کاربر %s قبلاً فرم را تکمیل کرده، یادآوری لغو شد", user_id)
-        # پاک کردن از دیکشنری و فایل
         _pending_form_reminders.pop(user_id, None)
         await remove_reminder(user_id)
 
@@ -285,7 +283,6 @@ async def _schedule_form_reminder(user_id: int) -> None:
     logger.info("یادآوری فرم برای کاربر %s برنامه‌ریزی شد", user_id)
 
 async def cancel_form_reminder(user_id: int) -> None:
-    """لغو یادآوری فرم در صورت تکمیل"""
     if user_id in _pending_form_reminders:
         _pending_form_reminders[user_id].cancel()
         del _pending_form_reminders[user_id]
@@ -293,7 +290,6 @@ async def cancel_form_reminder(user_id: int) -> None:
         logger.info("یادآوری فرم کاربر %s لغو شد", user_id)
 
 async def restore_reminders() -> None:
-    """بازیابی تسک‌های یادآوری در استارتاپ ربات"""
     data = load_reminders()
     for user_id_str, timestamp in data.items():
         try:
@@ -301,12 +297,10 @@ async def restore_reminders() -> None:
             if is_form_completed(user_id):
                 await remove_reminder(user_id)
                 continue
-            # بررسی زمان گذشته
             try:
                 sent_time = datetime.fromisoformat(timestamp)
                 elapsed = (datetime.utcnow() - sent_time).total_seconds()
                 if elapsed >= 3600:
-                    # اگر بیش از ۱ ساعت گذشته، یادآوری بفرست و حذف کن
                     try:
                         await bot.send_message(
                             chat_id=user_id,
@@ -328,7 +322,6 @@ async def restore_reminders() -> None:
                         pass
                     await remove_reminder(user_id)
                 else:
-                    # برنامه‌ریزی مجدد با زمان باقی‌مانده
                     remaining = 3600 - elapsed
                     async def delayed_reminder():
                         await asyncio.sleep(remaining)
@@ -363,9 +356,8 @@ async def restore_reminders() -> None:
         except Exception:
             continue
 
-# ---------- داشبورد مدیریت ----------
+# ---------- داشبورد مدیریت (راست‌چین) ----------
 async def build_admin_dashboard_text() -> str:
-    """ساخت متن داشبورد با خلاصه آمار"""
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
     except Exception:
@@ -398,6 +390,7 @@ async def build_admin_dashboard_text() -> str:
     bot_status = "🟢 روشن" if state.get("enabled", True) else "🔴 خاموش"
     pending_requests = len(state.get("pending_requests", []))
 
+    # متن راست‌چین با استفاده از تگ‌های ساده
     dashboard = (
         "📊 <b>داشبورد مدیریت رواق</b>\n\n"
         f"👥 <b>تعداد اعضای گروه:</b> {member_count}\n"
@@ -413,7 +406,7 @@ async def build_admin_dashboard_text() -> str:
     return dashboard
 
 def admin_dashboard_keyboard() -> InlineKeyboardMarkup:
-    """کیبورد مخصوص داشبورد با دکمه‌های عملیاتی"""
+    """کیبورد مخصوص داشبورد با دکمه‌های عملیاتی (راست‌چین)"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -567,23 +560,13 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# ---------- پنل ادمین (ساده برای سازگاری) ----------
+# ---------- پنل ادمین (همان داشبورد) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
-    """همان کیبورد قبلی برای استفاده در جاهایی که نیاز است"""
-    return admin_dashboard_keyboard()  # یکسان با داشبورد
+    return admin_dashboard_keyboard()
 
 def admin_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به داشبورد", callback_data="admin:menu")]]
-    )
-
-def admin_menu_edit_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📢 ویرایش اطلاعیه‌ها", callback_data="admin:edit_announcements")],
-            [InlineKeyboardButton(text="❓ ویرایش سوالات متداول", callback_data="admin:edit_faq")],
-            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")],
-        ]
     )
 
 # ---------- مدیریت وضعیت ربات ----------
@@ -691,7 +674,6 @@ async def send_vpn_warning_and_form(user) -> None:
             text="اکنون می‌توانید فرم را پر کنید.",
             reply_markup=keyboard,
         )
-        # برنامه‌ریزی یادآوری ۱ ساعت بعد
         await _schedule_form_reminder(user.id)
     except Exception as e:
         logger.warning("ارسال دکمه‌ی فرم به کاربر %s ممکن نشد: %s", user.id, e)
@@ -775,7 +757,6 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
         await increment_stat("total_joined")
         await notify_new_member(user)
         await send_welcome_to_group(user)
-        # لغو یادآوری در صورت تکمیل فرم (اگر قبلاً تکمیل کرده بود)
         await cancel_form_reminder(user.id)
         return
 
@@ -1053,25 +1034,34 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             asyncio.create_task(process_pending_requests())
         return
 
-    # ========== ویرایش منو با رابط ساده‌تر ==========
+    # ========== ویرایش منو (فقط اطلاعیه‌ها و سوالات متداول) ==========
     if action == "menu_edit_simple":
         await state.set_state(MenuEditStates.selecting_item)
         config = load_menu_config()
         items = config["menu_items"]
+        
+        editable_keys = ["announcements", "faq"]
         buttons = []
-        for key, value in items.items():
-            buttons.append([InlineKeyboardButton(
-                text=f"✏️ {value['label']}",
-                callback_data=f"admin:menu_edit_item:{key}"
-            )])
+        for key in editable_keys:
+            if key in items:
+                buttons.append([InlineKeyboardButton(
+                    text=f"✏️ {items[key]['label']}",
+                    callback_data=f"admin:menu_edit_item:{key}"
+                )])
         buttons.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:menu")])
+        
+        # لیست آیتم‌های غیرقابل ویرایش
+        non_editable = [f"• {items[k]['label']}" for k in items if k not in editable_keys]
+        non_editable_text = "\n".join(non_editable) if non_editable else "همه‌ی آیتم‌ها قابل ویرایش هستند."
+        
         await callback.message.edit_text(
-            "🛠 <b>ویرایش منوی پویا</b>\n\n"
-            "یکی از دکمه‌های منو را انتخاب کنید تا عنوان و پاسخ آن را تغییر دهید.\n"
+            f"🛠 <b>ویرایش منوی پویا</b>\n\n"
+            f"فقط <b>اطلاعیه‌ها</b> و <b>سوالات متداول</b> قابل ویرایش هستند.\n"
+            f"آیتم‌های دیگر (غیرقابل ویرایش):\n{non_editable_text}\n\n"
+            "برای ویرایش یکی از دو آیتم بالا، روی دکمه‌ی مربوطه کلیک کنید.\n"
             "هر دکمه دارای دو بخش است:\n"
             "• <b>عنوان</b> — متنی که روی دکمه نمایش داده می‌شود.\n"
-            "• <b>پاسخ</b> — پیامی که هنگام کلیک ارسال می‌شود.\n\n"
-            "برای بازگشت، روی دکمه‌ی «بازگشت» کلیک کنید.",
+            "• <b>پاسخ</b> — پیامی که هنگام کلیک ارسال می‌شود.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
         await callback.answer()
@@ -1079,10 +1069,14 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action.startswith("menu_edit_item:"):
         key = action.split(":", 2)[2]
+        config = load_menu_config()
+        current = config["menu_items"].get(key)
+        if not current:
+            await callback.answer("❌ آیتم پیدا نشد.", show_alert=True)
+            return
+
         await state.update_data(editing_key=key)
         await state.set_state(MenuEditStates.editing_label)
-        config = load_menu_config()
-        current = config["menu_items"].get(key, {})
         await callback.message.edit_text(
             f"✏️ <b>ویرایش دکمه‌ی «{current.get('label', key)}»</b>\n\n"
             f"عنوان فعلی: <code>{current.get('label', '')}</code>\n"
@@ -1092,17 +1086,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:menu_edit_simple")]]
             )
-        )
-        await callback.answer()
-        return
-
-    if action == "edit_announcements" or action == "edit_faq" or action == "announcement_delete_all" or action == "faq_delete_all" or action == "announcement_delete_one_start" or action == "faq_delete_one_start":
-        # این بخش‌ها بدون تغییر از نسخه‌ی قبلی باقی می‌مانند
-        # برای جلوگیری از خطا، یک پیام ساده نمایش می‌دهیم
-        await callback.message.edit_text(
-            "⚠️ این بخش در نسخه‌ی جدید از طریق «مدیریت منو» در دسترس نیست.\n"
-            "لطفاً از گزینه‌ی «🛠 مدیریت منو» در داشبورد استفاده کنید.",
-            reply_markup=admin_back_keyboard()
         )
         await callback.answer()
         return
@@ -1120,9 +1103,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
-    # پاسخ به پیام کاربر با دکمه (ویژگی جدید)
     if action.startswith("reply_to:"):
-        # استخراج user_id از callback_data
         try:
             target_user_id = int(action.split(":", 2)[2])
         except (IndexError, ValueError):
@@ -1365,7 +1346,6 @@ async def relay_message_to_admin(user, text: str) -> None:
     display_name = html_escape(user.full_name or user.first_name or "یک عضو")
     username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
 
-    # دکمه‌ی پاسخ
     reply_button = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
@@ -1392,7 +1372,6 @@ async def relay_message_to_admin(user, text: str) -> None:
 
 @dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.reply_to_message)
 async def handle_admin_reply_via_native_reply(message: Message):
-    # برای سازگاری با روش قبلی (ریپلای) نیز باقی می‌ماند
     if not is_admin(message.from_user.id):
         return
 
@@ -1428,7 +1407,7 @@ async def handle_generic_member_message(message: Message):
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 # ==============================================================
-#  بخش پنل کاربری (بدون تغییر)
+#  بخش پنل کاربری
 # ==============================================================
 
 class ContactAdminStates(StatesGroup):
@@ -1958,7 +1937,7 @@ async def restore_attendance_tasks():
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
 # ==============================================================
-#  بخش حذف کاربر (ادمین) - بدون تغییر
+#  بخش حذف کاربر (ادمین)
 # ==============================================================
 
 class DeleteUserStates(StatesGroup):
@@ -2075,7 +2054,7 @@ async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # ==============================================================
-#  بخش ارسال مستقیم به کاربر (بدون تغییر)
+#  بخش ارسال مستقیم به کاربر
 # ==============================================================
 
 class AdminSendMsgStates(StatesGroup):
@@ -2179,6 +2158,196 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
     await state.clear()
 
 # ==============================================================
+#  توابع کمکی برای آمار و خروجی
+# ==============================================================
+
+async def build_stats_text() -> str:
+    try:
+        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+    except Exception as e:
+        logger.warning("گرفتن تعداد اعضا ممکن نشد: %s", e)
+        member_count = "نامشخص"
+
+    form_count = 0
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            form_count = sum(1 for line in f if line.strip())
+
+    stats = load_stats()
+    total_joined = stats.get("total_joined", 0)
+    total_left = stats.get("total_left", 0)
+    leave_rate = (total_left / total_joined * 100) if total_joined else 0
+
+    return (
+        "📐 <b>گزارشِ وضعیتِ بنا (آمار لحظه‌ای)</b>\n\n"
+        f"👥 ساکنینِ فعلی: <b>{member_count}</b>\n"
+        f"📝 پروفایل‌های تکمیل‌شده (فرم): <b>{form_count}</b>\n"
+        f"➕ کل ورودها از ابتدای ساماندهی: <b>{total_joined}</b>\n"
+        f"➖ کل خروج‌ها: <b>{total_left}</b>\n"
+        f"📉 نرخِ ریزشِ جمعیت: <b>{leave_rate:.1f}٪</b>\n\n"
+        "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
+    )
+
+async def build_stats_detail_text() -> str:
+    if not DATA_FILE.exists():
+        return "هنوز هیچ فرمی ثبت نشده است."
+
+    educations: dict[str, int] = {}
+    referrals: dict[str, int] = {}
+    interests: dict[str, int] = {}
+    form_count = 0
+
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            form_count += 1
+
+            edu_label = record.get("education_label") or record.get("education") or "نامشخص"
+            educations[edu_label] = educations.get(edu_label, 0) + 1
+
+            ref = record.get("referral") or "نامشخص"
+            ref_label = REFERRAL_LABELS.get(ref, ref)
+            referrals[ref_label] = referrals.get(ref_label, 0) + 1
+
+            for interest in record.get("interests") or []:
+                interests[interest] = interests.get(interest, 0) + 1
+
+    if form_count == 0:
+        return "هنوز هیچ فرمی ثبت نشده است."
+
+    lines = [
+        f"📊 <b>آمارِ تفصیلیِ ساکنانِ رواق</b>\n"
+        f"از میانِ <b>{form_count}</b> نفری که احرازِ هویت را کامل کرده‌اند:\n"
+    ]
+
+    lines.append("<b>مقطعِ تحصیلی:</b>")
+    for label, count in sorted(educations.items(), key=lambda x: -x[1]):
+        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+
+    lines.append("\n<b>نحوه‌ی آشنایی:</b>")
+    for label, count in sorted(referrals.items(), key=lambda x: -x[1]):
+        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+
+    lines.append("\n<b>علایق:</b>")
+    if interests:
+        for label, count in sorted(interests.items(), key=lambda x: -x[1]):
+            lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+    else:
+        lines.append("هنوز کسی علایقش را ثبت نکرده.")
+
+    return "\n".join(lines)
+
+def build_export_file() -> BufferedInputFile | None:
+    phones = load_phones()
+    if not phones and not DATA_FILE.exists():
+        return None
+
+    form_records = {}
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    uid = str(record.get("user_id"))
+                    form_records[uid] = record
+                except json.JSONDecodeError:
+                    continue
+
+    all_user_ids = set(phones.keys()) | set(form_records.keys())
+    if not all_user_ids:
+        return None
+
+    rows = []
+    for uid_str in all_user_ids:
+        try:
+            uid_int = int(uid_str)
+        except ValueError:
+            continue
+        phone = phones.get(uid_str, "")
+        record = form_records.get(uid_str, {})
+
+        username = record.get("username")
+        full_name = record.get("full_name", "")
+        submitted_at = record.get("submitted_at", "")
+        education = record.get("education_label") or record.get("education") or "-"
+        referral = REFERRAL_LABELS.get(record.get("referral"), record.get("referral") or "-")
+        interests_list = record.get("interests", [])
+        interests_str = "، ".join(interests_list) if interests_list else "-"
+
+        form_status = "تکمیل شده" if record else "تکمیل نشده"
+
+        rows.append([
+            uid_str,
+            f"@{username}" if username else "-",
+            full_name or "-",
+            phone or "-",
+            submitted_at[:16] if submitted_at else "-",
+            education,
+            referral,
+            interests_str,
+            form_status,
+        ])
+
+    rows.sort(key=lambda r: (r[4] == "-", r[4]), reverse=False)
+
+    headers = [
+        "آیدی عددی",
+        "نام کاربری",
+        "نام کامل",
+        "شماره تلفن",
+        "تاریخ و ساعت ثبت (UTC)",
+        "مقطع تحصیلی",
+        "نحوه آشنایی",
+        "علایق انتخاب‌شده",
+        "وضعیت فرم",
+    ]
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "همه‌ی تأییدشده‌ها"
+    sheet.sheet_view.rightToLeft = True
+
+    sheet.append(headers)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="14532F", end_color="14532F", fill_type="solid")
+    for cell in sheet[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row in rows:
+        sheet.append(row)
+
+    for row_cells in sheet.iter_rows(min_row=2):
+        for cell in row_cells:
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for col_index, _ in enumerate(headers, start=1):
+        max_len = len(headers[col_index - 1])
+        for row in rows:
+            cell_value = row[col_index - 1]
+            max_len = max(max_len, len(str(cell_value)))
+        sheet.column_dimensions[get_column_letter(col_index)].width = min(max_len + 4, 42)
+
+    sheet.freeze_panes = "A2"
+    sheet.row_dimensions[1].height = 22
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
+
+# ==============================================================
 #  اعتبارسنجی initData و دریافت فرم (وب‌هوک)
 # ==============================================================
 
@@ -2236,7 +2405,6 @@ async def handle_submit(request: web.Request) -> web.Response:
     _user_cache[str(user_id)] = record
     logger.info("فرم کاربر %s ذخیره شد.", user_id)
 
-    # لغو یادآوری در صورت تکمیل فرم
     await cancel_form_reminder(user_id)
 
     approved = False
@@ -2375,9 +2543,7 @@ async def on_startup(app: web.Application):
     )
     logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
 
-    # بازیابی تسک‌های یادآوری فرم
     await restore_reminders()
-    # بازیابی تسک‌های حضور و غیاب
     await restore_attendance_tasks()
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
