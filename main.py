@@ -6,8 +6,9 @@
 نسخه‌ی نهایی با قابلیت‌های:
 - حضور و غیاب خودکار با یادآوری هر ۳ ساعت و پایان خودکار بعد از ۲۴ ساعت
 - تاریخ و ساعت شمسی + تهران
-- ارسال پیام مستقیم به کاربر با /sendmsg (فقط در چت خصوصی ربات)
-- پنل مدیریت کامل
+- ارسال پیام مستقیم به کاربر از پنل ادمین (دو مرحله‌ای)
+- خاموش/روشن کردن ربات با ذخیرهٔ درخواست‌های معلق
+- پنل مدیریت کامل با دکمه‌های دوستونه
 """
 
 import asyncio
@@ -73,6 +74,7 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
+BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 
 REFERRAL_LABELS = {
     "instagram": "اینستاگرام",
@@ -374,15 +376,65 @@ def build_export_file() -> BufferedInputFile | None:
     buffer.seek(0)
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
-# ---------- پنل مدیریت (دکمه‌ها) ----------
+# ---------- مدیریت وضعیت ربات (خاموش/روشن) ----------
+def load_bot_state() -> dict:
+    if not BOT_STATE_FILE.exists():
+        return {"enabled": True, "pending_requests": []}
+    try:
+        return json.loads(BOT_STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"enabled": True, "pending_requests": []}
+
+async def save_bot_state(state: dict) -> None:
+    async with _write_lock:
+        BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+async def process_pending_requests():
+    """پردازش درخواست‌های عضویت معلق هنگام روشن شدن ربات"""
+    state = load_bot_state()
+    pending = state.get("pending_requests", [])
+    if not pending:
+        return
+    logger.info("شروع پردازش %d درخواست معلق", len(pending))
+    for user_id in pending:
+        try:
+            user = await bot.get_chat(user_id)
+            await bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"سلام {user.first_name}،\n\n"
+                    "ربات اکنون فعال شده است. برای تکمیل عضویت، لطفاً شمارهٔ تلفن خود را ارسال کنید."
+                ),
+                reply_markup=phone_request_keyboard(),
+            )
+            logger.info("پیام به کاربر %s ارسال شد", user_id)
+        except Exception as e:
+            logger.warning("پردازش درخواست معلق برای %s ناموفق: %s", user_id, e)
+        await asyncio.sleep(2)  # فاصله ۲ ثانیه برای جلوگیری از اسپم
+    # پس از پردازش، صف را خالی می‌کنیم
+    state["pending_requests"] = []
+    await save_bot_state(state)
+    logger.info("پردازش درخواست‌های معلق پایان یافت")
+
+# ---------- پنل مدیریت (دکمه‌های دوستونه) ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats")],
-            [InlineKeyboardButton(text="📈 آمار تفصیلیِ فرم‌ها", callback_data="admin:stats_detail")],
-            [InlineKeyboardButton(text="📄 خروجی اکسل (همه‌ی تأییدشده‌ها)", callback_data="admin:export")],
-            [InlineKeyboardButton(text="📢 ارسال پیام همگانی", callback_data="admin:broadcast")],
-            [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
+            [
+                InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats"),
+                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail"),
+            ],
+            [
+                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export"),
+                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast"),
+            ],
+            [
+                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg"),
+                InlineKeyboardButton(text="🔌 خاموش/روشن", callback_data="admin:toggle_bot"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ بستن", callback_data="admin:close"),
+            ],
         ]
     )
 
@@ -440,7 +492,7 @@ async def send_vpn_warning_and_form(user) -> None:
     except Exception as e:
         logger.warning("ارسال دکمه‌ی فرم به کاربر %s ممکن نشد: %s", user.id, e)
 
-# ---------- درخواست عضویت ----------
+# ---------- درخواست عضویت (با پشتیبانی از خاموش/روشن) ----------
 @dp.chat_join_request()
 async def handle_join_request(join_request: ChatJoinRequest):
     if join_request.chat.id != GROUP_CHAT_ID:
@@ -449,6 +501,26 @@ async def handle_join_request(join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
 
+    # بررسی وضعیت ربات
+    state = load_bot_state()
+    if not state.get("enabled", True):
+        # ربات خاموش است
+        try:
+            await bot.send_message(
+                chat_id=user.id,
+                text="🔴 فعلاً عضوگیری نداریم. به محض روشن شدن ربات، به شما پیام خواهیم داد."
+            )
+        except Exception as e:
+            logger.warning("ارسال پیام خاموشی به کاربر %s ممکن نشد: %s", user.id, e)
+        # ذخیره در صف
+        pending = state.get("pending_requests", [])
+        if user.id not in pending:
+            pending.append(user.id)
+            state["pending_requests"] = pending
+            await save_bot_state(state)
+        return
+
+    # ربات روشن است — ادامهٔ روند عادی
     if get_saved_phone(user.id):
         await send_vpn_warning_and_form(user)
         return
@@ -622,8 +694,9 @@ async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await state.clear()
+    status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
     await message.answer(
-        "🛠 <b>پنل مدیریت</b>\nیکی از گزینه‌ها را انتخاب کنید:",
+        f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=admin_panel_keyboard(),
     )
 
@@ -691,8 +764,9 @@ async def cb_admin_menu(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     await state.clear()
+    status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
     await callback.message.edit_text(
-        "🛠 <b>پنل مدیریت</b>\nیکی از گزینه‌ها را انتخاب کنید:",
+        f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=admin_panel_keyboard(),
     )
     await callback.answer()
@@ -906,7 +980,7 @@ async def handle_generic_member_message(message: Message):
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
 # ==============================================================
-#  بخش حضور و غیاب هفتگی (جدید)
+#  بخش حضور و غیاب هفتگی (اصلاح‌شده)
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -937,7 +1011,7 @@ async def _send_attendance_reminder(chat_id: int, main_message_id: int, data: di
         "⚠️ <b>یادآوری حضور هفتگی</b>\n\n"
         "هنوز حضور خود را ثبت نکرده‌اید.\n"
         "لطفاً با کلیک روی دکمه‌ی «✅ من اینجام» در پیام بالایی، حضور خود را تأیید کنید.\n\n"
-        "این پیام هر ۳ ساعت تکرار می‌شود تا پایان دوره‌ی ۲۴ ساعته."
+        "🔴 یادآوری: اگر نامتان در لیست نهایی نباشد، از گروه حذف خواهید شد."
     )
     try:
         sent = await bot.send_message(
@@ -956,7 +1030,8 @@ async def _attendance_reminder_task(chat_id: int, main_message_id: int):
     if not active:
         return
 
-    for i in range(1, 8):
+    # ۸ بار یادآوری = ۲۴ ساعت کامل
+    for i in range(1, 9):
         await asyncio.sleep(3 * 3600)
 
         data = load_attendance_data()
@@ -1044,10 +1119,10 @@ async def cmd_attendance_start(message: Message):
 
     text = (
         "📋 <b>ثبت حضور هفتگی</b>\n\n"
-        "⚠️ این پیام یک <b>دوره‌ی ۲۴ ساعته</b> برای شناسایی اعضای فعال است.\n"
-        "اگر در گروه فعال هستید، حتماً روی دکمه‌ی زیر کلیک کنید.\n\n"
-        "🔔 <b>یادآوری:</b> هر ۳ ساعت یک پیام یادآوری دریافت خواهید کرد تا پایان دوره.\n"
-        "پس از ۲۴ ساعت، لیست نهایی حاضرین اعلام می‌شود."
+        "⚠️ این پیام یک <b>دورهٔ ۲۴ ساعته</b> برای شناسایی اعضای فعال است.\n"
+        "اگر در گروه فعال هستید، حتماً روی دکمهٔ زیر کلیک کنید.\n\n"
+        "🔴 <b>توجه:</b> اعضایی که نامشان در لیست نهایی نباشد، از گروه <b>حذف</b> خواهند شد.\n\n"
+        "پس از پایان ۲۴ ساعت، لیست نهایی اعلام می‌شود."
     )
     try:
         sent_msg = await bot.send_message(
@@ -1205,7 +1280,7 @@ async def restore_attendance_tasks():
         return
 
     reminder_count = active.get("reminder_count", 0)
-    if reminder_count < 7:
+    if reminder_count < 8:
         next_reminder_seconds = (reminder_count + 1) * 3 * 3600 - elapsed
         if next_reminder_seconds < 0:
             next_reminder_seconds = 0
@@ -1226,49 +1301,123 @@ async def restore_attendance_tasks():
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
 # ==============================================================
-#  ارسال پیام مستقیم به کاربر (فقط در چت خصوصی ربات)
+#  ارسال پیام مستقیم به کاربر (از پنل ادمین - دو مرحله‌ای)
 # ==============================================================
-@dp.message(Command("sendmsg"))
-async def cmd_sendmsg(message: Message, command: CommandObject):
+class AdminSendMsgStates(StatesGroup):
+    waiting_for_identifier = State()
+    waiting_for_message = State()
+
+@dp.callback_query(F.data == "admin:sendmsg")
+async def cb_admin_sendmsg_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(AdminSendMsgStates.waiting_for_identifier)
+    await callback.message.edit_text(
+        "📨 <b>ارسال پیام مستقیم</b>\n\n"
+        "شناسهٔ کاربر را وارد کنید (آیدی عددی یا @username):\n"
+        "مثال: 123456789  یا  @Ali_Arch",
+        reply_markup=admin_back_keyboard()
+    )
+    await callback.answer()
+
+@dp.message(AdminSendMsgStates.waiting_for_identifier)
+async def admin_sendmsg_identifier(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    # این دستور فقط در چت خصوصی کار می‌کند
-    if message.chat.type != "private":
-        await message.answer("این دستور فقط در چت خصوصی ربات قابل استفاده است.")
+
+    identifier = message.text.strip()
+    if not identifier:
+        await message.answer("لطفاً یک شناسه معتبر وارد کنید.")
         return
 
-    args = command.args
-    if not args:
-        await message.answer(
-            "فرمت: /sendmsg <user_id یا @username> <متن پیام>\n"
-            "مثال: /sendmsg 123456789 سلام، لطفاً پاسخ دهید.\n"
-            "مثال: /sendmsg @Ali_Arch فایل پروژه را بررسی کنید."
-        )
+    # بررسی دستور لغو
+    if identifier.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    parts = args.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.answer("لطفاً هم کاربر و هم پیام را وارد کنید.")
-        return
-    user_input, text = parts[0], parts[1]
 
     user_id = None
-    if user_input.isdigit():
-        user_id = int(user_input)
+    if identifier.isdigit():
+        user_id = int(identifier)
     else:
-        # حذف @ اضافی
-        username = user_input.lstrip('@')
+        username = identifier.lstrip('@')
         try:
             chat = await bot.get_chat(f"@{username}")
             user_id = chat.id
         except Exception as e:
-            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}")
+            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}\nلطفاً دوباره وارد کنید.")
             return
+
+    # دریافت اطلاعات کاربر
+    try:
+        user = await bot.get_chat(user_id)
+        display = user.full_name or str(user_id)
+        await state.update_data(target_user_id=user_id, target_user_display=display)
+        await message.answer(
+            f"👤 کاربر: <b>{html_escape(display)}</b> (آیدی: <code>{user_id}</code>)\n\n"
+            "حالا <b>متن پیام</b> را وارد کنید:",
+            reply_markup=admin_back_keyboard()
+        )
+        await state.set_state(AdminSendMsgStates.waiting_for_message)
+    except Exception as e:
+        await message.answer(f"❌ خطا در دریافت اطلاعات کاربر: {e}")
+
+@dp.message(AdminSendMsgStates.waiting_for_message)
+async def admin_sendmsg_text(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    text = message.text
+    if not text:
+        await message.answer("لطفاً یک متن وارد کنید.")
+        return
+
+    if text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    data = await state.get_data()
+    user_id = data.get("target_user_id")
+    display = data.get("target_user_display", "کاربر")
+    if not user_id:
+        await message.answer("خطا: کاربر مشخص نیست.")
+        await state.clear()
+        return
 
     try:
         await bot.send_message(chat_id=user_id, text=text)
-        await message.answer(f"✅ پیام به کاربر {user_input} ارسال شد.")
+        await message.answer(f"✅ پیام به <b>{html_escape(display)}</b> ارسال شد.")
     except Exception as e:
         await message.answer(f"❌ خطا در ارسال پیام: {e}")
+    await state.clear()
+
+# ==============================================================
+#  خاموش/روشن کردن ربات (دکمه)
+# ==============================================================
+@dp.callback_query(F.data == "admin:toggle_bot")
+async def cb_admin_toggle_bot(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("دسترسی ندارید.", show_alert=True)
+        return
+
+    state_data = load_bot_state()
+    new_enabled = not state_data.get("enabled", True)
+    state_data["enabled"] = new_enabled
+    await save_bot_state(state_data)
+
+    status_text = "روشن ✅" if new_enabled else "خاموش 🔴"
+    await callback.answer(f"ربات {status_text} شد.")
+
+    await callback.message.edit_text(
+        f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}",
+        reply_markup=admin_panel_keyboard()
+    )
+
+    if new_enabled:
+        # پردازش صف در پس‌زمینه
+        asyncio.create_task(process_pending_requests())
 
 # ==============================================================
 #  اعتبارسنجی initData و دریافت فرم (وب‌هوک)
