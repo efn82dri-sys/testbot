@@ -1129,7 +1129,7 @@ async def handle_generic_member_message(message: Message):
 class ContactAdminStates(StatesGroup):
     waiting_for_message = State()
 
-# هندلر اختصاصی برای بازگشت به پنل (باید قبل از هندلر عمومی بیاید)
+# هندلر اختصاصی برای بازگشت به پنل
 @dp.callback_query(F.data == "menu:back")
 async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -1183,10 +1183,19 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    # ======================== اصلاح شده: وضعیت عضویت ========================
     if key == "my_status":
         user_id = callback.from_user.id
         await send_with_action(callback.message.chat.id, "typing", 1.0)
         
+        # دریافت اطلاعات کاربر
+        try:
+            user = await bot.get_chat(user_id)
+            display_name = user.full_name or user.first_name or "کاربر"
+        except Exception:
+            display_name = "کاربر"
+        
+        # بررسی عضویت و تاریخ ورود
         is_member = False
         join_date = "نامشخص"
         try:
@@ -1195,34 +1204,25 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             if member.joined_date:
                 join_date = format_jalali_datetime(member.joined_date)
         except Exception:
-            # در صورت عدم دسترسی، فرض می‌کنیم کاربر عضو است
+            # در صورت عدم دسترسی، فرض می‌کنیم کاربر عضو است (چون به این مرحله رسیده)
             is_member = True
         
-        form_completed = is_form_completed(user_id)
-        phone = get_saved_phone(user_id)
-        
-        status_parts = []
+        # ساخت پاسخ
         if is_member:
-            status_parts.append(f"✅ عضو گروه هستید (از {join_date})")
+            status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
+            if join_date != "نامشخص":
+                status_text += f"\n📅 تاریخ ورود: {join_date}"
         else:
-            status_parts.append("❌ عضو گروه نیستید")
+            status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
         
-        if form_completed:
-            status_parts.append("✅ فرم عضویت را تکمیل کرده‌اید")
-        else:
-            status_parts.append("❌ فرم عضویت را تکمیل نکرده‌اید")
-        
-        if phone:
-            status_parts.append(f"📱 شماره تلفن: {phone}")
-        else:
-            status_parts.append("❌ شماره تلفن ثبت نشده")
-        
-        response = item["response"].format(
-            status="\n".join(status_parts)
+        # ارسال پاسخ با دکمه برگشت
+        await callback.message.edit_text(
+            status_text,
+            reply_markup=user_panel_keyboard()
         )
-        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
         await callback.answer()
         return
+    # ======================================================================
 
     if key == "announcements":
         announcements = config["settings"].get("announcements", [])
