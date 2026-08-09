@@ -408,7 +408,7 @@ def load_menu_config() -> dict:
         default_config = {
             "menu_items": {
                 "join": {"label": "📝 عضویت در گروه", "response": "برای عضویت در گروه، روی لینک زیر کلیک کنید:\n{invite_link}"},
-                "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
+                "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
                 "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
                 "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -439,7 +439,7 @@ async def save_menu_config(config: dict) -> None:
     async with _write_lock:
         MENU_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
-# ---------- پنل تاپیک‌ها (با لینک‌های مستقیم) ----------
+# ---------- پنل تایپیک‌ها (با لینک‌های مستقیم) ----------
 TOPICS = {
     "🎓 آکادمی آنلاین": "https://t.me/c/4388421316/146",
     "🛠 رفع اشکال تخصصی": "https://t.me/thedaraeii",
@@ -458,7 +458,6 @@ TOPICS = {
 }
 
 def topics_panel_keyboard() -> InlineKeyboardMarkup:
-    """ساخت پنل تاپیک‌ها با دکمه‌های دوستونه"""
     buttons = []
     topic_items = list(TOPICS.items())
     for i in range(0, len(topic_items), 2):
@@ -748,7 +747,7 @@ async def send_welcome_to_group(user) -> None:
             text=(
                 f"{user_mention} عزیز خوش آمدی 👋\n\n"
                 "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
-                "▫️ برای شروع، خودت را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
+                "▫️ برای شروع، خودت را در تایپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
                 "🏛 آماده‌ای برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
@@ -1123,9 +1122,22 @@ async def handle_generic_member_message(message: Message):
     await relay_message_to_admin(message.from_user, text)
     await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
 
-# ---------- پنل کاربری (هندلرهای دکمه‌های شیشه‌ای) ----------
+# ==============================================================
+#  بخش پنل کاربری (هندلرهای دکمه‌های شیشه‌ای)
+# ==============================================================
+
 class ContactAdminStates(StatesGroup):
     waiting_for_message = State()
+
+# هندلر اختصاصی برای بازگشت به پنل (باید قبل از هندلر عمومی بیاید)
+@dp.callback_query(F.data == "menu:back")
+async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=user_panel_keyboard()
+    )
+    await callback.answer()
 
 @dp.callback_query(F.data == "menu:close")
 async def cb_menu_close(callback: CallbackQuery):
@@ -1138,7 +1150,9 @@ async def cb_menu_close(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("menu:"))
 async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
-    if key == "close":
+    
+    # اگر کلید close یا back باشد، در هندلرهای اختصاصی مدیریت می‌شود
+    if key in ["close", "back"]:
         return
     
     config = load_menu_config()
@@ -1150,8 +1164,8 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     # پردازش ویژه برای دکمه‌های خاص
     if key == "topics":
         await callback.message.edit_text(
-            "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"
-            "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",
+            "📚 <b>راهنمای تایپیک‌های رواق</b>\n\n"
+            "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:",
             reply_markup=topics_panel_keyboard()
         )
         await callback.answer()
@@ -1173,7 +1187,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         user_id = callback.from_user.id
         await send_with_action(callback.message.chat.id, "typing", 1.0)
         
-        # تلاش برای دریافت اطلاعات عضویت
         is_member = False
         join_date = "نامشخص"
         try:
@@ -1182,7 +1195,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             if member.joined_date:
                 join_date = format_jalali_datetime(member.joined_date)
         except Exception:
-            # در صورت عدم دسترسی، فرض می‌کنیم کاربر عضو است (چون به این مرحله رسیده)
+            # در صورت عدم دسترسی، فرض می‌کنیم کاربر عضو است
             is_member = True
         
         form_completed = is_form_completed(user_id)
@@ -1226,7 +1239,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         
         await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
         
-        # ارسال فایل‌های ضمیمه
         for file_id in announcement_files:
             try:
                 await callback.message.answer_document(document=file_id)
@@ -1282,15 +1294,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
     await callback.answer()
 
-@dp.callback_query(F.data == "menu:back")
-async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text(
-        "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=user_panel_keyboard()
-    )
-    await callback.answer()
-
 @dp.message(ContactAdminStates.waiting_for_message)
 async def handle_contact_admin_message(message: Message, state: FSMContext):
     if message.text and message.text.startswith("/"):
@@ -1302,12 +1305,13 @@ async def handle_contact_admin_message(message: Message, state: FSMContext):
     await message.answer("✅ پیام شما به ادمین ارسال شد.", reply_markup=user_panel_keyboard())
     await state.clear()
 
-# ---------- مدیریت محتوا (پنل ادمین) ----------
+# ==============================================================
+#  بخش مدیریت محتوا (پنل ادمین) - با قابلیت ارسال همزمان متن و فایل
+# ==============================================================
+
 class ContentEditStates(StatesGroup):
     editing_announcements = State()
-    editing_announcement_files = State()
     editing_faq = State()
-    editing_faq_files = State()
 
 @dp.callback_query(F.data == "admin:menu_edit")
 async def cb_menu_edit(callback: CallbackQuery, state: FSMContext):
@@ -1329,62 +1333,43 @@ async def cb_edit_announcements(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ContentEditStates.editing_announcements)
     config = load_menu_config()
     announcements = config["settings"].get("announcements", [])
+    files = config["settings"].get("announcement_files", [])
+    
     text = "📢 اطلاعیه‌های فعلی:\n"
     if announcements:
         text += "\n".join([f"{i+1}. {a}" for i, a in enumerate(announcements)])
     else:
         text += "هیچ اطلاعیه‌ای وجود ندارد."
+    
+    if files:
+        text += f"\n\n📎 {len(files)} فایل ضمیمه شده است."
+    
     text += "\n\nلطفاً اطلاعیه‌های جدید را به‌صورت خط‌به‌خط وارد کنید:\n"
-    text += "📎 برای افزودن فایل/عکس، پس از ارسال متن، روی دکمه‌ی «افزودن فایل» کلیک کنید.\n"
+    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید.\n"
     text += "(برای لغو، /cancel بفرستید)"
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📎 افزودن فایل", callback_data="admin:add_announcement_file")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:menu_edit")]
-            ]
-        )
-    )
+    
+    await callback.message.edit_text(text, reply_markup=admin_back_keyboard())
     await callback.answer()
 
 @dp.message(ContentEditStates.editing_announcements)
 async def handle_edit_announcements(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    if message.text and message.text.startswith("/"):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
-        return
-    lines = [line.strip() for line in message.text.split("\n") if line.strip()]
-    config = load_menu_config()
-    config["settings"]["announcements"] = lines
-    await save_menu_config(config)
-    await message.answer(f"✅ {len(lines)} اطلاعیه ثبت شد.", reply_markup=admin_menu_edit_keyboard())
-    await state.clear()
-
-@dp.callback_query(F.data == "admin:add_announcement_file")
-async def cb_add_announcement_file(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        return
-    await state.set_state(ContentEditStates.editing_announcement_files)
-    await callback.message.edit_text(
-        "📎 لطفاً فایل یا عکس مورد نظر را ارسال کنید.\n"
-        "پس از ارسال، به‌طور خودکار به اطلاعیه‌ها اضافه می‌شود.\n"
-        "(برای لغو، /cancel بفرستید)",
-        reply_markup=admin_back_keyboard()
-    )
-    await callback.answer()
-
-@dp.message(ContentEditStates.editing_announcement_files)
-async def handle_announcement_file(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
     
+    config = load_menu_config()
+    
+    # پردازش متن (اگر وجود داشته باشد)
+    if message.text:
+        lines = [line.strip() for line in message.text.split("\n") if line.strip()]
+        if lines:
+            config["settings"]["announcements"] = lines
+    
+    # پردازش فایل (اگر وجود داشته باشد)
     file_id = None
     if message.document:
         file_id = message.document.file_id
@@ -1394,16 +1379,20 @@ async def handle_announcement_file(message: Message, state: FSMContext):
         file_id = message.video.file_id
     elif message.audio:
         file_id = message.audio.file_id
-    else:
-        await message.answer("❌ لطفاً یک فایل، عکس یا ویدئو ارسال کنید.")
-        return
     
-    config = load_menu_config()
-    if "announcement_files" not in config["settings"]:
-        config["settings"]["announcement_files"] = []
-    config["settings"]["announcement_files"].append(file_id)
+    if file_id:
+        if "announcement_files" not in config["settings"]:
+            config["settings"]["announcement_files"] = []
+        config["settings"]["announcement_files"].append(file_id)
+        await message.answer("✅ فایل با موفقیت ضمیمه شد.")
+    
     await save_menu_config(config)
-    await message.answer("✅ فایل به اطلاعیه‌ها اضافه شد.", reply_markup=admin_menu_edit_keyboard())
+    
+    if message.text:
+        await message.answer(f"✅ {len(config['settings']['announcements'])} اطلاعیه ثبت شد.", reply_markup=admin_menu_edit_keyboard())
+    else:
+        await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
+    
     await state.clear()
 
 @dp.callback_query(F.data == "admin:edit_faq")
@@ -1413,69 +1402,50 @@ async def cb_edit_faq(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ContentEditStates.editing_faq)
     config = load_menu_config()
     faq_items = config["settings"].get("faq", [])
+    files = config["settings"].get("faq_files", [])
+    
     text = "❓ سوالات متداول فعلی:\n"
     if faq_items:
         text += "\n".join([f"{i+1}. س: {item['q']}\n   ج: {item['a']}" for i, item in enumerate(faq_items)])
     else:
         text += "هیچ سوالی ثبت نشده است."
+    
+    if files:
+        text += f"\n\n📎 {len(files)} فایل ضمیمه شده است."
+    
     text += "\n\nلطفاً سوالات جدید را به‌صورت زیر وارد کنید (هر سوال و پاسخ در یک خط):\n"
     text += "سوال: پاسخ\n"
     text += "مثال: چطور عضو شوم؟: روی /start کلیک کنید.\n"
-    text += "📎 برای افزودن فایل/عکس، پس از ارسال متن، روی دکمه‌ی «افزودن فایل» کلیک کنید.\n"
+    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید.\n"
     text += "(برای لغو، /cancel بفرستید)"
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="📎 افزودن فایل", callback_data="admin:add_faq_file")],
-                [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:menu_edit")]
-            ]
-        )
-    )
+    
+    await callback.message.edit_text(text, reply_markup=admin_back_keyboard())
     await callback.answer()
 
 @dp.message(ContentEditStates.editing_faq)
 async def handle_edit_faq(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    if message.text and message.text.startswith("/"):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
-        return
-    lines = [line.strip() for line in message.text.split("\n") if line.strip()]
-    faq_items = []
-    for line in lines:
-        if ":" in line:
-            q, a = line.split(":", 1)
-            faq_items.append({"q": q.strip(), "a": a.strip()})
-    config = load_menu_config()
-    config["settings"]["faq"] = faq_items
-    await save_menu_config(config)
-    await message.answer(f"✅ {len(faq_items)} سوال و پاسخ ثبت شد.", reply_markup=admin_menu_edit_keyboard())
-    await state.clear()
-
-@dp.callback_query(F.data == "admin:add_faq_file")
-async def cb_add_faq_file(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        return
-    await state.set_state(ContentEditStates.editing_faq_files)
-    await callback.message.edit_text(
-        "📎 لطفاً فایل یا عکس مورد نظر را ارسال کنید.\n"
-        "پس از ارسال، به‌طور خودکار به سوالات متداول اضافه می‌شود.\n"
-        "(برای لغو، /cancel بفرستید)",
-        reply_markup=admin_back_keyboard()
-    )
-    await callback.answer()
-
-@dp.message(ContentEditStates.editing_faq_files)
-async def handle_faq_file(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
+    
     if message.text and message.text.startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
     
+    config = load_menu_config()
+    
+    # پردازش متن (اگر وجود داشته باشد)
+    if message.text:
+        lines = [line.strip() for line in message.text.split("\n") if line.strip()]
+        faq_items = []
+        for line in lines:
+            if ":" in line:
+                q, a = line.split(":", 1)
+                faq_items.append({"q": q.strip(), "a": a.strip()})
+        if faq_items:
+            config["settings"]["faq"] = faq_items
+    
+    # پردازش فایل (اگر وجود داشته باشد)
     file_id = None
     if message.document:
         file_id = message.document.file_id
@@ -1485,19 +1455,26 @@ async def handle_faq_file(message: Message, state: FSMContext):
         file_id = message.video.file_id
     elif message.audio:
         file_id = message.audio.file_id
-    else:
-        await message.answer("❌ لطفاً یک فایل، عکس یا ویدئو ارسال کنید.")
-        return
     
-    config = load_menu_config()
-    if "faq_files" not in config["settings"]:
-        config["settings"]["faq_files"] = []
-    config["settings"]["faq_files"].append(file_id)
+    if file_id:
+        if "faq_files" not in config["settings"]:
+            config["settings"]["faq_files"] = []
+        config["settings"]["faq_files"].append(file_id)
+        await message.answer("✅ فایل با موفقیت ضمیمه شد.")
+    
     await save_menu_config(config)
-    await message.answer("✅ فایل به سوالات متداول اضافه شد.", reply_markup=admin_menu_edit_keyboard())
+    
+    if message.text:
+        await message.answer(f"✅ {len(config['settings']['faq'])} سوال و پاسخ ثبت شد.", reply_markup=admin_menu_edit_keyboard())
+    else:
+        await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
+    
     await state.clear()
 
-# ---------- حذف کاربر (پنل ادمین) ----------
+# ==============================================================
+#  بخش حذف کاربر (پنل ادمین)
+# ==============================================================
+
 class DeleteUserStates(StatesGroup):
     waiting_for_user_id = State()
     confirming = State()
@@ -1545,11 +1522,9 @@ async def delete_user_identifier(message: Message, state: FSMContext):
             await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}\nلطفاً دوباره وارد کنید.")
             return
 
-    # ذخیره user_id در state
     await state.update_data(target_user_id=user_id, target_identifier=identifier)
     await state.set_state(DeleteUserStates.confirming)
     
-    # دریافت اطلاعات کاربر برای نمایش
     try:
         user = await bot.get_chat(user_id)
         display = user.full_name or str(user_id)
@@ -1583,19 +1558,14 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
-    # اجرای عملیات حذف
     try:
-        # اخراج از گروه
         await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
-        # حذف اطلاعات از فایل‌ها
         async with _write_lock:
-            # حذف از phones.json
             phones = load_phones()
             if str(user_id) in phones:
                 del phones[str(user_id)]
                 PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
             
-            # حذف از submissions.jsonl (بازنویسی فایل)
             if DATA_FILE.exists():
                 new_lines = []
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -1611,22 +1581,15 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                             continue
                 with open(DATA_FILE, "w", encoding="utf-8") as f:
                     f.write("\n".join(new_lines))
-                if new_lines:
-                    f.write("\n")
+                    if new_lines:
+                        f.write("\n")
             
-            # به‌روزرسانی کش
             if str(user_id) in _user_cache:
                 del _user_cache[str(user_id)]
         
-        await callback.message.edit_text(
-            f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد."
-        )
+        await callback.message.edit_text(f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.")
         await state.clear()
-        # نمایش پنل ادمین
-        await callback.message.answer(
-            "🛠 پنل مدیریت",
-            reply_markup=admin_panel_keyboard()
-        )
+        await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
     except Exception as e:
         logger.error(f"خطا در حذف کاربر {user_id}: {e}")
         await callback.message.edit_text(f"❌ خطا در حذف کاربر: {e}")
@@ -1641,7 +1604,10 @@ async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("عملیات حذف لغو شد.", reply_markup=admin_panel_keyboard())
     await callback.answer()
 
-# ---------- ارسال مستقیم به کاربر ----------
+# ==============================================================
+#  بخش ارسال مستقیم به کاربر
+# ==============================================================
+
 class AdminSendMsgStates(StatesGroup):
     waiting_for_identifier = State()
     waiting_for_message = State()
@@ -1758,7 +1724,10 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
         await message.answer(f"❌ خطا در ارسال پیام: {e}")
     await state.clear()
 
-# ---------- خاموش/روشن کردن ربات ----------
+# ==============================================================
+#  بخش خاموش/روشن کردن ربات
+# ==============================================================
+
 @dp.callback_query(F.data == "admin:toggle_bot")
 async def cb_admin_toggle_bot(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
