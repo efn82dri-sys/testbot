@@ -403,11 +403,61 @@ def build_export_file() -> BufferedInputFile | None:
     return BufferedInputFile(buffer.read(), filename="همه‌ی تأییدشده‌ها.xlsx")
 
 # ---------- مدیریت منوی پویا ----------
+def migrate_menu_config(config: dict) -> dict:
+    """به‌روزرسانی تنظیمات پیش‌فرض برای نسخه‌های قدیمی"""
+    if "menu_items" not in config:
+        config["menu_items"] = {}
+    if "settings" not in config:
+        config["settings"] = {}
+
+    # تغییر نام دکمه «عضویت در گروه» به «دعوت از دوستان»
+    if "join" in config["menu_items"]:
+        if config["menu_items"]["join"].get("label") == "📝 عضویت در گروه":
+            config["menu_items"]["join"]["label"] = "👥 دعوت از دوستان"
+
+    # اطمینان از وجود کلیدهای دیگر
+    defaults = {
+        "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
+        "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
+        "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
+        "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
+        "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
+        "faq": {"label": "❓ سوالات متداول", "response": "سوالات پرتکرار:\n{faq_list}"},
+        "social": {"label": "🌐 شبکه‌های اجتماعی", "response": "ما را دنبال کنید:\nاینستاگرام: {instagram}\nکانال: {channel}"},
+    }
+    for key, val in defaults.items():
+        if key not in config["menu_items"]:
+            config["menu_items"][key] = val
+        else:
+            # برای join که label را تغییر دادیم، بقیه کلیدها را هم به‌روزرسانی می‌کنیم
+            if key == "join":
+                config["menu_items"][key]["label"] = defaults[key]["label"]
+                config["menu_items"][key]["response"] = defaults[key]["response"]
+
+    if "settings" not in config:
+        config["settings"] = {}
+    settings_defaults = {
+        "group_invite_link": GROUP_INVITE_LINK,
+        "announcements": [],
+        "announcement_files": [],
+        "faq": [],
+        "faq_files": [],
+        "social": {
+            "instagram": "https://www.instagram.com/archit.ir/",
+            "channel": "https://t.me/irarchit"
+        }
+    }
+    for key, val in settings_defaults.items():
+        if key not in config["settings"]:
+            config["settings"][key] = val
+
+    return config
+
 def load_menu_config() -> dict:
     if not MENU_CONFIG_FILE.exists():
         default_config = {
             "menu_items": {
-                "join": {"label": "📝 عضویت در گروه", "response": "برای عضویت در گروه، روی لینک زیر کلیک کنید:\n{invite_link}"},
+                "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
                 "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
                 "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
@@ -431,7 +481,9 @@ def load_menu_config() -> dict:
         MENU_CONFIG_FILE.write_text(json.dumps(default_config, ensure_ascii=False, indent=2), encoding="utf-8")
         return default_config
     try:
-        return json.loads(MENU_CONFIG_FILE.read_text(encoding="utf-8"))
+        config = json.loads(MENU_CONFIG_FILE.read_text(encoding="utf-8"))
+        config = migrate_menu_config(config)
+        return config
     except:
         return load_menu_config()
 
@@ -1306,26 +1358,16 @@ async def handle_contact_admin_message(message: Message, state: FSMContext):
     await state.clear()
 
 # ==============================================================
-#  بخش مدیریت محتوا (پنل ادمین) - با قابلیت ارسال همزمان متن و فایل
+#  بخش مدیریت محتوا (پنل ادمین) - با قابلیت حذف اطلاعیه‌ها
 # ==============================================================
 
 class ContentEditStates(StatesGroup):
     editing_announcements = State()
     editing_faq = State()
+    deleting_announcement = State()   # برای حذف یک اطلاعیه
+    deleting_faq = State()            # برای حذف یک سوال
 
-@dp.callback_query(F.data == "admin:menu_edit")
-async def cb_menu_edit(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("دسترسی ندارید.", show_alert=True)
-        return
-    await state.clear()
-    await callback.message.edit_text(
-        "🛠 <b>مدیریت محتوا</b>\n\n"
-        "از گزینه‌های زیر برای ویرایش محتوای پویای ربات استفاده کنید:",
-        reply_markup=admin_menu_edit_keyboard()
-    )
-    await callback.answer()
-
+# ---------- ویرایش اطلاعیه‌ها (با قابلیت حذف) ----------
 @dp.callback_query(F.data == "admin:edit_announcements")
 async def cb_edit_announcements(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -1334,23 +1376,183 @@ async def cb_edit_announcements(callback: CallbackQuery, state: FSMContext):
     config = load_menu_config()
     announcements = config["settings"].get("announcements", [])
     files = config["settings"].get("announcement_files", [])
-    
-    text = "📢 اطلاعیه‌های فعلی:\n"
+
+    text = "📢 <b>مدیریت اطلاعیه‌ها</b>\n\n"
     if announcements:
-        text += "\n".join([f"{i+1}. {a}" for i, a in enumerate(announcements)])
+        text += "لیست اطلاعیه‌های فعلی:\n"
+        for i, ann in enumerate(announcements, 1):
+            text += f"{i}. {ann}\n"
     else:
-        text += "هیچ اطلاعیه‌ای وجود ندارد."
-    
+        text += "هیچ اطلاعیه‌ای وجود ندارد.\n"
+
     if files:
-        text += f"\n\n📎 {len(files)} فایل ضمیمه شده است."
-    
-    text += "\n\nلطفاً اطلاعیه‌های جدید را به‌صورت خط‌به‌خط وارد کنید:\n"
-    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید.\n"
-    text += "(برای لغو، /cancel بفرستید)"
-    
-    await callback.message.edit_text(text, reply_markup=admin_back_keyboard())
+        text += f"\n📎 {len(files)} فایل ضمیمه شده است."
+
+    text += "\n\n📝 برای <b>جایگزین کردن</b> کل اطلاعیه‌ها، یک متن جدید (هر خط یک اطلاعیه) ارسال کنید.\n"
+    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید (ضمیمه می‌شود).\n"
+    text += "برای لغو، /cancel بفرستید."
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 حذف همه", callback_data="admin:announcement_delete_all")],
+            [InlineKeyboardButton(text="🗑 حذف یک مورد (شماره را وارد کنید)", callback_data="admin:announcement_delete_one_start")],
+            [InlineKeyboardButton(text="🔙 بازگشت به مدیریت محتوا", callback_data="admin:menu_edit")],
+        ]
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
+@dp.callback_query(F.data == "admin:announcement_delete_all")
+async def cb_announcement_delete_all(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    config = load_menu_config()
+    config["settings"]["announcements"] = []
+    config["settings"]["announcement_files"] = []
+    await save_menu_config(config)
+    await callback.answer("✅ همه اطلاعیه‌ها حذف شدند.")
+    # نمایش دوباره صفحه ویرایش
+    await cb_edit_announcements(callback, state)
+
+@dp.callback_query(F.data == "admin:announcement_delete_one_start")
+async def cb_announcement_delete_one_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    await state.set_state(ContentEditStates.deleting_announcement)
+    await callback.message.edit_text(
+        "🗑 <b>حذف یک اطلاعیه</b>\n\n"
+        "شمارهٔ اطلاعیه‌ای که می‌خواهید حذف کنید را وارد کنید.\n"
+        "مثال: 3\n\n"
+        "برای لغو، /cancel بفرستید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 لغو و بازگشت", callback_data="admin:edit_announcements")]]
+        )
+    )
+    await callback.answer()
+
+@dp.message(ContentEditStates.deleting_announcement)
+async def handle_delete_announcement_number(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    if not message.text or not message.text.strip().isdigit():
+        await message.answer("❌ لطفاً یک شمارهٔ معتبر (عدد) وارد کنید.")
+        return
+
+    index = int(message.text.strip())
+    config = load_menu_config()
+    announcements = config["settings"].get("announcements", [])
+    if 1 <= index <= len(announcements):
+        deleted = announcements.pop(index - 1)
+        config["settings"]["announcements"] = announcements
+        await save_menu_config(config)
+        await message.answer(f"✅ اطلاعیهٔ شمارهٔ {index} با متن:\n«{deleted}»\nحذف شد.")
+    else:
+        await message.answer(f"❌ شمارهٔ {index} معتبر نیست. تعداد اطلاعیه‌ها: {len(announcements)}")
+
+    await state.clear()
+    # بازگشت به صفحه ویرایش با استفاده از یک کال‌بک جدید (برای نمایش مجدد)
+    # چون اینجا در یک message هستیم و نمی‌توانیم callback را صدا کنیم، یک پیام جدید می‌فرستیم
+    await message.answer("برای ادامه، روی دکمه‌ی «ویرایش اطلاعیه‌ها» کلیک کنید.", reply_markup=admin_menu_edit_keyboard())
+
+# ---------- ویرایش سوالات متداول (با قابلیت حذف) ----------
+@dp.callback_query(F.data == "admin:edit_faq")
+async def cb_edit_faq(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    await state.set_state(ContentEditStates.editing_faq)
+    config = load_menu_config()
+    faq_items = config["settings"].get("faq", [])
+    files = config["settings"].get("faq_files", [])
+
+    text = "❓ <b>مدیریت سوالات متداول</b>\n\n"
+    if faq_items:
+        text += "لیست سوالات فعلی:\n"
+        for i, item in enumerate(faq_items, 1):
+            text += f"{i}. س: {item['q']}\n   ج: {item['a']}\n"
+    else:
+        text += "هیچ سوالی ثبت نشده است.\n"
+
+    if files:
+        text += f"\n📎 {len(files)} فایل ضمیمه شده است."
+
+    text += "\n\n📝 برای <b>جایگزین کردن</b> کل سوالات، هر سوال و پاسخ را در یک خط به‌صورت زیر وارد کنید:\n"
+    text += "سوال: پاسخ\n"
+    text += "مثال: چطور عضو شوم؟: روی /start کلیک کنید.\n"
+    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید (ضمیمه می‌شود).\n"
+    text += "برای لغو، /cancel بفرستید."
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 حذف همه", callback_data="admin:faq_delete_all")],
+            [InlineKeyboardButton(text="🗑 حذف یک مورد (شماره را وارد کنید)", callback_data="admin:faq_delete_one_start")],
+            [InlineKeyboardButton(text="🔙 بازگشت به مدیریت محتوا", callback_data="admin:menu_edit")],
+        ]
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "admin:faq_delete_all")
+async def cb_faq_delete_all(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    config = load_menu_config()
+    config["settings"]["faq"] = []
+    config["settings"]["faq_files"] = []
+    await save_menu_config(config)
+    await callback.answer("✅ همه سوالات حذف شدند.")
+    await cb_edit_faq(callback, state)
+
+@dp.callback_query(F.data == "admin:faq_delete_one_start")
+async def cb_faq_delete_one_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    await state.set_state(ContentEditStates.deleting_faq)
+    await callback.message.edit_text(
+        "🗑 <b>حذف یک سوال</b>\n\n"
+        "شمارهٔ سوالی که می‌خواهید حذف کنید را وارد کنید.\n"
+        "مثال: 2\n\n"
+        "برای لغو، /cancel بفرستید.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 لغو و بازگشت", callback_data="admin:edit_faq")]]
+        )
+    )
+    await callback.answer()
+
+@dp.message(ContentEditStates.deleting_faq)
+async def handle_delete_faq_number(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    if not message.text or not message.text.strip().isdigit():
+        await message.answer("❌ لطفاً یک شمارهٔ معتبر (عدد) وارد کنید.")
+        return
+
+    index = int(message.text.strip())
+    config = load_menu_config()
+    faq_items = config["settings"].get("faq", [])
+    if 1 <= index <= len(faq_items):
+        deleted = faq_items.pop(index - 1)
+        config["settings"]["faq"] = faq_items
+        await save_menu_config(config)
+        await message.answer(f"✅ سوال شمارهٔ {index} با متن:\n«{deleted['q']}»\nحذف شد.")
+    else:
+        await message.answer(f"❌ شمارهٔ {index} معتبر نیست. تعداد سوالات: {len(faq_items)}")
+
+    await state.clear()
+    await message.answer("برای ادامه، روی دکمه‌ی «ویرایش سوالات متداول» کلیک کنید.", reply_markup=admin_menu_edit_keyboard())
+
+# ---------- هندلرهای ویرایش محتوا (جایگزینی متن) ----------
 @dp.message(ContentEditStates.editing_announcements)
 async def handle_edit_announcements(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1394,33 +1596,6 @@ async def handle_edit_announcements(message: Message, state: FSMContext):
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
     
     await state.clear()
-
-@dp.callback_query(F.data == "admin:edit_faq")
-async def cb_edit_faq(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        return
-    await state.set_state(ContentEditStates.editing_faq)
-    config = load_menu_config()
-    faq_items = config["settings"].get("faq", [])
-    files = config["settings"].get("faq_files", [])
-    
-    text = "❓ سوالات متداول فعلی:\n"
-    if faq_items:
-        text += "\n".join([f"{i+1}. س: {item['q']}\n   ج: {item['a']}" for i, item in enumerate(faq_items)])
-    else:
-        text += "هیچ سوالی ثبت نشده است."
-    
-    if files:
-        text += f"\n\n📎 {len(files)} فایل ضمیمه شده است."
-    
-    text += "\n\nلطفاً سوالات جدید را به‌صورت زیر وارد کنید (هر سوال و پاسخ در یک خط):\n"
-    text += "سوال: پاسخ\n"
-    text += "مثال: چطور عضو شوم؟: روی /start کلیک کنید.\n"
-    text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید.\n"
-    text += "(برای لغو، /cancel بفرستید)"
-    
-    await callback.message.edit_text(text, reply_markup=admin_back_keyboard())
-    await callback.answer()
 
 @dp.message(ContentEditStates.editing_faq)
 async def handle_edit_faq(message: Message, state: FSMContext):
