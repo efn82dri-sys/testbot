@@ -34,6 +34,26 @@ try {
     throw new Error('Telegram WebApp not available');
 }
 
+// ----------------------------------------------------------
+// فیدبکِ لمسی (Haptic Feedback) — لرزشِ ظریف موقعِ تعامل با اپ
+// ----------------------------------------------------------
+// نکته: HapticFeedback ممکن است روی نسخه‌های خیلی قدیمیِ کلاینتِ
+// تلگرام یا روی نسخه‌ی وبِ تلگرام (که ویبره فیزیکی معنی نداره) در
+// دسترس نباشد، پس همیشه داخل try/catch صدا زده می‌شود تا در آن
+// موارد بی‌صدا نادیده گرفته شود و باعثِ خطا نشود.
+function haptic(kind, style) {
+    try {
+        if (!tg.HapticFeedback) return;
+        if (kind === "impact") {
+            tg.HapticFeedback.impactOccurred(style || "light");
+        } else if (kind === "notification") {
+            tg.HapticFeedback.notificationOccurred(style || "success");
+        } else if (kind === "selection") {
+            tg.HapticFeedback.selectionChanged();
+        }
+    } catch (e) { /* ignore */ }
+}
+
 // ==========================================================
 // ۰) پاپ‌آپ آدابِ رواق — باید حتماً قبل از فرم تایید شود
 // ==========================================================
@@ -50,6 +70,7 @@ agreeRow.addEventListener("click", () => {
     rulesAgreed = !rulesAgreed;
     agreeRow.classList.toggle("checked", rulesAgreed);
     rulesStartBtn.disabled = !rulesAgreed;
+    haptic("impact", "light");
 });
 
 rulesStartBtn.addEventListener("click", () => {
@@ -99,10 +120,15 @@ function toggleInterest(chip) {
     if (selectedInterests.has(value)) {
         selectedInterests.delete(value);
         chip.classList.remove("selected");
+        haptic("impact", "light");
     } else {
-        if (selectedInterests.size >= MAX_INTERESTS) return;
+        if (selectedInterests.size >= MAX_INTERESTS) {
+            haptic("notification", "error");
+            return;
+        }
         selectedInterests.add(value);
         chip.classList.add("selected");
+        haptic("impact", "light");
     }
     refreshInterestLock();
     validateCurrentStep();
@@ -125,6 +151,7 @@ educationList.querySelectorAll(".option-item").forEach((item) => {
         educationList.querySelectorAll(".option-item").forEach((el) => el.classList.remove("selected"));
         item.classList.add("selected");
         selectedEducation = { value: item.dataset.value, label: item.dataset.label };
+        haptic("selection");
         validateCurrentStep();
     });
 });
@@ -138,6 +165,7 @@ referralList.querySelectorAll(".option-item").forEach((item) => {
         referralList.querySelectorAll(".option-item").forEach((el) => el.classList.remove("selected"));
         item.classList.add("selected");
         selectedReferral = item.dataset.value;
+        haptic("selection");
         validateCurrentStep();
     });
 });
@@ -251,6 +279,7 @@ async function submitForm() {
             resultBadge.classList.add("celebrate");
             resultTitle.textContent = "🏛 عضویت‌ات به امضا رسید!";
             resultText.textContent = "هویت‌ات در این رواق ثبت شد. همین حالا می‌توانی به گروه برگردی و فایل‌ها را ورق بزنی — درگاه، به رویِ تو گشوده شد.";
+            haptic("notification", "success");
             setTimeout(() => tg.close(), 5000);
         } else {
             throw new Error(data.error || "unknown");
@@ -261,6 +290,7 @@ async function submitForm() {
         resultBadge.classList.remove("celebrate");
         resultTitle.textContent = "مشکلی پیش آمد";
         resultText.textContent = "متأسفانه در ثبتِ فرم مشکلی پیش آمد. لطفاً دوباره تلاش کن یا از طریقِ گروه با ادمین در میان بگذار.";
+        haptic("notification", "error");
 
         if (retryButton) retryButton.remove();
 
