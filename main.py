@@ -59,6 +59,12 @@ from openpyxl.utils import get_column_letter
 # --------------------------------------------------------------
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
+
+# شناسه‌ی افکت انیمیشنیِ 🎉 (Add an animated effect)
+# نکته‌ی مهم: message_effect_id فقط توی sendMessage/sendPhoto و... کار می‌کند،
+# روی editMessageText اثری ندارد و توسط تلگرام نادیده گرفته می‌شود.
+# همچنین این افکت‌ها فقط در چت خصوصی (private) قابل نمایش‌اند، نه در گروه.
+MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"  # 🎉
 GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")
 NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
 ADMIN_IDS = {
@@ -1434,9 +1440,21 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
-        await callback.message.edit_text(
-            status_text,
-            reply_markup=user_panel_keyboard()
+        # نکته: editMessageText پارامتر message_effect_id ندارد، پس برای
+        # نمایشِ افکتِ 🎉 مجبوریم پیامِ قبلی را حذف و یک پیامِ جدید با
+        # sendMessage ارسال کنیم. افکت فقط وقتی اعمال می‌شود که کاربر
+        # واقعاً عضو گروه باشد (حالت جشن‌گرفتنی)؛ برای حالت «عضو نیستید»
+        # افکتی ارسال نمی‌شود.
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+
+        await bot.send_message(
+            chat_id=callback.message.chat.id,
+            text=status_text,
+            reply_markup=user_panel_keyboard(),
+            message_effect_id=MESSAGE_EFFECT_PARTY_POPPER if is_member else None,
         )
         await callback.answer()
         return
