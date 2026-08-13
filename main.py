@@ -9,6 +9,7 @@
 - مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
 - دکمهٔ «دعوت از دوستان» در پنل کاربری
 - اسپینر لودینگ در فرم و رفع باگ تیک قوانین
+- ری‌اکشن انیمیشنی 🎉 روی پیام وضعیت عضویت کاربران عضو
 """
 
 import asyncio
@@ -47,6 +48,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     Update,
     WebAppInfo,
+    ReactionTypeEmoji,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -1418,9 +1420,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         except Exception:
             display_name = "کاربر"
 
-        # نکته: تلگرام تاریخِ دقیقِ عضویت را در اختیار بات‌ها نمی‌گذارد،
-        # پس فقط خودِ وضعیتِ عضویت (که مستقیم و لحظه‌ای از تلگرام گرفته
-        # می‌شود، نه از دیتای محلیِ ما) را نشان می‌دهیم.
         is_member = False
         try:
             member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
@@ -1438,6 +1437,15 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             status_text,
             reply_markup=user_panel_keyboard()
         )
+
+        # === افزودن ری‌اکشن انیمیشنی 🎉 برای کاربران عضو ===
+        if is_member:
+            await bot.set_message_reaction(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                reaction=[ReactionTypeEmoji(emoji="🎉")]
+            )
+
         await callback.answer()
         return
 
