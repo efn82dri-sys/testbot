@@ -3,15 +3,14 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با اصلاحات درخواستی:
-- ری‌اکشن 🎉 قبل از ادیت پیام وضعیت عضویت (با لاگ)
-- رنگ‌آمیزی دکمه‌های url و web_app (سبز، آبی، قرمز)
-- تغییر کلمهٔ «تایپیک» به «تاپیک» در تمام متن‌ها
-- داشبورد مدیریت با آمارهای کلیدی
-- حذف دکمهٔ تکراری آمار گروه از پنل ادمین
+نسخهٔ نهایی با اصلاحات:
+- هندل خطای AttributeError برای send_reaction
+- دکمه‌ی تست قرمز در پنل کاربری
+- رنگ‌آمیزی دکمه‌های url و web_app
+- تغییر «تایپیک» به «تاپیک»
+- داشبورد مدیریت با آمار کلیدی
 - چیدمان دو‌تایی دکمه‌های ادمین
 - شمارندهٔ /start در stats.json
-- دکمه‌ی تست رنگی در پنل کاربری
 """
 
 import asyncio
@@ -535,11 +534,9 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
     items = config["menu_items"]
     invite_link = config["settings"]["group_invite_link"]
 
-    # دکمه‌های callback_data (غیر از join که به url تبدیل شده)
     callback_keys = ["topics", "contact_admin", "my_status", "announcements", "faq", "social"]
     buttons = [
         [InlineKeyboardButton(text="👥 دعوت از دوستان", url=invite_link, color="green")],
-        # دکمه‌ی تست با رنگ قرمز (برای تست رنگ‌آمیزی)
         [InlineKeyboardButton(text="🔴 تست رنگ قرمز", url="https://t.me/irarchit", color="red")],
     ]
     for i in range(0, len(callback_keys), 2):
@@ -637,7 +634,6 @@ async def handle_start(message: Message):
     user_id = message.from_user.id
     await send_with_action(message.chat.id, "typing", 0.5)
 
-    # شمارنده
     stats = load_stats()
     stats["total_started"] = stats.get("total_started", 0) + 1
     async with _write_lock:
@@ -1459,7 +1455,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-            # ارسال ری‌اکشن قبل از ادیت پیام
+            # ارسال ری‌اکشن با هندل خطا برای نسخه‌های قدیمی aiogram
             try:
                 await bot.send_reaction(
                     chat_id=callback.message.chat.id,
@@ -1467,6 +1463,8 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
                     reaction=[ReactionTypeEmoji(emoji='🎉')]
                 )
                 logger.info(f"ری‌اکشن 🎉 برای کاربر {user_id} ارسال شد.")
+            except AttributeError:
+                logger.warning("متد send_reaction در این نسخه از aiogram پشتیبانی نمی‌شود. ری‌اکشن ارسال نشد.")
             except Exception as e:
                 logger.warning(f"ارسال ری‌اکشن برای کاربر {user_id} ممکن نشد: {e}")
         else:
@@ -1538,7 +1536,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # join دیگر callback_data نیست
     if key == "join":
         response = item["response"].format(
             invite_link=config["settings"]["group_invite_link"]
