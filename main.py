@@ -4,13 +4,11 @@
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
 نسخهٔ نهایی با اصلاحات:
-- هندل خطای AttributeError برای send_reaction
-- دکمه‌ی تست قرمز در پنل کاربری
-- رنگ‌آمیزی دکمه‌های url و web_app
-- تغییر «تایپیک» به «تاپیک»
-- داشبورد مدیریت با آمار کلیدی
-- چیدمان دو‌تایی دکمه‌های ادمین
-- شمارندهٔ /start در stats.json
+- رفع باگ تشخیص عضویت (is_user_member)
+- سیستم حضور و غیاب با خروجی اکسل و ارسال فقط به ادمین
+- مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
+- دکمهٔ «دعوت از دوستان» در پنل کاربری
+- اسپینر لودینگ در فرم و رفع باگ تیک قوانین
 """
 
 import asyncio
@@ -49,7 +47,6 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     Update,
     WebAppInfo,
-    ReactionTypeEmoji,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -153,11 +150,11 @@ def is_admin(user_id: int) -> bool:
 
 def load_stats() -> dict:
     if not STATS_FILE.exists():
-        return {"total_joined": 0, "total_left": 0, "total_started": 0}
+        return {"total_joined": 0, "total_left": 0}
     try:
         return json.loads(STATS_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"total_joined": 0, "total_left": 0, "total_started": 0}
+        return {"total_joined": 0, "total_left": 0}
 
 async def increment_stat(field: str) -> None:
     async with _write_lock:
@@ -423,7 +420,7 @@ def migrate_menu_config(config: dict) -> dict:
 
     defaults = {
         "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-        "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
+        "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
         "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
         "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
         "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -462,7 +459,7 @@ def load_menu_config() -> dict:
         default_config = {
             "menu_items": {
                 "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-                "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
+                "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
                 "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
                 "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -495,7 +492,7 @@ async def save_menu_config(config: dict) -> None:
     async with _write_lock:
         MENU_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
-# ---------- پنل تاپیک‌ها (با رنگ‌های چرخشی) ----------
+# ---------- پنل تایپیک‌ها ----------
 TOPICS = {
     "🎓 آکادمی آنلاین": "https://t.me/c/4388421316/146",
     "🛠 رفع اشکال تخصصی": "https://t.me/thedaraeii",
@@ -514,16 +511,13 @@ TOPICS = {
 }
 
 def topics_panel_keyboard() -> InlineKeyboardMarkup:
-    colors = ["green", "blue", "red"]
     buttons = []
     topic_items = list(TOPICS.items())
     for i in range(0, len(topic_items), 2):
         row = []
-        color1 = colors[i % 3]
-        row.append(InlineKeyboardButton(text=topic_items[i][0], url=topic_items[i][1], color=color1))
-        if i + 1 < len(topic_items):
-            color2 = colors[(i + 1) % 3]
-            row.append(InlineKeyboardButton(text=topic_items[i + 1][0], url=topic_items[i + 1][1], color=color2))
+        row.append(InlineKeyboardButton(text=topic_items[i][0], url=topic_items[i][1]))
+        if i+1 < len(topic_items):
+            row.append(InlineKeyboardButton(text=topic_items[i+1][0], url=topic_items[i+1][1]))
         buttons.append(row)
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -532,19 +526,14 @@ def topics_panel_keyboard() -> InlineKeyboardMarkup:
 def user_panel_keyboard() -> InlineKeyboardMarkup:
     config = load_menu_config()
     items = config["menu_items"]
-    invite_link = config["settings"]["group_invite_link"]
-
-    callback_keys = ["topics", "contact_admin", "my_status", "announcements", "faq", "social"]
-    buttons = [
-        [InlineKeyboardButton(text="👥 دعوت از دوستان", url=invite_link, color="green")],
-        [InlineKeyboardButton(text="🔴 تست رنگ قرمز", url="https://t.me/irarchit", color="red")],
-    ]
-    for i in range(0, len(callback_keys), 2):
+    filtered_keys = ["join", "topics", "contact_admin", "my_status", "announcements", "faq", "social"]
+    buttons = []
+    for i in range(0, len(filtered_keys), 2):
         row = []
-        key1 = callback_keys[i]
+        key1 = filtered_keys[i]
         row.append(InlineKeyboardButton(text=items[key1]["label"], callback_data=f"menu:{key1}"))
-        if i + 1 < len(callback_keys):
-            key2 = callback_keys[i + 1]
+        if i+1 < len(filtered_keys):
+            key2 = filtered_keys[i+1]
             row.append(InlineKeyboardButton(text=items[key2]["label"], callback_data=f"menu:{key2}"))
         buttons.append(row)
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
@@ -552,23 +541,29 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
 
 # ---------- پنل ادمین ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail")],
-        [
-            InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export"),
-            InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast"),
-        ],
-        [
-            InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg"),
-            InlineKeyboardButton(text="🔌 خاموش/روشن", callback_data="admin:toggle_bot"),
-        ],
-        [
-            InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit"),
-            InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user"),
-        ],
-        [InlineKeyboardButton(text="❌ بستن", callback_data="admin:close")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats"),
+                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail"),
+            ],
+            [
+                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export"),
+                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast"),
+            ],
+            [
+                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg"),
+                InlineKeyboardButton(text="🔌 خاموش/روشن", callback_data="admin:toggle_bot"),
+            ],
+            [
+                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit"),
+                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ بستن", callback_data="admin:close"),
+            ],
+        ]
+    )
 
 def admin_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -634,11 +629,6 @@ async def handle_start(message: Message):
     user_id = message.from_user.id
     await send_with_action(message.chat.id, "typing", 0.5)
 
-    stats = load_stats()
-    stats["total_started"] = stats.get("total_started", 0) + 1
-    async with _write_lock:
-        STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
-
     if is_form_completed(user_id) or await is_user_member(user_id):
         await message.answer(
             "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
@@ -652,7 +642,7 @@ async def handle_start(message: Message):
             "🔗 لینک دعوت گروه:\n" + GROUP_INVITE_LINK,
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="📝 ثبت درخواست عضویت", url=GROUP_INVITE_LINK, color="blue")]
+                    [InlineKeyboardButton(text="📝 ثبت درخواست عضویت", url=GROUP_INVITE_LINK)]
                 ]
             )
         )
@@ -684,7 +674,6 @@ async def send_vpn_warning_and_form(user) -> None:
                 InlineKeyboardButton(
                     text="📝 تکمیل فرم پذیرش",
                     web_app=WebAppInfo(url=WEBAPP_URL),
-                    color="blue"
                 )
             ]
         ]
@@ -811,7 +800,7 @@ async def send_welcome_to_group(user) -> None:
             text=(
                 f"{user_mention} عزیز خوش آمدی 👋\n\n"
                 "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
-                "▫️ برای شروع، خودت را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
+                "▫️ برای شروع، خودت را در تایپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
                 "🏛 آماده‌ای برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
@@ -863,7 +852,7 @@ async def handle_member_left(user) -> None:
         if GROUP_INVITE_LINK:
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="بازگشت به گروه ↩️", url=GROUP_INVITE_LINK, color="green")]
+                    [InlineKeyboardButton(text="بازگشت به گروه ↩️", url=GROUP_INVITE_LINK)]
                 ]
             )
         await bot.send_message(
@@ -896,33 +885,12 @@ async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await state.clear()
-    
-    stats = load_stats()
-    total_started = stats.get("total_started", 0)
-    phones_count = len(load_phones())
-    form_count = 0
-    if DATA_FILE.exists():
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            form_count = sum(1 for line in f if line.strip())
-    try:
-        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-    except Exception:
-        member_count = "نامشخص"
-    
     status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
-    
-    dashboard = (
-        f"🛠 <b>داشبورد مدیریت</b>\n"
-        f"وضعیت ربات: {status_text}\n\n"
-        f"📊 <b>آمار لحظه‌ای</b>\n"
-        f"• تعداد استارت‌ها: <b>{total_started}</b>\n"
-        f"• شماره‌های ثبت‌شده: <b>{phones_count}</b>\n"
-        f"• فرم‌های تکمیل‌شده: <b>{form_count}</b>\n"
-        f"• اعضای فعلی گروه: <b>{member_count}</b>\n"
-    )
-    
     await send_with_action(message.chat.id, "typing", 0.5)
-    await message.answer(dashboard, reply_markup=admin_panel_keyboard())
+    await message.answer(
+        f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=admin_panel_keyboard(),
+    )
 
 @dp.message(Command("stats"))
 async def handle_stats(message: Message):
@@ -998,7 +966,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await state.clear()
         status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
         await callback.message.edit_text(
-            f"🛠 <b>داشبورد مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
+            f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
             reply_markup=admin_panel_keyboard(),
         )
         await callback.answer()
@@ -1011,6 +979,11 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         except Exception:
             pass
         await callback.answer("پنل بسته شد.")
+        return
+
+    if action == "stats":
+        await callback.answer()
+        await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
         return
 
     if action == "stats_detail":
@@ -1063,7 +1036,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer(f"ربات {status_text} شد.")
 
         await callback.message.edit_text(
-            f"🛠 <b>داشبورد مدیریت</b>\nوضعیت ربات: {status_text}",
+            f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}",
             reply_markup=admin_panel_keyboard()
         )
 
@@ -1417,8 +1390,8 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
     if key == "topics":
         await callback.message.edit_text(
-            "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"
-            "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",
+            "📚 <b>راهنمای تایپیک‌های رواق</b>\n\n"
+            "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:",
             reply_markup=topics_panel_keyboard()
         )
         await callback.answer()
@@ -1445,6 +1418,9 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         except Exception:
             display_name = "کاربر"
 
+        # نکته: تلگرام تاریخِ دقیقِ عضویت را در اختیار بات‌ها نمی‌گذارد،
+        # پس فقط خودِ وضعیتِ عضویت (که مستقیم و لحظه‌ای از تلگرام گرفته
+        # می‌شود، نه از دیتای محلیِ ما) را نشان می‌دهیم.
         is_member = False
         try:
             member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
@@ -1455,18 +1431,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-            # ارسال ری‌اکشن با هندل خطا برای نسخه‌های قدیمی aiogram
-            try:
-                await bot.send_reaction(
-                    chat_id=callback.message.chat.id,
-                    message_id=callback.message.message_id,
-                    reaction=[ReactionTypeEmoji(emoji='🎉')]
-                )
-                logger.info(f"ری‌اکشن 🎉 برای کاربر {user_id} ارسال شد.")
-            except AttributeError:
-                logger.warning("متد send_reaction در این نسخه از aiogram پشتیبانی نمی‌شود. ری‌اکشن ارسال نشد.")
-            except Exception as e:
-                logger.warning(f"ارسال ری‌اکشن برای کاربر {user_id} ممکن نشد: {e}")
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
@@ -1474,7 +1438,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             status_text,
             reply_markup=user_panel_keyboard()
         )
-
         await callback.answer()
         return
 
