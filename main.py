@@ -9,7 +9,7 @@
 - مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
 - دکمهٔ «دعوت از دوستان» در پنل کاربری
 - اسپینر لودینگ در فرم و رفع باگ تیک قوانین
-- ری‌اکشن انیمیشنی 🎉 روی پیام وضعیت عضویت کاربران عضو
+- افکت انیمیشنی 🎉 (is_big=True) روی پیام وضعیت عضویت کاربران عضو
 """
 
 import asyncio
@@ -1438,12 +1438,15 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             reply_markup=user_panel_keyboard()
         )
 
-        # === افزودن ری‌اکشن انیمیشنی 🎉 برای کاربران عضو ===
+        # ======================================================
+        # افکت انیمیشنی 🎉 (is_big=True)
+        # ======================================================
         if is_member:
             await bot.set_message_reaction(
                 chat_id=callback.message.chat.id,
                 message_id=callback.message.message_id,
-                reaction=[ReactionTypeEmoji(emoji="🎉")]
+                reaction=[ReactionTypeEmoji(emoji="🎉")],
+                is_big=True  # <--- کلید فعال‌سازی افکت بزرگ انیمیشنی
             )
 
         await callback.answer()
