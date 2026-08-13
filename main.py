@@ -3,7 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با افکت انیمیشنی جداگانه (بدون ادیت پیام)
+نسخهٔ نهایی با اصلاحات:
+- رفع باگ تشخیص عضویت (is_user_member)
+- سیستم حضور و غیاب با خروجی اکسل و ارسال فقط به ادمین
+- مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
+- دکمهٔ «دعوت از دوستان» در پنل کاربری
+- اسپینر لودینگ در فرم و رفع باگ تیک قوانین
 """
 
 import asyncio
@@ -1413,6 +1418,9 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         except Exception:
             display_name = "کاربر"
 
+        # نکته: تلگرام تاریخِ دقیقِ عضویت را در اختیار بات‌ها نمی‌گذارد،
+        # پس فقط خودِ وضعیتِ عضویت (که مستقیم و لحظه‌ای از تلگرام گرفته
+        # می‌شود، نه از دیتای محلیِ ما) را نشان می‌دهیم.
         is_member = False
         try:
             member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
@@ -1421,36 +1429,15 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             logger.warning("گرفتن وضعیت عضویت کاربر %s ممکن نشد: %s", user_id, e)
             is_member = False
 
-        # حذف پیام قبلی (پنل)
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-
-        # ارسال پیام جدید وضعیت
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
-        sent_msg = await callback.message.answer(
+        await callback.message.edit_text(
             status_text,
             reply_markup=user_panel_keyboard()
         )
-
-        # ارسال افکت انیمیشنی به صورت پیام جداگانه (فقط برای اعضا)
-        if is_member:
-            dice_msg = await bot.send_dice(
-                chat_id=sent_msg.chat.id,
-                emoji="🎉"
-            )
-            # حذف پیام دایس بعد از ۳ ثانیه تا شلوغ نشود
-            await asyncio.sleep(3)
-            try:
-                await bot.delete_message(chat_id=sent_msg.chat.id, message_id=dice_msg.message_id)
-            except Exception:
-                pass
-
         await callback.answer()
         return
 
@@ -2399,15 +2386,11 @@ async def stop_self_ping(app: web.Application) -> None:
             pass
 
 # ==============================================================
-#  مدیریت خطاهای سراسری (اصلاح‌شده)
+#  مدیریت خطاهای سراسری
 # ==============================================================
 
 @dp.errors()
-async def global_error_handler(update: Update, exception: Exception = None):
-    if exception is None:
-        logger.error("خطای سراسری بدون اطلاعات استثنا")
-        return True
-
+async def global_error_handler(update: Update, exception: Exception):
     logger.error(f"❌ خطای سراسری: {exception}", exc_info=True)
 
     user_id = None
