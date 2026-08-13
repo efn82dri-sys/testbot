@@ -4,14 +4,13 @@
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
 نسخهٔ نهایی با اصلاحات درخواستی:
-- داشبورد مدیریت با آمارهای کلیدی (تعداد استارت، شماره، فرم، اعضا)
-- حذف دکمهٔ تکراری آمار گروه از پنل ادمین
-- چیدمان دکمه‌های ادمین به‌صورت دو‌تایی (به‌جز ردیف اول)
-- اضافه شدن شمارندهٔ /start به stats.json
+- ری‌اکشن 🎉 قبل از ادیت پیام وضعیت عضویت
+- رنگ‌آمیزی دکمه‌های url و web_app (سبز، آبی، قرمز)
 - تغییر کلمهٔ «تایپیک» به «تاپیک» در تمام متن‌ها
-- رنگ‌آمیزی دکمه‌های شیشه‌ای (سبز، آبی، قرمز) برای دکمه‌های url و web_app
-- دکمهٔ «دعوت از دوستان» با رنگ سبز و دکمهٔ عضویت با رنگ آبی
-- تاپیک‌ها با رنگ‌های چرخشی (سبز، آبی، قرمز)
+- داشبورد مدیریت با آمارهای کلیدی
+- حذف دکمهٔ تکراری آمار گروه از پنل ادمین
+- چیدمان دو‌تایی دکمه‌های ادمین
+- شمارندهٔ /start در stats.json
 """
 
 import asyncio
@@ -551,7 +550,7 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# ---------- پنل ادمین (با چیدمان دو‌تایی و بدون دکمه‌ی تکراری آمار) ----------
+# ---------- پنل ادمین ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail")],
@@ -629,7 +628,7 @@ async def send_with_action(chat_id: int, action: str = "typing", delay: float = 
     if delay > 0:
         await asyncio.sleep(delay)
 
-# ---------- دستور /start (با شمارنده و دکمه‌ی عضویت آبی) ----------
+# ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message):
     user_id = message.from_user.id
@@ -686,7 +685,7 @@ async def send_vpn_warning_and_form(user) -> None:
                 InlineKeyboardButton(
                     text="📝 تکمیل فرم پذیرش",
                     web_app=WebAppInfo(url=WEBAPP_URL),
-                    color="blue"  # رنگ آبی برای اقدام اصلی
+                    color="blue"
                 )
             ]
         ]
@@ -899,7 +898,6 @@ async def handle_admin_panel(message: Message, state: FSMContext):
         return
     await state.clear()
     
-    # دریافت آمار
     stats = load_stats()
     total_started = stats.get("total_started", 0)
     phones_count = len(load_phones())
@@ -1016,7 +1014,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer("پنل بسته شد.")
         return
 
-    # دکمه‌ی آمار تفصیلی (تنها دکمه‌ی باقی‌مانده از آمار)
     if action == "stats_detail":
         await callback.answer()
         await callback.message.edit_text(await build_stats_detail_text(), reply_markup=admin_back_keyboard())
@@ -1265,8 +1262,8 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     user_ids = collect_form_user_ids()
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm", color="green")],
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:broadcast_cancel", color="red")],
+            [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:broadcast_cancel")],
         ]
     )
     await message.answer(
@@ -1459,16 +1456,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-        else:
-            status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
-
-        await callback.message.edit_text(
-            status_text,
-            reply_markup=user_panel_keyboard()
-        )
-
-        # ارسال ری‌اکشن اگر کاربر عضو باشد
-        if is_member:
+            # ری‌اکشن قبل از ادیت پیام
             try:
                 await bot.send_reaction(
                     chat_id=callback.message.chat.id,
@@ -1477,6 +1465,13 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
                 )
             except Exception as e:
                 logger.warning("ارسال ری‌اکشن برای کاربر %s ممکن نشد: %s", user_id, e)
+        else:
+            status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
+
+        await callback.message.edit_text(
+            status_text,
+            reply_markup=user_panel_keyboard()
+        )
 
         await callback.answer()
         return
@@ -1762,8 +1757,8 @@ async def delete_user_identifier(message: Message, state: FSMContext):
         await state.update_data(target_display=display)
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm", color="red")],
-                [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:delete_cancel", color="blue")],
+                [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:delete_cancel")],
             ]
         )
         await message.answer(
@@ -2150,7 +2145,7 @@ async def cmd_attendance_start(message: Message):
             text=text,
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="✅ من اینجام", callback_data="attendance:yes", color="green")]
+                    [InlineKeyboardButton(text="✅ من اینجام", callback_data="attendance:yes")]
                 ]
             )
         )
