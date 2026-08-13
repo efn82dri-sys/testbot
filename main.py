@@ -4,13 +4,14 @@
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
 نسخهٔ نهایی با اصلاحات درخواستی:
-- ری‌اکشن 🎉 قبل از ادیت پیام وضعیت عضویت
+- ری‌اکشن 🎉 قبل از ادیت پیام وضعیت عضویت (با لاگ)
 - رنگ‌آمیزی دکمه‌های url و web_app (سبز، آبی، قرمز)
 - تغییر کلمهٔ «تایپیک» به «تاپیک» در تمام متن‌ها
 - داشبورد مدیریت با آمارهای کلیدی
 - حذف دکمهٔ تکراری آمار گروه از پنل ادمین
 - چیدمان دو‌تایی دکمه‌های ادمین
 - شمارندهٔ /start در stats.json
+- دکمه‌ی تست رنگی در پنل کاربری
 """
 
 import asyncio
@@ -514,7 +515,7 @@ TOPICS = {
 }
 
 def topics_panel_keyboard() -> InlineKeyboardMarkup:
-    colors = ["green", "blue", "red"]  # چرخه‌ی رنگ‌ها
+    colors = ["green", "blue", "red"]
     buttons = []
     topic_items = list(TOPICS.items())
     for i in range(0, len(topic_items), 2):
@@ -537,7 +538,9 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
     # دکمه‌های callback_data (غیر از join که به url تبدیل شده)
     callback_keys = ["topics", "contact_admin", "my_status", "announcements", "faq", "social"]
     buttons = [
-        [InlineKeyboardButton(text="👥 دعوت از دوستان", url=invite_link, color="green")]
+        [InlineKeyboardButton(text="👥 دعوت از دوستان", url=invite_link, color="green")],
+        # دکمه‌ی تست با رنگ قرمز (برای تست رنگ‌آمیزی)
+        [InlineKeyboardButton(text="🔴 تست رنگ قرمز", url="https://t.me/irarchit", color="red")],
     ]
     for i in range(0, len(callback_keys), 2):
         row = []
@@ -1456,15 +1459,16 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
         if is_member:
             status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-            # ری‌اکشن قبل از ادیت پیام
+            # ارسال ری‌اکشن قبل از ادیت پیام
             try:
                 await bot.send_reaction(
                     chat_id=callback.message.chat.id,
                     message_id=callback.message.message_id,
                     reaction=[ReactionTypeEmoji(emoji='🎉')]
                 )
+                logger.info(f"ری‌اکشن 🎉 برای کاربر {user_id} ارسال شد.")
             except Exception as e:
-                logger.warning("ارسال ری‌اکشن برای کاربر %s ممکن نشد: %s", user_id, e)
+                logger.warning(f"ارسال ری‌اکشن برای کاربر {user_id} ممکن نشد: {e}")
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
@@ -1534,7 +1538,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # join دیگر callback_data نیست، اما اگر به هر دلیل رسید، پیام می‌دهیم
+    # join دیگر callback_data نیست
     if key == "join":
         response = item["response"].format(
             invite_link=config["settings"]["group_invite_link"]
