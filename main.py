@@ -81,6 +81,7 @@ DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
+FUNNEL_USERS_FILE = Path(__file__).parent / "data" / "funnel_users.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
@@ -185,6 +186,26 @@ async def save_phone(user_id: int, phone: str) -> None:
 def get_saved_phone(user_id: int) -> str:
     return load_phones().get(str(user_id), "")
 
+# ---------- کاربرانِ واردشده به قیف (استارت ربات یا درخواست عضویت) ----------
+def load_funnel_users() -> set[int]:
+    if not FUNNEL_USERS_FILE.exists():
+        return set()
+    try:
+        return set(json.loads(FUNNEL_USERS_FILE.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+async def mark_funnel_entry(user_id: int) -> None:
+    """کاربر را به‌عنوان یکی از ورودی‌های قیف ثبت می‌کند (استارت ربات یا
+    پیامی که به‌خاطر درخواست عضویت برایش ارسال شده). هر کاربر فقط یک‌بار
+    شمرده می‌شود، حتی اگر چندبار استارت بزند."""
+    async with _write_lock:
+        users = load_funnel_users()
+        if user_id in users:
+            return
+        users.add(user_id)
+        FUNNEL_USERS_FILE.write_text(json.dumps(list(users)), encoding="utf-8")
+
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
     if not DATA_FILE.exists():
@@ -240,19 +261,30 @@ async def build_stats_text() -> str:
             form_count = sum(1 for line in f if line.strip())
 
     stats = load_stats()
-    total_joined = stats.get("total_joined", 0)
-    total_left = stats.get("total_left", 0)
-    leave_rate = (total_left / total_joined * 100) if total_joined else 0
+    funnel_count = len(load_funnel_users())
+    phone_count = len(load_phones())
+    form_joined_count = stats.get("form_completed_and_joined", 0)
+
+    # نرخ افت هر مرحله نسبت به مرحله‌ی قبل، برای اینکه ادمین سریع بفهمد
+    # بیشترین ریزشِ کاربر کجای مسیر (قیف) اتفاق می‌افتد.
+    phone_rate = (phone_count / funnel_count * 100) if funnel_count else 0
+    joined_rate = (form_joined_count / phone_count * 100) if phone_count else 0
 
     return (
-        "📐 <b>گزارشِ وضعیتِ بنا (آمار لحظه‌ای)</b>\n\n"
-        f"👥 ساکنینِ فعلی: <b>{member_count}</b>\n"
-        f"📝 پروفایل‌های تکمیل‌شده (فرم): <b>{form_count}</b>\n"
-        f"➕ کل ورودها از ابتدای ساماندهی: <b>{total_joined}</b>\n"
-        f"➖ کل خروج‌ها: <b>{total_left}</b>\n"
-        f"📉 نرخِ ریزشِ جمعیت: <b>{leave_rate:.1f}٪</b>\n\n"
+        "📐 <b>داشبورد رواق (آمار لحظه‌ای)</b>\n\n"
+        f"👥 ساکنینِ فعلی گروه: <b>{member_count}</b>\n\n"
+        "<b>قیفِ عضویت:</b>\n"
+        f"1️⃣ استارت ربات / پیامِ درخواست عضویت: <b>{funnel_count}</b>\n"
+        f"2️⃣ شماره‌ی تلفنِ تأییدشده: <b>{phone_count}</b> ({phone_rate:.0f}٪)\n"
+        f"3️⃣ فرمِ تکمیل‌شده + ورود به گروه: <b>{form_joined_count}</b> ({joined_rate:.0f}٪)\n\n"
+        f"📝 کل فرم‌های ثبت‌شده (شامل موارد تأییدنشده): <b>{form_count}</b>\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
     )
+
+async def build_admin_dashboard_text() -> str:
+    status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
+    stats_text = await build_stats_text()
+    return f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\n\n{stats_text}"
 
 async def build_stats_detail_text() -> str:
     if not DATA_FILE.exists():
@@ -521,14 +553,26 @@ def topics_panel_keyboard() -> InlineKeyboardMarkup:
     topic_items = list(TOPICS.items())
     for i in range(0, len(topic_items), 2):
         row = []
-        row.append(InlineKeyboardButton(text=topic_items[i][0], url=topic_items[i][1]))
+        row.append(InlineKeyboardButton(text=topic_items[i][0], url=topic_items[i][1], style="primary"))
         if i+1 < len(topic_items):
-            row.append(InlineKeyboardButton(text=topic_items[i+1][0], url=topic_items[i+1][1]))
+            row.append(InlineKeyboardButton(text=topic_items[i+1][0], url=topic_items[i+1][1], style="primary"))
         buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back")])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # ---------- پنل کاربری ----------
+# سبک هر دکمه بر اساس کارکردش: سبز برای عملِ مثبت/رشد (دعوت از دوستان)،
+# آبی برای گزینه‌های اطلاعاتی/ناوبری، قرمز برای بستن پنل.
+_USER_MENU_STYLES = {
+    "join": "success",
+    "topics": "primary",
+    "contact_admin": "primary",
+    "my_status": "primary",
+    "announcements": "primary",
+    "faq": "primary",
+    "social": "primary",
+}
+
 def user_panel_keyboard() -> InlineKeyboardMarkup:
     config = load_menu_config()
     items = config["menu_items"]
@@ -537,51 +581,64 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
     for i in range(0, len(filtered_keys), 2):
         row = []
         key1 = filtered_keys[i]
-        row.append(InlineKeyboardButton(text=items[key1]["label"], callback_data=f"menu:{key1}"))
+        row.append(InlineKeyboardButton(
+            text=items[key1]["label"], callback_data=f"menu:{key1}",
+            style=_USER_MENU_STYLES.get(key1, "primary"),
+        ))
         if i+1 < len(filtered_keys):
             key2 = filtered_keys[i+1]
-            row.append(InlineKeyboardButton(text=items[key2]["label"], callback_data=f"menu:{key2}"))
+            row.append(InlineKeyboardButton(
+                text=items[key2]["label"], callback_data=f"menu:{key2}",
+                style=_USER_MENU_STYLES.get(key2, "primary"),
+            ))
         buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close")])
+    buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close", style="danger")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # ---------- پنل ادمین ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
+    bot_enabled = load_bot_state().get("enabled", True)
+    if bot_enabled:
+        toggle_label = "🔴 خاموش کردن ربات"
+        toggle_style = "danger"
+    else:
+        toggle_label = "🟢 روشن کردن ربات"
+        toggle_style = "success"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="📊 آمار گروه", callback_data="admin:stats"),
-                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail"),
+                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail", style="primary"),
+                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export", style="primary"),
             ],
             [
-                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export"),
-                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast"),
+                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast", style="success"),
+                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg", style="primary"),
             ],
             [
-                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg"),
-                InlineKeyboardButton(text="🔌 خاموش/روشن", callback_data="admin:toggle_bot"),
+                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary"),
+                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger"),
             ],
             [
-                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit"),
-                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user"),
+                InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
             ],
             [
-                InlineKeyboardButton(text="❌ بستن", callback_data="admin:close"),
+                InlineKeyboardButton(text="❌ بستن", callback_data="admin:close", style="danger"),
             ],
         ]
     )
 
 def admin_back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")]]
+        inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")]]
     )
 
 def admin_menu_edit_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📢 ویرایش اطلاعیه‌ها", callback_data="admin:edit_announcements")],
-            [InlineKeyboardButton(text="❓ ویرایش سوالات متداول", callback_data="admin:edit_faq")],
-            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")],
+            [InlineKeyboardButton(text="📢 ویرایش اطلاعیه‌ها", callback_data="admin:edit_announcements", style="primary")],
+            [InlineKeyboardButton(text="❓ ویرایش سوالات متداول", callback_data="admin:edit_faq", style="primary")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
 
@@ -633,6 +690,7 @@ async def send_with_action(chat_id: int, action: str = "typing", delay: float = 
 @dp.message(Command("start"))
 async def handle_start(message: Message):
     user_id = message.from_user.id
+    await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
     if is_form_completed(user_id) or await is_user_member(user_id):
@@ -701,6 +759,7 @@ async def handle_join_request(join_request: ChatJoinRequest):
 
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
+    await mark_funnel_entry(user.id)
 
     state = load_bot_state()
     if not state.get("enabled", True):
@@ -891,10 +950,9 @@ async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     await state.clear()
-    status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
     await send_with_action(message.chat.id, "typing", 0.5)
     await message.answer(
-        f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
+        await build_admin_dashboard_text(),
         reply_markup=admin_panel_keyboard(),
     )
 
@@ -970,9 +1028,8 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "menu":
         await state.clear()
-        status_text = "روشن ✅" if load_bot_state().get("enabled", True) else "خاموش 🔴"
         await callback.message.edit_text(
-            f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\nیکی از گزینه‌ها را انتخاب کنید:",
+            await build_admin_dashboard_text(),
             reply_markup=admin_panel_keyboard(),
         )
         await callback.answer()
@@ -985,11 +1042,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         except Exception:
             pass
         await callback.answer("پنل بسته شد.")
-        return
-
-    if action == "stats":
-        await callback.answer()
-        await callback.message.edit_text(await build_stats_text(), reply_markup=admin_back_keyboard())
         return
 
     if action == "stats_detail":
@@ -1042,7 +1094,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer(f"ربات {status_text} شد.")
 
         await callback.message.edit_text(
-            f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}",
+            await build_admin_dashboard_text(),
             reply_markup=admin_panel_keyboard()
         )
 
@@ -1240,8 +1292,8 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     user_ids = collect_form_user_ids()
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm")],
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:broadcast_cancel")],
+            [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm", style="success")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:broadcast_cancel", style="danger")],
         ]
     )
     await message.answer(
@@ -1739,8 +1791,8 @@ async def delete_user_identifier(message: Message, state: FSMContext):
         await state.update_data(target_display=display)
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm")],
-                [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:delete_cancel")],
+                [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm", style="danger")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:delete_cancel", style="primary")],
             ]
         )
         await message.answer(
@@ -2348,6 +2400,9 @@ async def handle_submit(request: web.Request) -> web.Response:
         approved = True
     except Exception as e:
         logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user_id, e)
+
+    if approved:
+        await increment_stat("form_completed_and_joined")
 
     try:
         if approved:
