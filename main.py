@@ -3,13 +3,7 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با اصلاحات:
-- رفع باگ تشخیص عضویت (is_user_member)
-- سیستم حضور و غیاب با خروجی اکسل و ارسال فقط به ادمین
-- مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
-- دکمهٔ «دعوت از دوستان» در پنل کاربری
-- اسپینر لودینگ در فرم و رفع باگ تیک قوانین
-- افکت انیمیشنی 🎉 (is_big=True) روی پیام وضعیت عضویت کاربران عضو
+نسخهٔ نهایی با افکت انیمیشنی خودکار 🎉 (با استفاده از send_dice)
 """
 
 import asyncio
@@ -48,7 +42,6 @@ from aiogram.types import (
     ReplyKeyboardRemove,
     Update,
     WebAppInfo,
-    ReactionTypeEmoji,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -1433,20 +1426,17 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
-        await callback.message.edit_text(
+        # ارسال پیام وضعیت و هم‌زمان افکت انیمیشنی با send_dice
+        sent_msg = await callback.message.edit_text(
             status_text,
             reply_markup=user_panel_keyboard()
         )
 
-        # ======================================================
-        # افکت انیمیشنی 🎉 (is_big=True)
-        # ======================================================
+        # نمایش افکت انیمیشنی بزرگ 🎉 (همان add animated effect)
         if is_member:
-            await bot.set_message_reaction(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                reaction=[ReactionTypeEmoji(emoji="🎉")],
-                is_big=True  # <--- کلید فعال‌سازی افکت بزرگ انیمیشنی
+            await bot.send_dice(
+                chat_id=sent_msg.chat.id,
+                emoji="🎉"
             )
 
         await callback.answer()
