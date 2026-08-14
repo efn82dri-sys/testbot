@@ -18,13 +18,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardRemove,
 )
 from aiogram.exceptions import TelegramBadRequest
 
-# تغییر ایمپورت‌های نسبی به مطلق
+# ایمپورت‌های مطلق (باید در ریشه پروژه باشید)
 from hokm.cards import Card, Suit, SUIT_NAME_FA, SUIT_SYMBOL, RANK_NAME_FA
 from hokm.engine import HokmError, HokmMatch, Phase, TrickResult
 from hokm.sticker_repo import sticker_for_card
@@ -77,7 +74,7 @@ class GameManager:
 
 gm = GameManager()
 
-# =========== Lobby Class ===========
+# =========== Lobby Class (اصلاح‌شده با دکمه‌های اینلاین) ===========
 class Lobby:
     def __init__(self, chat_id: int, message_id: int):
         self.chat_id = chat_id
@@ -86,17 +83,26 @@ class Lobby:
         self.team_b: list[int] = []
         self.names: dict[int, str] = {}
 
-    def get_team_keyboard(self) -> ReplyKeyboardMarkup:
-        """دکمه‌های شیشه‌ای برای لابی"""
+    def render_keyboard(self) -> InlineKeyboardMarkup:
+        """ساخت دکمه‌های اینلاین شیشه‌ای برای لابی"""
         buttons = []
+        
+        # دکمه‌های عضویت در تیم‌ها
+        row1 = []
         if len(self.team_a) < 2:
-            buttons.append([KeyboardButton(text="🟦 عضویت در تیم A")])
+            row1.append(InlineKeyboardButton(text="🟦 عضویت در تیم A", callback_data=CB_JOIN_A))
         if len(self.team_b) < 2:
-            buttons.append([KeyboardButton(text="🟥 عضویت در تیم B")])
+            row1.append(InlineKeyboardButton(text="🟥 عضویت در تیم B", callback_data=CB_JOIN_B))
+        buttons.append(row1)
+
+        # دکمه شروع مسابقه (فقط وقتی هر دو تیم پر باشن)
         if len(self.team_a) == 2 and len(self.team_b) == 2:
-            buttons.append([KeyboardButton(text="🚀 شروع مسابقه")])
-        buttons.append([KeyboardButton(text="❌ لغو بازی")])
-        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False)
+            buttons.append([InlineKeyboardButton(text="🚀 شروع مسابقه", callback_data=CB_START)])
+        
+        # دکمه لغو بازی
+        buttons.append([InlineKeyboardButton(text="❌ لغو بازی", callback_data=CB_CANCEL)])
+        
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
 
     def render_text(self) -> str:
         lines = ["🎮 <b>درخواست شروع بازی با حکم!</b>", ""]
@@ -114,6 +120,7 @@ class Lobby:
             lines.append("    • (بدون عضو)")
         return "\n".join(lines)
 
+
 # =========== Command Handlers ===========
 @hokm_router.message(Command("hokm"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_hokm(message: Message, bot: Bot):
@@ -122,74 +129,89 @@ async def cmd_hokm(message: Message, bot: Bot):
         await message.reply("⚠️ یه بازی یا لابی همین الان در این گروه فعاله! صبر کن تموم بشه.")
         return
 
-    sent = await message.reply("در حال راه‌اندازی میز...")
-    lobby = Lobby(chat_id, sent.message_id)
-    gm.lobbies[chat_id] = lobby
-
-    # ارسال پیام اصلی با دکمه‌های شیشه‌ای (کیبورد)
-    await bot.send_message(
+    lobby = Lobby(chat_id, message_id=0)
+    sent = await bot.send_message(
         chat_id,
         lobby.render_text(),
-        reply_markup=lobby.get_team_keyboard()
+        reply_markup=lobby.render_keyboard()
     )
+    lobby.message_id = sent.message_id
+    gm.lobbies[chat_id] = lobby
 
 @hokm_router.message(Command("hokm_stop"), F.chat.type.in_({"group", "supergroup"}))
 async def cmd_hokm_stop(message: Message, bot: Bot):
     chat_id = message.chat.id
     if chat_id in gm.lobbies:
         del gm.lobbies[chat_id]
-        await bot.send_message(chat_id, "❌ لابی لغو شد.", reply_markup=ReplyKeyboardRemove())
+        await bot.send_message(chat_id, "❌ لابی لغو شد.")
     if chat_id in gm.matches:
         gm.cleanup_match(chat_id)
-        await bot.send_message(chat_id, "❌ مسابقه متوقف شد.", reply_markup=ReplyKeyboardRemove())
+        await bot.send_message(chat_id, "❌ مسابقه متوقف شد.")
     if chat_id not in gm.lobbies and chat_id not in gm.matches:
         await message.reply("هیچ بازی یا لابی فعالی وجود ندارد.")
 
-# =========== Lobby Button Handlers (ReplyKeyboard) ===========
-@hokm_router.message(F.text.in_(["🟦 عضویت در تیم A", "🟥 عضویت در تیم B", "🚀 شروع مسابقه", "❌ لغو بازی"]), F.chat.type.in_({"group", "supergroup"}))
-async def handle_lobby_buttons(message: Message, bot: Bot):
-    chat_id = message.chat.id
+
+# =========== Callback Handlers برای لابی (کارکرد تضمینی) ===========
+@hokm_router.callback_query(F.data.in_([CB_JOIN_A, CB_JOIN_B, CB_START, CB_CANCEL]))
+async def handle_lobby_callbacks(callback: CallbackQuery, bot: Bot):
+    chat_id = callback.message.chat.id
     lobby = gm.lobbies.get(chat_id)
     if not lobby:
-        await message.reply("❌ لابی منقضی شده. دوباره /hokm بزنید.")
+        await callback.answer("❌ لابی منقضی شده. دوباره /hokm بزنید.", show_alert=True)
         return
 
-    text = message.text
-    user = message.from_user
+    user = callback.from_user
+    await callback.answer()  # برای رفع لودینگ دکمه
 
-    if text == "🟦 عضویت در تیم A":
+    # ---------- عضویت در تیم A ----------
+    if callback.data == CB_JOIN_A:
         if user.id in lobby.team_b:
-            await message.reply("⚠️ شما قبلاً در تیم B هستید.")
-            return
+            return await callback.message.reply("⚠️ شما قبلاً در تیم B هستید.")
         if user.id not in lobby.team_a and len(lobby.team_a) < 2:
             lobby.team_a.append(user.id)
             lobby.names[user.id] = user.full_name
-            await message.reply(f"✅ {user.full_name} به تیم A پیوست!")
-            await bot.edit_message_text(chat_id=chat_id, message_id=lobby.message_id, text=lobby.render_text())
-            await bot.send_message(chat_id, "تیم‌ها به‌روز شدند.", reply_markup=lobby.get_team_keyboard())
+            await bot.edit_message_text(
+                chat_id=chat_id, message_id=lobby.message_id,
+                text=lobby.render_text(), reply_markup=lobby.render_keyboard()
+            )
+            await callback.message.reply(f"✅ {user.full_name} به تیم A پیوست!")
             return
-        await message.reply("⚠️ تیم A پر شده!")
+        return await callback.message.reply("⚠️ تیم A پر شده!")
 
-    elif text == "🟥 عضویت در تیم B":
+    # ---------- عضویت در تیم B ----------
+    if callback.data == CB_JOIN_B:
         if user.id in lobby.team_a:
-            await message.reply("⚠️ شما قبلاً در تیم A هستید.")
-            return
+            return await callback.message.reply("⚠️ شما قبلاً در تیم A هستید.")
         if user.id not in lobby.team_b and len(lobby.team_b) < 2:
             lobby.team_b.append(user.id)
             lobby.names[user.id] = user.full_name
-            await message.reply(f"✅ {user.full_name} به تیم B پیوست!")
-            await bot.edit_message_text(chat_id=chat_id, message_id=lobby.message_id, text=lobby.render_text())
-            await bot.send_message(chat_id, "تیم‌ها به‌روز شدند.", reply_markup=lobby.get_team_keyboard())
+            await bot.edit_message_text(
+                chat_id=chat_id, message_id=lobby.message_id,
+                text=lobby.render_text(), reply_markup=lobby.render_keyboard()
+            )
+            await callback.message.reply(f"✅ {user.full_name} به تیم B پیوست!")
             return
-        await message.reply("⚠️ تیم B پر شده!")
+        return await callback.message.reply("⚠️ تیم B پر شده!")
 
-    elif text == "🚀 شروع مسابقه":
-        if len(lobby.team_a) != 2 or len(lobby.team_b) != 2:
-            await message.reply("⚠️ هر دو تیم باید ۲ عضو داشته باشن!")
-            return
-        # حذف کیبورد شیشه‌ای
-        await bot.send_message(chat_id, "⏳ در حال شروع مسابقه...", reply_markup=ReplyKeyboardRemove())
+    # ---------- لغو بازی ----------
+    if callback.data == CB_CANCEL:
         del gm.lobbies[chat_id]
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=lobby.message_id,
+            text="❌ لابی لغو شد.", reply_markup=None
+        )
+        return
+
+    # ---------- شروع مسابقه ----------
+    if callback.data == CB_START:
+        if len(lobby.team_a) != 2 or len(lobby.team_b) != 2:
+            return await callback.message.reply("⚠️ هر دو تیم باید ۲ عضو داشته باشن!")
+
+        del gm.lobbies[chat_id]
+        await bot.edit_message_text(
+            chat_id=chat_id, message_id=lobby.message_id,
+            text="⏳ در حال شروع مسابقه...", reply_markup=None
+        )
 
         # شروع بازی
         match = HokmMatch(team_a=tuple(lobby.team_a), team_b=tuple(lobby.team_b))
@@ -209,9 +231,6 @@ async def handle_lobby_buttons(message: Message, bot: Bot):
 
         await _announce_new_hand(chat_id, bot)
 
-    elif text == "❌ لغو بازی":
-        del gm.lobbies[chat_id]
-        await bot.send_message(chat_id, "❌ لابی لغو شد.", reply_markup=ReplyKeyboardRemove())
 
 # =========== Core Game Functions ===========
 async def _send_group_reply(chat_id: int, reply_to_id: int, text: str, bot: Bot):
@@ -252,7 +271,6 @@ async def _announce_new_hand(chat_id: int, bot: Bot):
     for seat in range(4):
         uid = match.user_id_of_seat(seat)
         hand_cards = hand.hands[seat]
-        # نمایش مرتب بر اساس خال و رتبه
         by_suit = {s: [] for s in Suit}
         for c in hand_cards:
             by_suit[c.suit].append(c)
@@ -315,7 +333,6 @@ async def _prompt_turn(chat_id: int, bot: Bot, reply_to_id: int = None):
         )
         for c in cards_sorted
     ]
-    # ساخت ردیف‌های ۴ تایی
     rows = [buttons[i:i+4] for i in range(0, len(buttons), 4)]
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -389,6 +406,7 @@ async def _finish_hand(chat_id: int, bot: Bot):
         gm.cleanup_match(chat_id)
         return
     await _announce_new_hand(chat_id, bot)
+
 
 # =========== Callback Handlers (Trump & Play) ===========
 @hokm_router.callback_query(F.data.startswith(CB_TRUMP_PREFIX))
