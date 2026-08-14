@@ -24,9 +24,10 @@ from aiogram.types import (
 )
 from aiogram.exceptions import TelegramBadRequest
 
-from ..cards import Card, Suit, SUIT_NAME_FA, SUIT_SYMBOL, RANK_NAME_FA
-from ..engine import HokmError, HokmMatch, Phase, TrickResult
-from ..sticker_repo import sticker_for_card
+# تغییر ایمپورت‌های نسبی به مطلق
+from hokm.cards import Card, Suit, SUIT_NAME_FA, SUIT_SYMBOL, RANK_NAME_FA
+from hokm.engine import HokmError, HokmMatch, Phase, TrickResult
+from hokm.sticker_repo import sticker_for_card
 
 logger = logging.getLogger("hokm.router")
 hokm_router = Router(name="hokm")
