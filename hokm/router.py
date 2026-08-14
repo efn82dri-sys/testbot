@@ -115,9 +115,9 @@ class GameManager:
         return chat_id, match
 
     def cleanup_match(self, chat_id: int) -> None:
-        if chat_id in self.timeout_tasks:
-            self.timeout_tasks[chat_id].cancel()
-            del self.timeout_tasks[chat_id]
+        task = self.timeout_tasks.pop(chat_id, None)
+        if task and task is not asyncio.current_task():
+            task.cancel()
         match = self.matches.pop(chat_id, None)
         if not match:
             return
@@ -206,6 +206,18 @@ def _card_from_key(key: str) -> Card:
     if rank is None:
         raise ValueError(f"کلیدِ کارتِ نامعتبر: {key}")
     return Card(rank=rank, suit=Suit[suit_part])
+
+
+def _clear_timeout(chat_id: int) -> None:
+    """
+    تسکِ تایم‌اوتِ فعلیِ این چت را پاک می‌کند — و هرگز تسکی را که همین الان
+    در حالِ اجراست (یعنی خودش دارد این تابع را صدا می‌زند) cancel نمی‌کند،
+    چون این کار باعثِ پرتابِ CancelledError در اولین awaitِ بعدی و قطع‌شدنِ
+    زنجیره‌ی بازی می‌شود (باگی که باعث می‌شد نفرِ بعدی چیزی دریافت نکند).
+    """
+    task = gm.timeout_tasks.pop(chat_id, None)
+    if task and task is not asyncio.current_task():
+        task.cancel()
 
 
 async def _safe_dm(bot: Bot, user_id: int, text: str, **kwargs) -> Message | None:
@@ -408,9 +420,7 @@ async def _apply_trump(chat_id: int, match: HokmMatch, seat: int, suit: Suit, bo
         logger.warning("خطا در انتخابِ حکم برای کاربر %s: %s", match.user_id_of_seat(seat), e)
         return False
 
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
-        del gm.timeout_tasks[chat_id]
+    _clear_timeout(chat_id)
 
     if auto:
         hakem_name = gm.display_name.get(match.user_id_of_seat(seat), "؟")
@@ -435,8 +445,7 @@ async def _apply_trump(chat_id: int, match: HokmMatch, seat: int, suit: Suit, bo
 
 
 def _schedule_trump_timeout(chat_id: int, hakem_seat: int, bot: Bot) -> None:
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
+    _clear_timeout(chat_id)
 
     async def _timeout_trump():
         await asyncio.sleep(TURN_TIMEOUT_SECONDS)
@@ -453,6 +462,9 @@ def _schedule_trump_timeout(chat_id: int, hakem_seat: int, bot: Bot) -> None:
         for c in my_hand:
             counts[c.suit] += 1
         auto_suit = max(counts, key=lambda s: counts[s])
+        # همان دلیلِ بالا: قبل از فراخوانی _apply_trump خودمان را از دیکشنری
+        # پاک می‌کنیم، نه cancel — وگرنه ادامه‌ی زنجیره (پرامپتِ نوبتِ بعدی) قطع می‌شود.
+        gm.timeout_tasks.pop(chat_id, None)
         await _apply_trump(chat_id, match, hakem_seat, auto_suit, bot, auto=True)
 
     task = asyncio.create_task(_timeout_trump())
@@ -504,9 +516,7 @@ async def _perform_play(bot: Bot, chat_id: int, match: HokmMatch, seat: int, car
         return
 
     # پاکسازی تایم‌اوت پس از حرکت موفق
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
-        del gm.timeout_tasks[chat_id]
+    _clear_timeout(chat_id)
 
     if trick_result is None:
         await _prompt_turn(chat_id, bot)
@@ -537,8 +547,7 @@ async def _prompt_turn(chat_id: int, bot: Bot) -> None:
 
     # راه‌اندازی تایم‌اوت — اگر پاسخ ندهد، خودِ ربات به‌جای او بازی می‌کند
     # و این چرخه تا بازگشتِ خودِ کاربر در نوبت‌های بعدی نیز ادامه پیدا می‌کند.
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
+    _clear_timeout(chat_id)
 
     async def _timeout_play():
         await asyncio.sleep(TURN_TIMEOUT_SECONDS)
@@ -558,6 +567,11 @@ async def _prompt_turn(chat_id: int, bot: Bot) -> None:
             "تایم‌اوتِ %s ثانیه‌ای برای کاربر %s در گروه %s - حرکتِ خودکار",
             TURN_TIMEOUT_SECONDS, uid, chat_id,
         )
+        # مهم: قبل از فراخوانیِ _perform_play خودمون را از دیکشنری پاک می‌کنیم
+        # (نه cancel!) — چون این همان تسکِ در حالِ اجراست؛ اگر آن را cancel کنیم،
+        # در اولین awaitِ بعدی (مثلاً داخلِ _prompt_turn برایِ نفرِ بعدی) یک
+        # CancelledError پرتاب می‌شود و پیامِ نفرِ بعدی هرگز ارسال نمی‌شود.
+        gm.timeout_tasks.pop(chat_id, None)
         await _perform_play(bot, chat_id, match, seat, card, auto=True)
 
     task = asyncio.create_task(_timeout_play())
@@ -581,9 +595,7 @@ async def cb_play_card(callback: CallbackQuery, bot: Bot) -> None:
         return
 
     # قبل از انجام حرکت، تایم‌اوت را لغو می‌کنیم
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
-        del gm.timeout_tasks[chat_id]
+    _clear_timeout(chat_id)
 
     await callback.answer(f"✅ {_card_label(card)} بازی شد!")
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -629,8 +641,6 @@ async def _finish_hand(chat_id: int, bot: Bot) -> None:
         return
 
     # پاکسازی تایم‌اوت قبل از شروع دست جدید
-    if chat_id in gm.timeout_tasks:
-        gm.timeout_tasks[chat_id].cancel()
-        del gm.timeout_tasks[chat_id]
+    _clear_timeout(chat_id)
 
     await _announce_new_hand(chat_id, bot)
