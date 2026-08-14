@@ -34,6 +34,9 @@ CB_JOIN = "hokm:join"
 CB_PAIR_PREFIX = "hokm:pair:"
 CB_TRUMP_PREFIX = "hokm:trump:"
 CB_PLAY_PREFIX = "hokm:play:"
+CB_NOOP = "hokm:noop"
+
+TURN_TIMEOUT_SECONDS = 30
 
 
 # ====================================================================== #
@@ -50,28 +53,33 @@ class Lobby:
 
     def render_text(self) -> str:
         lines = [
-            "🃏 <b>بازیِ حکم</b>",
-            "برای شروع، ۴ نفر باید حضور داشته باشند. پس از جمع شدن، کاپیتان تیم را انتخاب می‌کند.",
-            "",
-            f"🎯 بازیکنانِ حاضر ({len(self.joined)}/۴):"
+            "♠️♥️ <b>میز حکم</b> ♦️♣️",
+            "━━━━━━━━━━━━━━━",
+            f"🎯 <b>بازیکنانِ حاضر ({len(self.joined)}/۴):</b>",
         ]
-        for uid in self.joined:
-            lines.append(f"• {self.names[uid]}")
+        if self.joined:
+            for i, uid in enumerate(self.joined, start=1):
+                tag = " 👑" if i == 1 else ""
+                lines.append(f"{i}. {self.names[uid]}{tag}")
+        else:
+            lines.append("هنوز کسی ننشسته...")
         if len(self.joined) < 4:
-            lines.append("\n👇 برای ورود به میدان، دکمه زیر را بزنید.")
+            lines.append(f"\n⏳ {4 - len(self.joined)} صندلیِ خالی باقی مانده.")
+            lines.append("👇 برای گرفتنِ صندلی، دکمه‌ی زیر رو بزن")
         return "\n".join(lines)
 
     def render_keyboard(self) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🚪 ورود به بازی", callback_data=CB_JOIN)
+            InlineKeyboardButton(text="🪑 گرفتنِ صندلی", callback_data=CB_JOIN)
         ]])
 
     def render_pairing_text(self) -> str:
         captain = self.names[self.joined[0]]
         return (
-            "🃏 <b>بازیِ حکم</b>\n\n"
-            f"✅ ۴ نفر جمع شدند! حالا نوبتِ <b>{captain}</b> (کاپیتان) است که هم‌تیمیِ خود را انتخاب کند.\n"
-            "🔹 صندلی‌های ۱ و ۳ تیمِ شما، صندلی‌های ۲ و ۴ تیمِ حریف خواهند بود."
+            "♠️♥️ <b>میز حکم</b> ♦️♣️\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"✅ میز پر شد! حالا نوبتِ <b>{captain}</b> 👑 (کاپیتان) است تا هم‌تیمیِ خودش رو انتخاب کنه.\n\n"
+            "🔹 نفرِ انتخاب‌شده هم‌تیمیِ کاپیتان می‌شود؛ دو نفرِ باقی‌مانده تیمِ حریف خواهند بود."
         )
 
     def render_pairing_keyboard(self) -> InlineKeyboardMarkup:
@@ -130,30 +138,54 @@ def _card_label(card: Card) -> str:
 
 
 def _format_hand(cards: list[Card]) -> str:
+    if not cards:
+        return "🃏 دستِ شما خالی است."
     by_suit: dict[Suit, list[Card]] = {s: [] for s in Suit}
     for c in cards:
         by_suit[c.suit].append(c)
-    lines = ["🃏 <b>دست شما:</b>"]
+    lines = [f"🃏 <b>دستِ شما</b> ({len(cards)} کارت):"]
     for suit in Suit:
         group = sorted(by_suit[suit], key=lambda c: -c.rank)
         if group:
-            cards_str = " ".join(RANK_NAME_FA[c.rank] for c in group)
-            lines.append(f"{SUIT_SYMBOL[suit]} {SUIT_NAME_FA[suit]}: <b>{cards_str}</b>")
-    return "\n".join(lines) if len(lines) > 1 else "دست شما خالی است!"
+            cards_str = "  ".join(RANK_NAME_FA[c.rank] for c in group)
+            lines.append(f"{SUIT_SYMBOL[suit]} <i>{SUIT_NAME_FA[suit]}</i>: <b>{cards_str}</b>")
+    return "\n".join(lines)
 
 
 def _build_card_keyboard(cards: list[Card]) -> InlineKeyboardMarkup:
-    # مرتب‌سازی بر اساس خال و سپس رنک (نزولی) برای دسته‌بندی زیبا
-    sorted_cards = sorted(cards, key=lambda c: (c.suit.value, -c.rank))
-    buttons = []
-    for c in sorted_cards:
-        # لابل دکمه: نماد خال + نام رنک (مثلاً ♦ سرباز)
-        label = f"{SUIT_SYMBOL[c.suit]} {RANK_NAME_FA[c.rank]}"
-        buttons.append(InlineKeyboardButton(text=label, callback_data=f"{CB_PLAY_PREFIX}{c.key()}"))
-    
-    # هر ردیف ۴ دکمه (دسته‌بندی شده توسط خال‌ها)
-    rows = [buttons[i:i + 4] for i in range(0, len(buttons), 4)]
+    """
+    کیبورد کارت‌ها را به‌صورت دسته‌بندی‌شده بر اساس خال می‌سازد:
+    یک ردیفِ عنوان (غیرقابل‌کلیک) برای هر خال، و زیرِ آن ردیف‌های ۴تایی
+    از کارت‌های همان خال. این‌طور تشخیصِ کارت‌ها برای کاربر خیلی راحت‌تر می‌شود.
+    """
+    by_suit: dict[Suit, list[Card]] = {s: [] for s in Suit}
+    for c in cards:
+        by_suit[c.suit].append(c)
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for suit in Suit:
+        group = sorted(by_suit[suit], key=lambda c: -c.rank)
+        if not group:
+            continue
+        header = InlineKeyboardButton(
+            text=f"— {SUIT_SYMBOL[suit]} {SUIT_NAME_FA[suit]} —",
+            callback_data=CB_NOOP,
+        )
+        rows.append([header])
+        card_buttons = [
+            InlineKeyboardButton(text=RANK_NAME_FA[c.rank], callback_data=f"{CB_PLAY_PREFIX}{c.key()}")
+            for c in group
+        ]
+        for i in range(0, len(card_buttons), 4):
+            rows.append(card_buttons[i:i + 4])
+
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@hokm_router.callback_query(F.data == CB_NOOP)
+async def cb_noop(callback: CallbackQuery) -> None:
+    # دکمه‌ی عنوانِ خال؛ صرفاً یک برچسبِ بصری است و کاری انجام نمی‌دهد.
+    await callback.answer()
 
 
 def _build_trump_keyboard() -> InlineKeyboardMarkup:
@@ -191,26 +223,26 @@ async def _safe_dm(bot: Bot, user_id: int, text: str, **kwargs) -> Message | Non
 async def cmd_hokm(message: Message, bot: Bot) -> None:
     chat_id = message.chat.id
     if chat_id in gm.matches:
-        await message.reply("⚔️ یک بازیِ حکم هم‌اکنون در جریان است. لطفاً صبر کنید تا به پایان برسد.")
+        await message.reply("⚔️ یک بازیِ حکم هم‌اکنون در همین گروه در جریان است. صبر کنید تا تمام شود.")
         return
     if chat_id in gm.lobbies:
-        await message.reply("🃏 لابیِ بازی از قبل باز است — از دکمه‌ی بالا وارد شوید.")
+        await message.reply("🃏 میزِ حکم از قبل بازه — از دکمه‌ی بالا صندلیِ خودت رو بگیر.")
         return
 
     lobby = Lobby(chat_id=chat_id)
     gm.lobbies[chat_id] = lobby
     
-    # متن دعوت بسیار حرفه‌ای و جذاب
     text = (
-        "🃏 <b>دعوت به بازی حکم حرفه‌ای</b> 🃏\n\n"
-        "👑 <b>چه چیزی در انتظار شماست؟</b>\n"
-        "• رقابت ۴ نفره در دو تیم\n"
-        "• سیستم انتخاب حکم و استراتژی تیمی\n"
-        "• ثبت امتیازات دقیق و کاپوت!\n\n"
-        "🏆 <b>هدف:</b> تیم برنده با ۷ امتیاز پیروز می‌شود.\n"
-        "🧠 <b>نیاز به هم‌تیمی:</b> پس از ورود، کاپیتان تیم خود را انتخاب کنید.\n\n"
-        "📢 کانال رسمی ما: @IRarchit\n"
-        "⬇️ برای ورود به میدان، دکمه زیر را بزنید!"
+        "♠️♥️ <b>میز حکم باز شد!</b> ♦️♣️\n"
+        "━━━━━━━━━━━━━━━\n"
+        "یک صندلی خالیه... کی جرأت می‌کنه بشینه رو صندلیِ حاکم؟ 👑\n\n"
+        "🎮 <b>۴ بازیکن، ۲ تیم، یک برنده</b>\n"
+        "🧠 غافلگیری‌های حکم، هماهنگیِ تیمی، و لذتِ بردنِ ترفند به ترفند\n"
+        "🏆 اولین تیمی که به <b>۷ امتیاز</b> برسه، قهرمانِ این میزه\n\n"
+        "⏱ فقط ۳۰ ثانیه برای هر حرکت وقت داری — پس حواست جمع باشه!\n\n"
+        "📢 عضو کانال رسمی‌مون شو: @IRarchit\n"
+        "━━━━━━━━━━━━━━━\n"
+        "👇 برای گرفتنِ صندلی، دکمه‌ی زیر رو بزن"
     )
     sent = await message.answer(text, reply_markup=lobby.render_keyboard())
     lobby.message_id = sent.message_id
@@ -295,10 +327,11 @@ async def cb_pick_partner(callback: CallbackQuery, bot: Bot) -> None:
     await bot.edit_message_text(
         chat_id=chat_id, message_id=lobby.message_id,
         text=(
-            "🃏 <b>تیم‌بندی نهایی شد</b>\n\n"
-            f"🟢 تیمِ ۱: {names[team_a[0]]} 🤝 {names[team_a[1]]}\n"
-            f"🔴 تیمِ ۲: {names[team_b[0]]} 🤝 {names[team_b[1]]}\n\n"
-            "🎴 کارت‌ها در حال ارسال به پیویِ هر بازیکن هستند..."
+            "♠️♥️ <b>تیم‌بندی نهایی شد</b> ♦️♣️\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"🟢 <b>تیمِ ۱:</b> {names[team_a[0]]} 🤝 {names[team_a[1]]}\n"
+            f"🔴 <b>تیمِ ۲:</b> {names[team_b[0]]} 🤝 {names[team_b[1]]}\n\n"
+            "🎴 کارت‌ها دارند به پیویِ هر بازیکن ارسال می‌شن... چند لحظه صبر کن!"
         ),
     )
 
@@ -306,7 +339,9 @@ async def cb_pick_partner(callback: CallbackQuery, bot: Bot) -> None:
     if not ok:
         await bot.send_message(
             chat_id,
-            "⚠️ بازی شروع نشد. یکی از بازیکنان باید ابتدا ربات را در پیوی استارت کند (/start). پس از آن دوباره /hokm را بزنید.",
+            "⚠️ <b>بازی شروع نشد!</b>\n"
+            "یکی از بازیکنان هنوز رباتِ ما رو در پیوی استارت نکرده.\n"
+            "🔹 هر ۴ نفر یک بار روی ربات /start بزنید، بعد دوباره /hokm رو اجرا کنید.",
         )
 
 
@@ -341,21 +376,87 @@ async def _announce_new_hand(chat_id: int, bot: Bot) -> None:
 
     await bot.send_message(
         chat_id,
-        f"🃏 <b>دستِ شماره‌ی {match.hand_number}</b>\n"
-        f"👑 حاکم: <b>{hakem_name}</b> — در انتظار انتخاب خالِ حکم...",
+        f"♠️♥️ <b>دستِ شماره‌ی {match.hand_number}</b> ♦️♣️\n"
+        f"👑 حاکمِ این دست: <b>{hakem_name}</b>\n"
+        f"⏳ در انتظارِ انتخابِ خالِ حکم...",
     )
 
     for seat in range(4):
         uid = match.user_id_of_seat(seat)
-        hand_text = f"دستِ اولیه‌ی شما:\n{_format_hand(hand.hands[seat])}"
+        hand_text = _format_hand(hand.hands[seat])
         if seat == hand.hakem_seat:
             await _safe_dm(
                 bot, uid,
-                f"👑 <b>حاکمِ این دست شما هستید!</b>\n\n{hand_text}\n\n👇 خالِ حکم را انتخاب کنید:",
+                f"👑 <b>تو حاکمِ این دستی!</b>\n\n{hand_text}\n\n"
+                f"👇 خالِ حکم رو انتخاب کن (تا {TURN_TIMEOUT_SECONDS} ثانیه وقت داری):",
                 reply_markup=_build_trump_keyboard(),
             )
         else:
-            await _safe_dm(bot, uid, f"{hand_text}\n\n⏳ منتظر انتخاب حکم توسط <b>{hakem_name}</b> هستیم...")
+            await _safe_dm(
+                bot, uid,
+                f"{hand_text}\n\n⏳ منتظرِ انتخابِ حکم توسط <b>{hakem_name}</b> هستیم...",
+            )
+
+    _schedule_trump_timeout(chat_id, hand.hakem_seat, bot)
+
+
+async def _apply_trump(chat_id: int, match: HokmMatch, seat: int, suit: Suit, bot: Bot, auto: bool = False) -> bool:
+    hand = match.current_hand
+    try:
+        hand.choose_trump(seat, suit)
+    except HokmError as e:
+        logger.warning("خطا در انتخابِ حکم برای کاربر %s: %s", match.user_id_of_seat(seat), e)
+        return False
+
+    if chat_id in gm.timeout_tasks:
+        gm.timeout_tasks[chat_id].cancel()
+        del gm.timeout_tasks[chat_id]
+
+    if auto:
+        hakem_name = gm.display_name.get(match.user_id_of_seat(seat), "؟")
+        await bot.send_message(
+            chat_id,
+            f"⏱ <b>{hakem_name}</b> در {TURN_TIMEOUT_SECONDS} ثانیه پاسخ نداد؛ "
+            f"ربات به‌جای او خالِ حکم را انتخاب کرد.",
+        )
+
+    await bot.send_message(
+        chat_id,
+        f"🔔 <b>حکم اعلام شد:</b> {SUIT_SYMBOL[suit]} {SUIT_NAME_FA[suit]}\n"
+        f"🎴 کارت‌های باقی‌مانده پخش شد؛ بازی شروع می‌شود!",
+    )
+
+    for seat_i in range(4):
+        uid = match.user_id_of_seat(seat_i)
+        await _safe_dm(bot, uid, f"🃏 <b>دستِ کاملِ شما</b> (۱۳ کارت):\n\n{_format_hand(hand.hands[seat_i])}")
+
+    await _prompt_turn(chat_id, bot)
+    return True
+
+
+def _schedule_trump_timeout(chat_id: int, hakem_seat: int, bot: Bot) -> None:
+    if chat_id in gm.timeout_tasks:
+        gm.timeout_tasks[chat_id].cancel()
+
+    async def _timeout_trump():
+        await asyncio.sleep(TURN_TIMEOUT_SECONDS)
+        match = gm.matches.get(chat_id)
+        if not match:
+            return
+        hand = match.current_hand
+        my_hand = hand.hands[hakem_seat]
+        if not my_hand:
+            return
+        logger.info("تایم‌اوتِ انتخابِ حکم در گروه %s - انتخابِ خودکار", chat_id)
+        # خالی که بیشترین کارت را در دستِ حاکم دارد، به‌عنوانِ حکمِ خودکار انتخاب می‌شود.
+        counts = {s: 0 for s in Suit}
+        for c in my_hand:
+            counts[c.suit] += 1
+        auto_suit = max(counts, key=lambda s: counts[s])
+        await _apply_trump(chat_id, match, hakem_seat, auto_suit, bot, auto=True)
+
+    task = asyncio.create_task(_timeout_trump())
+    gm.timeout_tasks[chat_id] = task
 
 
 @hokm_router.callback_query(F.data.startswith(CB_TRUMP_PREFIX), F.message.chat.type == "private")
@@ -366,36 +467,31 @@ async def cb_choose_trump(callback: CallbackQuery, bot: Bot) -> None:
         await callback.answer("❌ بازیِ فعالی برای شما پیدا نشد.", show_alert=True)
         return
 
-    hand = match.current_hand
     seat = match.seat_of_user(user_id)
     suit_value = int(callback.data[len(CB_TRUMP_PREFIX):])
     suit = Suit(suit_value)
 
-    try:
-        hand.choose_trump(seat, suit)
-    except HokmError as e:
-        await callback.answer(str(e), show_alert=True)
+    ok = await _apply_trump(chat_id, match, seat, suit, bot, auto=False)
+    if not ok:
+        await callback.answer("❌ الان نمی‌توانی خالِ حکم را انتخاب کنی.", show_alert=True)
         return
 
     await callback.answer(f"✅ خالِ حکم: {SUIT_NAME_FA[suit]}")
     await callback.message.edit_reply_markup(reply_markup=None)
 
-    await bot.send_message(
-        chat_id,
-        f"🔔 <b>حکم اعلام شد:</b> {SUIT_SYMBOL[suit]} {SUIT_NAME_FA[suit]}\n"
-        f"🎴 کارت‌های باقی‌مانده پخش شد و بازی شروع می‌شود!",
-    )
 
-    for seat_i in range(4):
-        uid = match.user_id_of_seat(seat_i)
-        await _safe_dm(bot, uid, f"دستِ کاملِ شما (۱۳ کارت):\n{_format_hand(hand.hands[seat_i])}")
-
-    await _prompt_turn(chat_id, bot)
-
-
-async def _perform_play(bot: Bot, chat_id: int, match: HokmMatch, seat: int, card: Card) -> None:
+async def _perform_play(bot: Bot, chat_id: int, match: HokmMatch, seat: int, card: Card, auto: bool = False) -> None:
     """اجرای منطقیِ بازی کردن کارت (فراخوانی شده توسط کاربر یا تایم‌اوت)"""
     hand = match.current_hand
+
+    if auto:
+        name = gm.display_name.get(match.user_id_of_seat(seat), "؟")
+        await bot.send_message(
+            chat_id,
+            f"⏱ <b>{name}</b> در {TURN_TIMEOUT_SECONDS} ثانیه پاسخ نداد؛ "
+            f"ربات برایِ حفظِ روندِ بازی به‌جای او حرکت کرد.",
+        )
+
     try:
         trick_result = hand.play_card(seat, card)
         # ارسال استیکر کارت در گروه
@@ -432,26 +528,37 @@ async def _prompt_turn(chat_id: int, bot: Bot) -> None:
     name = gm.display_name.get(uid, "؟")
     legal = hand.legal_moves(seat)
 
-    await bot.send_message(chat_id, f"🕓 نوبتِ <b>{name}</b>")
-    sent_dm = await _safe_dm(bot, uid, "⏳ نوبتِ شماست، یک کارت انتخاب کنید:", reply_markup=_build_card_keyboard(legal))
+    await bot.send_message(chat_id, f"🕓 نوبتِ <b>{name}</b> است...")
+    await _safe_dm(
+        bot, uid,
+        f"👇 نوبتِ توئه! یک کارت انتخاب کن (تا {TURN_TIMEOUT_SECONDS} ثانیه وقت داری):",
+        reply_markup=_build_card_keyboard(legal),
+    )
 
-    # راه‌اندازی تایم‌اوت ۳۰ ثانیه‌ای
+    # راه‌اندازی تایم‌اوت — اگر پاسخ ندهد، خودِ ربات به‌جای او بازی می‌کند
+    # و این چرخه تا بازگشتِ خودِ کاربر در نوبت‌های بعدی نیز ادامه پیدا می‌کند.
     if chat_id in gm.timeout_tasks:
         gm.timeout_tasks[chat_id].cancel()
 
     async def _timeout_play():
-        await asyncio.sleep(30)
+        await asyncio.sleep(TURN_TIMEOUT_SECONDS)
         match = gm.matches.get(chat_id)
-        if not match: return
+        if not match:
+            return
         hand = match.current_hand
         # اگر همچنان نوبت همان کاربر است و حرکتی نکرده
-        if hand.turn_seat != seat: return
+        if hand.turn_seat != seat:
+            return
 
         legal = hand.legal_moves(seat)
-        if not legal: return
-        card = legal[0]  # انتخاب اولین کارت قانونی (می‌توانید تصادفی کنید)
-        logger.info("تایم‌اوت ۳۰ ثانیه برای کاربر %s در گروه %s - حرکت خودکار", uid, chat_id)
-        await _perform_play(bot, chat_id, match, seat, card)
+        if not legal:
+            return
+        card = random.choice(legal)
+        logger.info(
+            "تایم‌اوتِ %s ثانیه‌ای برای کاربر %s در گروه %s - حرکتِ خودکار",
+            TURN_TIMEOUT_SECONDS, uid, chat_id,
+        )
+        await _perform_play(bot, chat_id, match, seat, card, auto=True)
 
     task = asyncio.create_task(_timeout_play())
     gm.timeout_tasks[chat_id] = task
@@ -489,10 +596,8 @@ async def _announce_trick(chat_id: int, trick: TrickResult, match: HokmMatch, bo
     hand = match.current_hand
     await bot.send_message(
         chat_id,
-        f"🏁 <b>ترفند شماره {len(hand.trick_history)}</b> توسط <b>{winner_name}</b> برده شد.\n"
-        f"📊 <b>ترفندهای برده شده در این دست:</b>\n"
-        f"🟢 تیم ۱: {hand.tricks_won[0]} ترفند\n"
-        f"🔴 تیم ۲: {hand.tricks_won[1]} ترفند",
+        f"🏁 <b>ترفندِ شماره‌ی {len(hand.trick_history)}</b> برای <b>{winner_name}</b> شد!\n"
+        f"🟢 تیم ۱: {hand.tricks_won[0]} ترفند   |   🔴 تیم ۲: {hand.tricks_won[1]} ترفند",
     )
 
 
@@ -500,22 +605,25 @@ async def _finish_hand(chat_id: int, bot: Bot) -> None:
     match = gm.matches[chat_id]
     res = match.on_hand_finished()
 
-    kap_text = " 🎉 <b>کاپوت! </b> تیم برنده ۲ امتیاز می‌گیرد!" if res.kap else ""
+    kap_text = "\n🎉 <b>کاپوت!</b> حریف حتی یک ترفند هم نبرد — تیمِ برنده ۲ امتیاز می‌گیرد!" if res.kap else ""
     await bot.send_message(
         chat_id,
-        f"🏆 <b>دست شماره {match.hand_number} به پایان رسید!</b>\n"
-        f"🎯 برنده: <b>تیم {res.winning_team + 1}</b> ({res.team_tricks[0]} - {res.team_tricks[1]}){kap_text}\n\n"
-        f"📈 <b>امتیازات کلی مسابقه:</b>\n"
-        f"🟢 تیم ۱: {match.scores[0]} | 🔴 تیم ۲: {match.scores[1]}\n"
-        f"🎯 هدف نهایی: {match.target_points} امتیاز",
+        f"🏆 <b>دستِ شماره‌ی {match.hand_number} تمام شد!</b>\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🎯 برنده‌یِ این دست: <b>تیمِ {res.winning_team + 1}</b> "
+        f"({res.team_tricks[0]} - {res.team_tricks[1]} ترفند){kap_text}\n\n"
+        f"📈 <b>جدولِ امتیازاتِ مسابقه:</b>\n"
+        f"🟢 تیمِ ۱: <b>{match.scores[0]}</b>   |   🔴 تیمِ ۲: <b>{match.scores[1]}</b>\n"
+        f"🏁 هدفِ نهایی: {match.target_points} امتیاز",
     )
 
     if match.finished:
         await bot.send_message(
             chat_id,
-            f"🎊 <b>مسابقه تمام شد!</b> 🎊\n"
-            f"🥇 برنده: <b>تیم {match.winning_team + 1}</b>\n"
-            f"📢 کانال ما: @IRarchit",
+            f"🎊🏆 <b>مسابقه تمام شد!</b> 🏆🎊\n"
+            f"🥇 قهرمانِ این میز: <b>تیمِ {match.winning_team + 1}</b>\n\n"
+            f"برای شروعِ دورِ بعد کافیه دوباره /hokm رو بزنید.\n"
+            f"📢 کانالِ رسمی‌مون: @IRarchit",
         )
         gm.cleanup_match(chat_id)
         return
