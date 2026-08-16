@@ -50,8 +50,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from hokm.router import hokm_router
-
 # --------------------------------------------------------------
 # ۱) تنظیمات اولیه
 # --------------------------------------------------------------
@@ -122,7 +120,6 @@ logger = logging.getLogger(__name__)
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=storage)
-dp.include_router(hokm_router)  # 🃏 بازیِ گروهیِ حکم — hokm/router.py
 
 _write_lock = asyncio.Lock()
 _pending_leave_polls: dict[str, int] = {}
