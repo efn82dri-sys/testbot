@@ -1,60 +1,48 @@
 # -*- coding: utf-8 -*-
 """
 ماژول تولید کارت عضویت تصویری «رواق»
-نسخه 2.0 - طراحی کاملاً جدید با ابعاد استوری اینستاگرام
+نسخه 3.0 - کاملاً مستقل با توابع کمکی
 """
 
 import io
 import logging
-import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
-import aiohttp
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import qrcode
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 from aiogram.types import BufferedInputFile
 
 logger = logging.getLogger(__name__)
 
-# تنظیمات مسیرها
+# ---------- تنظیمات مسیرها ----------
 BASE_DIR = Path(__file__).parent
 FONTS_DIR = BASE_DIR / "fonts"
 ASSETS_DIR = BASE_DIR / "assets"
 FONTS_DIR.mkdir(exist_ok=True, parents=True)
 ASSETS_DIR.mkdir(exist_ok=True, parents=True)
 
-# ==============================================================
-# ۱) توابع کمکی
-# ==============================================================
-
+# ---------- توابع کمکی ----------
 def to_persian_num(num) -> str:
-    """تبدیل اعداد انگلیسی به فارسی."""
     mapping = {
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
         '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
     }
     return ''.join(mapping.get(ch, ch) for ch in str(num))
 
-
-def get_font(name: str, size: int) -> ImageFont.FreeTypeFont:
-    """بارگذاری فونت با fallback."""
+def get_font(name: str, size: int):
     font_path = FONTS_DIR / name
     if font_path.exists():
         try:
             return ImageFont.truetype(str(font_path), size)
         except Exception:
             pass
-    # fallback به فونت پیش‌فرض سیستم
     try:
         return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size)
     except:
         return ImageFont.load_default()
 
-
-def load_asset(name: str) -> Optional[Image.Image]:
-    """بارگذاری یک تصویر کمکی."""
+def load_asset(name: str):
     asset_path = ASSETS_DIR / name
     if asset_path.exists():
         try:
@@ -63,51 +51,7 @@ def load_asset(name: str) -> Optional[Image.Image]:
             pass
     return None
 
-
-def add_glow_effect(image: Image.Image, radius: int = 10, color: Tuple[int, int, int] = (255, 215, 0)) -> Image.Image:
-    """افکت درخشش ملایم دور یک المان."""
-    glow = image.copy()
-    glow = glow.filter(ImageFilter.GaussianBlur(radius=radius))
-    # ترکیب با رنگ مشخص
-    glow = ImageChops.multiply(glow, Image.new('RGBA', glow.size, color + (30,)))
-    return ImageChops.screen(image, glow)
-
-
-def create_rounded_rectangle_mask(size: Tuple[int, int], radius: int) -> Image.Image:
-    """ساخت ماسک برای مستطیل با گوشه‌های گرد."""
-    mask = Image.new('L', size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0, 0, size[0], size[1]), radius=radius, fill=255)
-    return mask
-
-
-def create_glassmorphism_background(width: int, height: int, radius: int = 24) -> Image.Image:
-    """ساخت پس‌زمینه‌ی شیشه‌ای (Glassmorphism)."""
-    # لایه‌ی اصلی با شفافیت
-    base = Image.new('RGBA', (width, height), (255, 255, 255, 20))
-    
-    # حاشیه‌ی نازک طلایی
-    border = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-    border_draw = ImageDraw.Draw(border)
-    border_draw.rounded_rectangle(
-        (0, 0, width, height),
-        radius=radius,
-        outline=(201, 168, 76, 128),
-        width=2
-    )
-    
-    # ترکیب
-    result = Image.alpha_composite(base, border)
-    
-    # افکت بلور (با استفاده از numpy برای شبیه‌سازی)
-    # در عمل، بعداً روی تصویر نهایی اعمال می‌شود
-    return result
-
-
-# ==============================================================
-# ۲) تابع اصلی تولید کارت
-# ==============================================================
-
+# ---------- تابع اصلی تولید کارت ----------
 async def generate_membership_card(
     user,
     data: dict,
@@ -131,61 +75,48 @@ async def generate_membership_card(
         BufferedInputFile: تصویر کارت آماده برای ارسال به تلگرام
     """
     
-    # ===== ابعاد و رنگ‌ها =====
     CARD_WIDTH = 1080
     CARD_HEIGHT = 1920
     
-    # پالت رنگی
     COLORS = {
-        "bg_primary": (10, 15, 26),      # #0a0f1a
-        "bg_secondary": (19, 31, 51),    # #131f33
-        "gold": (201, 168, 76),          # #c9a84c
-        "gold_light": (240, 208, 128),   # #f0d080
-        "gold_dark": (184, 148, 58),     # #b8943a
+        "bg_primary": (10, 15, 26),
+        "bg_secondary": (19, 31, 51),
+        "gold": (201, 168, 76),
+        "gold_light": (240, 208, 128),
+        "gold_dark": (184, 148, 58),
         "white": (255, 255, 255),
-        "cream": (232, 224, 208),        # #e8e0d0
-        "glass_bg": (255, 255, 255, 20),
-        "glass_border": (201, 168, 76, 128),
+        "cream": (232, 224, 208),
     }
     
-    # ===== ایجاد بوم =====
     card = Image.new('RGB', (CARD_WIDTH, CARD_HEIGHT), COLORS["bg_primary"])
     draw = ImageDraw.Draw(card)
     
-    # ----- ۱. گرادیان پس‌زمینه -----
-    # یک گرادیان شعاعی ساده با استفاده از حلقه
+    # گرادیان پس‌زمینه
     for y in range(CARD_HEIGHT):
-        # محاسبه فاصله از مرکز (کمی بالاتر)
         center_x = CARD_WIDTH // 2
         center_y = int(CARD_HEIGHT * 0.4)
         dist = ((y - center_y) ** 2) ** 0.5
         max_dist = CARD_HEIGHT * 0.6
-        
-        # ضریب ترکیب
         ratio = min(1.0, dist / max_dist)
         r = int(COLORS["bg_secondary"][0] * (1 - ratio) + COLORS["bg_primary"][0] * ratio)
         g = int(COLORS["bg_secondary"][1] * (1 - ratio) + COLORS["bg_primary"][1] * ratio)
         b = int(COLORS["bg_secondary"][2] * (1 - ratio) + COLORS["bg_primary"][2] * ratio)
         draw.line([(0, y), (CARD_WIDTH, y)], fill=(r, g, b))
     
-    # ----- ۲. بافت معماری (اختیاری) -----
+    # بافت معماری (اختیاری)
     pattern = load_asset("pattern.png")
     if pattern:
         pattern = pattern.resize((CARD_WIDTH, CARD_HEIGHT)).convert('RGBA')
-        # شفافیت بالا
         pattern.putalpha(20)
         card = Image.alpha_composite(card.convert('RGBA'), pattern).convert('RGB')
     
-    # ===== ۳. حاشیه‌ی طلایی با الگوی هندسی =====
-    # حاشیه‌ی اصلی
+    # حاشیه‌های طلایی
     margin = 40
     draw.rectangle(
         [(margin, margin), (CARD_WIDTH - margin, CARD_HEIGHT - margin)],
         outline=COLORS["gold"],
         width=4,
     )
-    
-    # حاشیه‌ی دوم نازک‌تر
     margin2 = 56
     draw.rectangle(
         [(margin2, margin2), (CARD_WIDTH - margin2, CARD_HEIGHT - margin2)],
@@ -193,13 +124,12 @@ async def generate_membership_card(
         width=1,
     )
     
-    # ----- ۴. لوگو در گوشه بالا راست -----
+    # لوگو
     logo = load_asset("logo.png")
     if logo:
         logo = logo.resize((80, 80))
         card.paste(logo, (CARD_WIDTH - 120, 40), logo)
     else:
-        # لوگوی متنی ساده
         draw.text(
             (CARD_WIDTH - 60, 60),
             "🏛",
@@ -208,12 +138,11 @@ async def generate_membership_card(
             anchor="mt",
         )
     
-    # ----- ۵. عنوان اصلی (چپ‌چین) -----
-    title_font = get_font("Kalameh-Bold.ttf", 56)
+    # عنوان
     draw.text(
         (80, 120),
         "کارت عضویت",
-        font=title_font,
+        font=get_font("Kalameh-Bold.ttf", 56),
         fill=COLORS["gold"],
     )
     draw.text(
@@ -222,39 +151,31 @@ async def generate_membership_card(
         font=get_font("Kalameh-Bold.ttf", 72),
         fill=COLORS["gold_light"],
     )
-    
-    # خط زیر عنوان
     draw.line(
         [(80, 220), (400, 220)],
         fill=COLORS["gold"],
         width=2,
     )
     
-    # ===== ۶. عکس پروفایل =====
+    # عکس پروفایل
     avatar_size = 260
     avatar_x = CARD_WIDTH // 2 - avatar_size // 2
     avatar_y = 320
     
     if profile_image:
-        # تغییر اندازه
         profile = profile_image.resize((avatar_size, avatar_size), Image.Resampling.LANCZOS)
-        
-        # برش دایره‌ای
         mask = Image.new('L', (avatar_size, avatar_size), 0)
         mask_draw = ImageDraw.Draw(mask)
         mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
         profile.putalpha(mask)
         
-        # حاشیه‌ی طلایی (دوگانه)
-        # حاشیه‌ی خارجی (درخشش)
         glow_size = avatar_size + 40
         glow_mask = Image.new('L', (glow_size, glow_size), 0)
         glow_draw = ImageDraw.Draw(glow_mask)
         glow_draw.ellipse((0, 0, glow_size, glow_size), fill=255)
         glow_img = Image.new('RGB', (glow_size, glow_size), COLORS["gold_light"])
-        glow_img.putalpha(20)  # شفافیت برای درخشش
+        glow_img.putalpha(20)
         
-        # حاشیه‌ی اصلی طلایی
         border_size = avatar_size + 16
         border_mask = Image.new('L', (border_size, border_size), 0)
         border_draw = ImageDraw.Draw(border_mask)
@@ -262,29 +183,20 @@ async def generate_membership_card(
         border_img = Image.new('RGB', (border_size, border_size), COLORS["gold"])
         border_img.putalpha(border_mask)
         
-        # قرار دادن روی کارت
-        # ابتدا درخشش
         glow_x = avatar_x - 20
         glow_y = avatar_y - 20
         card.paste(glow_img, (glow_x, glow_y), glow_img)
-        
-        # سپس حاشیه
         border_x = avatar_x - 8
         border_y = avatar_y - 8
         card.paste(border_img, (border_x, border_y), border_img)
-        
-        # نهایتاً عکس
         card.paste(profile, (avatar_x, avatar_y), profile)
     else:
-        # آواتار پیش‌فرض با طراحی معماری
-        # دایره‌ی پس‌زمینه
         draw.ellipse(
             [(avatar_x, avatar_y), (avatar_x + avatar_size, avatar_y + avatar_size)],
             fill=COLORS["bg_secondary"],
             outline=COLORS["gold"],
             width=6,
         )
-        # آیکون معمار
         draw.text(
             (CARD_WIDTH // 2, avatar_y + avatar_size // 2),
             "👷",
@@ -293,18 +205,15 @@ async def generate_membership_card(
             anchor="mm",
         )
     
-    # ===== ۷. نام کاربر =====
+    # نام کاربر
     display_name = user.full_name or user.first_name or "کاربر"
     name_y = avatar_y + avatar_size + 60
-    
-    # سایه‌ی نام
-    shadow_color = (0, 0, 0, 100)
     name_font = get_font("Kalameh-Bold.ttf", 64)
     draw.text(
         (CARD_WIDTH // 2 + 4, name_y + 4),
         display_name,
         font=name_font,
-        fill=shadow_color,
+        fill=(0, 0, 0, 100),
         anchor="mt",
     )
     draw.text(
@@ -315,24 +224,19 @@ async def generate_membership_card(
         anchor="mt",
     )
     
-    # ===== ۸. قاب شیشه‌ای (Glassmorphism) برای اطلاعات =====
+    # قاب شیشه‌ای
     glass_width = 840
     glass_height = 340
     glass_x = (CARD_WIDTH - glass_width) // 2
     glass_y = name_y + 90
     
-    # ایجاد قاب شیشه‌ای
     glass = Image.new('RGBA', (glass_width, glass_height), (0, 0, 0, 0))
     glass_draw = ImageDraw.Draw(glass)
-    
-    # پس‌زمینه‌ی شیشه‌ای
     glass_draw.rounded_rectangle(
         (0, 0, glass_width, glass_height),
         radius=24,
         fill=(255, 255, 255, 15),
     )
-    
-    # حاشیه‌ی شیشه‌ای
     glass_draw.rounded_rectangle(
         (0, 0, glass_width, glass_height),
         radius=24,
@@ -340,7 +244,6 @@ async def generate_membership_card(
         width=2,
     )
     
-    # سایه‌ی قاب
     shadow = Image.new('RGBA', (glass_width + 20, glass_height + 20), (0, 0, 0, 0))
     shadow_draw = ImageDraw.Draw(shadow)
     shadow_draw.rounded_rectangle(
@@ -350,17 +253,15 @@ async def generate_membership_card(
     )
     shadow = shadow.filter(ImageFilter.GaussianBlur(radius=10))
     
-    # ترکیب سایه و قاب
     card.paste(shadow, (glass_x - 10, glass_y - 10), shadow)
     card.paste(glass, (glass_x, glass_y), glass)
     
-    # ----- ۹. متن‌های داخل قاب شیشه‌ای -----
+    # متن‌های داخل قاب
     info_font = get_font("Kalameh-Regular.ttf", 38)
     info_small_font = get_font("Kalameh-Regular.ttf", 32)
     info_y_start = glass_y + 50
     x_start = glass_x + 60
     
-    # شماره عضویت (با اعداد فارسی)
     member_text = f"شماره‌ی عضویت: {to_persian_num(member_count)}"
     draw.text(
         (x_start, info_y_start),
@@ -369,7 +270,6 @@ async def generate_membership_card(
         fill=COLORS["gold_light"],
     )
     
-    # مقطع تحصیلی
     edu_label = data.get("education_label", "کارشناسی")
     draw.text(
         (x_start, info_y_start + 65),
@@ -378,20 +278,20 @@ async def generate_membership_card(
         fill=COLORS["cream"],
     )
     
-    # علایق (با limited length)
-    interests = data.get("interests", [])
+    # ===== اصلاح: تبدیل set به list =====
+    interests_raw = data.get("interests", [])
+    interests = list(interests_raw) if not isinstance(interests_raw, list) else interests_raw
     interests_text = "، ".join(interests[:3])
     if len(interests) > 3:
         interests_text += "، ..."
-    
     draw.text(
         (x_start, info_y_start + 130),
         f"⭐️ {interests_text}",
         font=info_small_font,
         fill=COLORS["cream"],
     )
+    # ===== پایان اصلاح =====
     
-    # تاریخ عضویت (در سمت راست قاب)
     date_text = f"🗓 {jalali_now}"
     date_font = get_font("Kalameh-Regular.ttf", 30)
     draw.text(
@@ -402,13 +302,12 @@ async def generate_membership_card(
         anchor="rt",
     )
     
-    # ===== ۱۰. QR Code با طراحی خاص =====
+    # QR Code
     if qr_data:
         qr_size = 240
         qr_x = CARD_WIDTH // 2 - qr_size // 2
         qr_y = glass_y + glass_height + 100
         
-        # تولید QR
         qr = qrcode.QRCode(
             version=2,
             error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -420,12 +319,9 @@ async def generate_membership_card(
         qr_img = qr.make_image(fill_color="#c9a84c", back_color="white").convert('RGBA')
         qr_img = qr_img.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
         
-        # محفظه‌ی QR با طراحی قوسی
         container_size = qr_size + 60
         container = Image.new('RGBA', (container_size, container_size), (0, 0, 0, 0))
         container_draw = ImageDraw.Draw(container)
-        
-        # مستطیل با گوشه‌های گرد
         container_draw.rounded_rectangle(
             (0, 0, container_size, container_size),
             radius=16,
@@ -433,17 +329,13 @@ async def generate_membership_card(
             outline=(COLORS["gold"][0], COLORS["gold"][1], COLORS["gold"][2], 100),
             width=2,
         )
-        
-        # قرار دادن QR در مرکز
         qr_offset = (container_size - qr_size) // 2
         container.paste(qr_img, (qr_offset, qr_offset), qr_img)
         
-        # قرار دادن محفظه روی کارت
         container_x = qr_x - 30
         container_y = qr_y - 30
         card.paste(container, (container_x, container_y), container)
         
-        # متن زیر QR
         draw.text(
             (CARD_WIDTH // 2, qr_y + container_size + 30),
             "اسکن کنید و به جمع معماران بپیوندید",
@@ -452,7 +344,7 @@ async def generate_membership_card(
             anchor="mt",
         )
     
-    # ===== ۱۱. فوتر =====
+    # فوتر
     footer_y = CARD_HEIGHT - 60
     draw.text(
         (CARD_WIDTH // 2, footer_y),
@@ -462,9 +354,7 @@ async def generate_membership_card(
         anchor="mb",
     )
     
-    # ===== ذخیره و بازگشت =====
     output = io.BytesIO()
     card.save(output, format='PNG', quality=95, optimize=True)
     output.seek(0)
-    
     return BufferedInputFile(output.read(), filename="membership_card.png")
