@@ -983,22 +983,8 @@ async def cb_captcha_answer(callback: CallbackQuery):
 # ==============================================================
 _pending_form: dict[int, dict] = {}
 
-def form_step_nav_row(current_step: int) -> list[InlineKeyboardButton]:
-    """ردیفِ کوچیکِ شماره‌ی مراحل بالای هر پیامِ فرم — با زدنِ هر شماره،
-    کاربر مستقیم به همون مرحله می‌پره تا پاسخِ قبلی‌اش رو ویرایش کنه."""
-    labels = {1: "1️⃣", 2: "2️⃣", 3: "3️⃣"}
-    row = []
-    for s in (1, 2, 3):
-        if s == current_step:
-            row.append(InlineKeyboardButton(text=f"🔵 {labels[s]}", callback_data="form_noop"))
-        elif s < current_step:
-            row.append(InlineKeyboardButton(text=f"✏️ {labels[s]}", callback_data=f"form_goto:{s}"))
-        else:
-            row.append(InlineKeyboardButton(text=f"⚪️ {labels[s]}", callback_data="form_noop"))
-    return row
-
 def education_keyboard() -> InlineKeyboardMarkup:
-    buttons = [form_step_nav_row(1)]
+    buttons = []
     for i in range(0, len(EDUCATION_OPTIONS), 2):
         row = [InlineKeyboardButton(text=EDUCATION_OPTIONS[i][1], callback_data=f"form_edu:{EDUCATION_OPTIONS[i][0]}", style="primary")]
         if i + 1 < len(EDUCATION_OPTIONS):
@@ -1007,7 +993,7 @@ def education_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def referral_keyboard() -> InlineKeyboardMarkup:
-    buttons = [form_step_nav_row(2)]
+    buttons = []
     items = list(REFERRAL_LABELS.items())
     for i in range(0, len(items), 2):
         row = [InlineKeyboardButton(text=items[i][1], callback_data=f"form_ref:{items[i][0]}", style="primary")]
@@ -1018,7 +1004,7 @@ def referral_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def interests_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
-    buttons = [form_step_nav_row(3)]
+    buttons = []
     for i in range(0, len(INTERESTS), 2):
         row = []
         for item in INTERESTS[i:i + 2]:
@@ -1044,8 +1030,7 @@ async def start_membership_form(user) -> None:
             chat_id=user.id,
             text=(
                 f"عالی بود، {user.first_name} 🌿\n\n"
-                "برای تکمیلِ عضویت، فقط سه سوالِ کوتاه مونده — با همین دکمه‌ها جواب بده.\n"
-                "هر وقت خواستی، از ردیفِ شماره‌های بالای پیام می‌تونی به یک سوالِ قبلی برگردی و جوابش رو عوض کنی.\n\n"
+                "برای تکمیلِ عضویت، فقط سه سوالِ کوتاه مونده — با همین دکمه‌ها جواب بده.\n\n"
                 f"{progress_bar(1)}  سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟"
             ),
             reply_markup=education_keyboard(),
@@ -1110,49 +1095,6 @@ async def cb_form_back_to_education(callback: CallbackQuery):
     )
     _schedule_form_reminder(user.id)
     await callback.answer()
-
-@dp.callback_query(F.data == "form_noop")
-async def cb_form_noop(callback: CallbackQuery):
-    # دکمه‌ی شماره‌ی مرحله‌ی جاری یا مراحلِ هنوز نرسیده — کاری انجام نمی‌دهد
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("form_goto:"))
-async def cb_form_goto(callback: CallbackQuery):
-    """ویرایشِ مستقیمِ یک مرحله‌ی قبلاً پاسخ‌داده‌شده، از هر جای فرم."""
-    user = callback.from_user
-    data = _pending_form.get(user.id)
-    if data is None:
-        await callback.answer("انگار مسیر قطع شده. لطفاً دوباره درخواستِ عضویت بده.", show_alert=True)
-        return
-    try:
-        target = int(callback.data.split(":", 1)[1])
-    except ValueError:
-        await callback.answer()
-        return
-
-    if target == 1:
-        _pending_form[user.id] = {}
-        await callback.message.edit_text(
-            f"{progress_bar(1)}  سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟",
-            reply_markup=education_keyboard(),
-        )
-    elif target == 2:
-        if not data.get("education"):
-            await callback.answer("هنوز سوالِ اول رو جواب ندادی.", show_alert=True)
-            return
-        data.pop("referral", None)
-        data.pop("interests", None)
-        await callback.message.edit_text(
-            f"ثبت‌شده: <b>{data['education_label']}</b> ✅\n\n"
-            f"{progress_bar(2)}  سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
-            reply_markup=referral_keyboard(),
-        )
-    else:
-        await callback.answer()
-        return
-
-    _schedule_form_reminder(user.id)
-    await callback.answer("✏️ به همین مرحله برگشتی، هر وقت خواستی پاسخت رو عوض کن.")
 
 @dp.callback_query(F.data == "form_back:ref")
 async def cb_form_back_to_referral(callback: CallbackQuery):
