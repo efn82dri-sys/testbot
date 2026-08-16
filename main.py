@@ -3,15 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با اصلاحات:
-- رفع باگ تشخیص عضویت (is_user_member)
-- سیستم حضور و غیاب با خروجی اکسل و ارسال فقط به ادمین
-- مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
-- دکمهٔ «دعوت از دوستان» در پنل کاربری
-- اسپینر لودینگ در فرم و رفع باگ تیک قوانین
-- حذفِ احرازِ هویت با شماره تلفن، جایگزینی با تستِ ضدربات (دکمه‌های چندگزینه‌ای)
-- حذفِ مینی‌اپِ وب، جایگزینی با فرمِ پذیرشِ تماماً دکمه‌ای (پنل شیشه‌ای)
-- متن‌های شخصی‌سازی‌شده با نامِ کاربر و جزئیاتِ پویا (رتبه‌ی عضویت و ...)
+نسخهٔ نهایی با اصلاحات UI/UX:
+- رفع جهش ناگهانی به فرم (افزودن پیام‌های زمینه‌ساز)
+- یکدست‌سازی خط‌شکنی و نگارش فارسی در تمام پیام‌ها
+- بهبود کارت عضویت (حذف کاراکترهای جعبه‌ای، استفاده از جداکننده‌ی ساده)
+- تابع کمکی greet_user برای خطاب یکدست
+- تابع کمکی to_persian_num برای اعداد فارسی
 """
 
 import asyncio
@@ -57,10 +54,6 @@ from openpyxl.utils import get_column_letter
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
 
-# شناسه‌ی افکت انیمیشنیِ 🎉 (Add an animated effect)
-# نکته‌ی مهم: message_effect_id فقط توی sendMessage/sendPhoto و... کار می‌کند،
-# روی editMessageText اثری ندارد و توسط تلگرام نادیده گرفته می‌شود.
-# همچنین این افکت‌ها فقط در چت خصوصی (private) قابل نمایش‌اند، نه در گروه.
 MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"  # 🎉
 GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")
 NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
@@ -115,29 +108,8 @@ INTERESTS: list[str] = [
 ]
 MAX_INTERESTS = 3
 
-# --------------------------------------------------------------
-# کتابچهٔ لحن (Tone Book)
-# --------------------------------------------------------------
-# قرارداد ایموجی‌ها:
-#   🏛  رسمی / عضویت / برند
-#   ✅  تایید یک اقدام یا مرحله
-#   🔙  بازگشت به مرحله یا منوی قبل
-#   📝  فرم / ثبت اطلاعات
-#   📢  اطلاعیه / پیام همگانی
-#   ⚠️/🚨  خطا یا هشدار
-# همه‌ی پیام‌های مهم (خوش‌آمد، تاییدِ نهایی، هشدارها) با یک امضای
-# ثابت بسته می‌شوند تا حسِ برند در سراسرِ ربات یکدست بماند.
 GROUP_NAME = "رواق"
 SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
-
-def sign(text: str) -> str:
-    """پیام‌های مهم را با امضای ثابتِ تیم می‌بندد."""
-    return f"{text}{SIGNATURE}"
-
-def progress_bar(step: int, total: int = 3) -> str:
-    """نوارِ پیشرفتِ بصری برای مراحلِ فرم، مثلاً 🟩🟩⬜."""
-    step = max(0, min(step, total))
-    return ("🟩" * step) + ("⬜" * (total - step))
 
 # لینکِ قوانین و حریمِ خصوصی (اگر تنظیم نشود، متنِ پیش‌فرض نمایش داده می‌شود)
 GROUP_RULES_URL = os.environ.get("GROUP_RULES_URL", "").strip()
@@ -178,10 +150,10 @@ def _schedule_form_reminder(user_id: int) -> None:
             await bot.send_message(
                 chat_id=user_id,
                 text=(
-                    "⏳ یادت نره وسطِ فرمِ پذیرش موندی!\n"
+                    "⏳ یادت نره وسطِ فرمِ پذیرش موندی!\n\n"
                     "هر وقت آماده بودی، همینجا روی یکی از دکمه‌های بالا بزن تا "
-                    "ادامه بدیم. اگه مشکلی پیش اومده، از «📞 ارتباط با ادمین» "
-                    "کمک بگیر."
+                    "ادامه بدیم.\n"
+                    "اگه مشکلی پیش اومده، از «📞 ارتباط با ادمین» کمک بگیر."
                 ),
             )
         except Exception as e:
@@ -211,24 +183,24 @@ LEAVE_REASONS: list[tuple[str, str]] = [
     (
         "فایل‌ها و محتوای گروه به‌دردم نخورد",
         "حیف شد! اگر دقیقاً بگویی دنبالِ چه فایلی بودی، حتماً در انبارِ این "
-        "رواق گم‌شده‌ای پیدا می‌شود که به‌کارت بیاید. به ادمین‌ها پیام بده، "
-        "شاید درِ گنج‌خانه‌ای تازه باز شود 🙏",
+        "رواق گم‌شده‌ای پیدا می‌شود که به‌کارت بیاید.\n"
+        "به ادمین‌ها پیام بده، شاید درِ گنج‌خانه‌ای تازه باز شود 🙏",
     ),
     (
         "پیام‌های زیاد گروه رو شلوغ می‌کرد",
         "راستی؟ می‌دونی که می‌تونی گروه رو روی حالتِ سکوت بذاری و فقط گاهی "
-        "سراغِ «پیام‌های سنجاق‌شده» (همون فایل‌های طلایی) بیای؟ بدونِ اینکه "
-        "اعلان‌ها اذیتت کنن 🔕",
+        "سراغِ «پیام‌های سنجاق‌شده» (همون فایل‌های طلایی) بیای؟\n"
+        "بدونِ اینکه اعلان‌ها اذیتت کنن 🔕",
     ),
     (
         "فعلاً به این موضوع نیاز ندارم",
-        "کاملاً درک می‌کنم. بساطِ معماری گاهی خلوت‌شدن هم می‌خواد. هر وقت "
-        "دوباره خواستی قدم بذاری، درِ رواق به رویت باز است 🙌",
+        "کاملاً درک می‌کنم. بساطِ معماری گاهی خلوت‌شدن هم می‌خواد.\n"
+        "هر وقت دوباره خواستی قدم بذاری، درِ رواق به رویت باز است 🙌",
     ),
     (
         "دلیل دیگه‌ای دارم",
-        "ممنون که وقت گذاشتی. اگه حرفِ دلت رو مستقیم با ادمین‌ها در میون "
-        "بذاری، به ما در مرمتِ این فضا کمکِ بزرگی کردی 🙏",
+        "ممنون که وقت گذاشتی.\n"
+        "اگه حرفِ دلت رو مستقیم با ادمین‌ها در میون بذاری، به ما در مرمتِ این فضا کمکِ بزرگی کردی 🙏",
     ),
 ]
 
@@ -245,6 +217,29 @@ def to_jalali(utc_dt: datetime) -> jdatetime.datetime:
 def format_jalali_datetime(utc_dt: datetime) -> str:
     jalali = to_jalali(utc_dt)
     return jalali.strftime("%Y/%m/%d %H:%M:%S")
+
+# ---------- توابع کمکی برای نگارش فارسی ----------
+def to_persian_num(num) -> str:
+    """تبدیل اعداد انگلیسی به فارسی."""
+    mapping = {
+        '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
+        '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
+    }
+    return ''.join(mapping.get(ch, ch) for ch in str(num))
+
+def greet_user(user, suffix="جان") -> str:
+    """خطاب یکدست به کاربر با اسم و پسوند محترمانه."""
+    name = html_escape(user.first_name or "دوست عزیز")
+    return f"{name} {suffix}"
+
+def sign(text: str) -> str:
+    """پیام‌های مهم را با امضای ثابتِ تیم می‌بندد."""
+    return f"{text}{SIGNATURE}"
+
+def progress_bar(step: int, total: int = 3) -> str:
+    """نوارِ پیشرفتِ بصری برای مراحلِ فرم، مثلاً 🟩🟩⬜."""
+    step = max(0, min(step, total))
+    return ("🟩" * step) + ("⬜" * (total - step))
 
 # ---------- توابع کمکی ----------
 def is_admin(user_id: int) -> bool:
@@ -281,7 +276,7 @@ async def mark_verified(user_id: int) -> None:
 def is_verified(user_id: int) -> bool:
     return str(user_id) in load_verified()
 
-# ---------- کاربرانِ واردشده به قیف (استارت ربات یا درخواست عضویت) ----------
+# ---------- کاربرانِ واردشده به قیف ----------
 def load_funnel_users() -> set[int]:
     if not FUNNEL_USERS_FILE.exists():
         return set()
@@ -291,9 +286,6 @@ def load_funnel_users() -> set[int]:
         return set()
 
 async def mark_funnel_entry(user_id: int) -> None:
-    """کاربر را به‌عنوان یکی از ورودی‌های قیف ثبت می‌کند (استارت ربات یا
-    پیامی که به‌خاطر درخواست عضویت برایش ارسال شده). هر کاربر فقط یک‌بار
-    شمرده می‌شود، حتی اگر چندبار استارت بزند."""
     async with _write_lock:
         users = load_funnel_users()
         if user_id in users:
@@ -325,8 +317,6 @@ async def is_user_member(user_id: int) -> bool:
         return False
 
 def collect_form_user_ids_by_interest(interest: str) -> set[int]:
-    """آیدیِ کاربرانی که فرم را تکمیل کرده و علاقهٔ مشخص‌شده را در بین
-    انتخاب‌های خود دارند؛ برای بروادکستِ هدفمند بر اساسِ تگِ علاقه."""
     user_ids: set[int] = set()
     if not DATA_FILE.exists():
         return user_ids
@@ -365,9 +355,10 @@ cache_users()
 async def build_stats_text() -> str:
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+        member_count_str = to_persian_num(member_count)
     except Exception as e:
         logger.warning("گرفتن تعداد اعضا ممکن نشد: %s", e)
-        member_count = "نامشخص"
+        member_count_str = "نامشخص"
 
     form_count = 0
     if DATA_FILE.exists():
@@ -379,19 +370,17 @@ async def build_stats_text() -> str:
     verified_count = len(load_verified())
     form_joined_count = stats.get("form_completed_and_joined", 0)
 
-    # نرخ افت هر مرحله نسبت به مرحله‌ی قبل، برای اینکه ادمین سریع بفهمد
-    # بیشترین ریزشِ کاربر کجای مسیر (قیف) اتفاق می‌افتد.
     verified_rate = (verified_count / funnel_count * 100) if funnel_count else 0
     joined_rate = (form_joined_count / verified_count * 100) if verified_count else 0
 
     return (
         "📐 <b>داشبورد رواق (آمار لحظه‌ای)</b>\n\n"
-        f"👥 ساکنینِ فعلی گروه: <b>{member_count}</b>\n\n"
+        f"👥 ساکنینِ فعلی گروه: <b>{member_count_str}</b>\n\n"
         "<b>قیفِ عضویت:</b>\n"
-        f"1️⃣ استارت ربات / پیامِ درخواست عضویت: <b>{funnel_count}</b>\n"
-        f"2️⃣ تاییدِ عدمِ ربات‌بودن: <b>{verified_count}</b> ({verified_rate:.0f}٪)\n"
-        f"3️⃣ فرمِ تکمیل‌شده + ورود به گروه: <b>{form_joined_count}</b> ({joined_rate:.0f}٪)\n\n"
-        f"📝 کل فرم‌های ثبت‌شده (شامل موارد تأییدنشده): <b>{form_count}</b>\n\n"
+        f"1️⃣ استارت ربات / پیامِ درخواست عضویت: <b>{to_persian_num(funnel_count)}</b>\n"
+        f"2️⃣ تاییدِ عدمِ ربات‌بودن: <b>{to_persian_num(verified_count)}</b> ({verified_rate:.0f}٪)\n"
+        f"3️⃣ فرمِ تکمیل‌شده + ورود به گروه: <b>{to_persian_num(form_joined_count)}</b> ({joined_rate:.0f}٪)\n\n"
+        f"📝 کل فرم‌های ثبت‌شده (شامل موارد تأییدنشده): <b>{to_persian_num(form_count)}</b>\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
     )
 
@@ -436,21 +425,21 @@ async def build_stats_detail_text() -> str:
 
     lines = [
         f"📊 <b>آمارِ تفصیلیِ ساکنانِ رواق</b>\n"
-        f"از میانِ <b>{form_count}</b> نفری که احرازِ هویت را کامل کرده‌اند:\n"
+        f"از میانِ <b>{to_persian_num(form_count)}</b> نفری که احرازِ هویت را کامل کرده‌اند:\n"
     ]
 
     lines.append("<b>مقطعِ تحصیلی:</b>")
     for label, count in sorted(educations.items(), key=lambda x: -x[1]):
-        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+        lines.append(f"▪️ {label}: <b>{to_persian_num(count)}</b> نفر")
 
     lines.append("\n<b>نحوه‌ی آشنایی:</b>")
     for label, count in sorted(referrals.items(), key=lambda x: -x[1]):
-        lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+        lines.append(f"▪️ {label}: <b>{to_persian_num(count)}</b> نفر")
 
     lines.append("\n<b>علایق:</b>")
     if interests:
         for label, count in sorted(interests.items(), key=lambda x: -x[1]):
-            lines.append(f"▪️ {label}: <b>{count}</b> نفر")
+            lines.append(f"▪️ {label}: <b>{to_persian_num(count)}</b> نفر")
     else:
         lines.append("هنوز کسی علایقش را ثبت نکرده.")
 
@@ -672,8 +661,6 @@ def topics_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # ---------- پنل کاربری ----------
-# سبک هر دکمه بر اساس کارکردش: سبز برای عملِ مثبت/رشد (دعوت از دوستان)،
-# آبی برای گزینه‌های اطلاعاتی/ناوبری، قرمز برای بستن پنل.
 _USER_MENU_STYLES = {
     "join": "success",
     "topics": "primary",
@@ -703,7 +690,6 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
                 style=_USER_MENU_STYLES.get(key2, "primary"),
             ))
         buttons.append(row)
-    # لینکِ قوانین/حریمِ خصوصی همیشه در دسترس است، مستقل از مدیریتِ محتوای پویا
     buttons.append([InlineKeyboardButton(text="📜 قوانین و حریم خصوصی", callback_data="menu:rules", style="primary")])
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close", style="danger")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -768,6 +754,30 @@ async def save_bot_state(state: dict) -> None:
     async with _write_lock:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
+# ---------- تابع زمینه‌ساز قبل از فرم (رفع جهش ناگهانی) ----------
+async def send_reengagement_intro(user, context: str = "default") -> None:
+    """ارسال پیامِ زمینه‌سازی قبل از شروع فرم، بسته به موقعیت."""
+    if context == "pending":
+        text = (
+            f"🟢 {greet_user(user)},\n\n"
+            "ربات دوباره روشن شد و نوبتِ توئه.\n"
+            "چون قبلاً تاییدِ ضدربات رو رد کرده بودی، دیگه لازم نیست دوباره انجامش بدی — "
+            "می‌ریم سراغ فرم."
+        )
+    elif context == "rejoin":
+        text = (
+            f"👋 {greet_user(user)},\n\n"
+            "قبلاً تاییدِ ضدربات رو انجام داده بودی، پس مستقیم می‌ریم سراغ فرمِ پذیرش."
+        )
+    else:
+        text = (
+            f"👋 {greet_user(user)},\n\n"
+            "خوشحالیم که می‌خوای عضو رواق بشی.\n"
+            "یه فرمِ سه‌سوالی داری پیش رو، کمکت می‌کنه بهتر شناخته بشی."
+        )
+    await bot.send_message(chat_id=user.id, text=sign(text))
+    await asyncio.sleep(1.2)  # مکث کوتاه برای خواندن پیام
+
 async def process_pending_requests():
     state = load_bot_state()
     pending = state.get("pending_requests", [])
@@ -778,6 +788,7 @@ async def process_pending_requests():
         try:
             user = await bot.get_chat(user_id)
             if is_verified(user_id):
+                await send_reengagement_intro(user, context="pending")
                 await start_membership_form(user)
             else:
                 await send_welcome_intro(user)
@@ -803,25 +814,29 @@ async def handle_start(message: Message):
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
-    display_name = message.from_user.first_name or "دوست عزیز"
+    display_name = html_escape(message.from_user.first_name or "دوست عزیز")
 
     if is_form_completed(user_id) or await is_user_member(user_id):
         await message.answer(
-            f"🏛 خوش برگشتی {display_name}!\nاز پنل زیر یکی از گزینه‌ها را انتخاب کن:",
+            f"🏛 {display_name}، خوش برگشتی!\n\n"
+            "از پنل زیر یکی از گزینه‌ها را انتخاب کن:",
             reply_markup=user_panel_keyboard()
         )
     else:
         member_count_line = ""
         try:
             member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-            member_count_line = f"همین الان <b>{member_count}</b> معمار و مهندس اینجان 👥\n\n"
+            member_count_str = to_persian_num(member_count)
+            member_count_line = f"همین الان <b>{member_count_str}</b> معمار و مهندس اینجان 👥\n\n"
         except Exception:
             pass
         await message.answer(
             sign(
-                f"سلام {display_name}، به {GROUP_NAME} خوش اومدی؛ درگاهِ تخصصیِ فایل‌های معماری و عمران.\n"
-                f"این‌جا انبارِ دانشِ هزاران معمار و مهندس است. {member_count_line}"
-                "برای ورود، کافی‌ست درخواستِ عضویت در گروه را ثبت کنی. مسیرِ بعدی را برایت می‌گشایم."
+                f"سلام {display_name}، به {GROUP_NAME} خوش اومدی.\n\n"
+                f"این‌جا انبارِ دانشِ هزاران معمار و مهندس است.\n"
+                f"{member_count_line}"
+                "برای ورود، کافی‌ست درخواستِ عضویت در گروه را ثبت کنی.\n"
+                "مسیرِ بعدی را برایت می‌گشایم."
             ),
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -832,7 +847,7 @@ async def handle_start(message: Message):
         )
 
 # ==============================================================
-#  تست ضدِ ربات — دکمه‌های چندگزینه‌ای (جایگزینِ احرازِ هویت با شماره)
+#  تست ضدِ ربات — دکمه‌های چندگزینه‌ای
 # ==============================================================
 _pending_captcha: dict[int, int] = {}
 
@@ -847,24 +862,23 @@ def captcha_keyboard(correct: int, wrong: int) -> InlineKeyboardMarkup:
     )
 
 async def send_welcome_intro(user) -> None:
-    """پیامِ خوش‌آمدِ اعتمادسازِ اول: معرفیِ کوتاهِ گروه + آمارِ زنده،
-    پیش از شروعِ هر مرحله‌ای از فرم یا تستِ ضدربات."""
+    """پیامِ خوش‌آمدِ اعتمادسازِ اول: معرفیِ کوتاهِ گروه + آمارِ زنده."""
     stats_line = ""
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-        stats_line = f"👥 همین الان <b>{member_count}</b> نفر همین‌جان.\n\n"
+        stats_line = f"👥 همین الان <b>{to_persian_num(member_count)}</b> نفر همین‌جان.\n\n"
     except Exception:
         pass
     try:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"🏛 <b>{GROUP_NAME}</b>، درگاهِ تخصصیِ فایل‌های معماری و عمران.\n"
+                f"🏛 <b>{GROUP_NAME}</b>، درگاهِ تخصصیِ فایل‌های معماری و عمران.\n\n"
                 f"{stats_line}"
-                "درخواستِ عضویتت رو دیدیم. فقط دو قدمِ کوچیک مونده تا درِ رواق "
-                "برات باز بشه:\n"
+                "درخواستِ عضویتت رو دیدیم.\n"
+                "فقط دو قدمِ کوچیک مونده تا درِ رواق برات باز بشه:\n"
                 "۱. یک تاییدِ خیلی ساده که ربات نیستی\n"
-                "۲. سه سوالِ کوتاه برای شناختِ بهتر\n"
+                "۲. سه سوالِ کوتاه برای شناختِ بهتر"
             ),
         )
     except Exception as e:
@@ -889,7 +903,8 @@ async def send_captcha_challenge(user) -> None:
                 chat_id=user.id,
                 text=(
                     f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{minutes_left}</b> دقیقهٔ دیگه قفل شده. لطفاً کمی صبر کن و دوباره تلاش کن."
+                    f"<b>{to_persian_num(minutes_left)}</b> دقیقهٔ دیگه قفل شده.\n"
+                    "لطفاً کمی صبر کن و دوباره تلاش کن."
                 ),
             )
         except Exception as e:
@@ -905,7 +920,7 @@ async def send_captcha_challenge(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"سلام {user.first_name} 👋\n\n"
+                f"سلام {greet_user(user)} 👋\n\n"
                 "قبل از باز شدنِ فرمِ پذیرش، یک تاییدِ خیلی ساده لازم است تا مطمئن شویم "
                 "پشتِ این پیام یک آدمِ واقعی است، نه یک ربات.\n\n"
                 f"❓ کدوم عدد بزرگ‌تره؟"
@@ -922,7 +937,7 @@ async def cb_captcha_answer(callback: CallbackQuery):
     locked, minutes_left = _is_captcha_locked(user.id)
     if locked:
         await callback.answer(
-            f"⏳ فعلاً قفله. {minutes_left} دقیقهٔ دیگه دوباره تلاش کن.", show_alert=True
+            f"⏳ فعلاً قفله. {to_persian_num(minutes_left)} دقیقهٔ دیگه دوباره تلاش کن.", show_alert=True
         )
         return
 
@@ -943,7 +958,7 @@ async def cb_captcha_answer(callback: CallbackQuery):
         await mark_verified(user.id)
         try:
             await callback.message.edit_text(
-                f"✅ تاییدِ انسان‌بودن با موفقیت انجام شد، {user.first_name} جان.\n\n"
+                f"✅ تاییدِ انسان‌بودن با موفقیت انجام شد، {greet_user(user)}.\n\n"
                 "<i>راستی، این تست فقط برای جلوگیری از ورودِ ربات‌های اسپمی به رواقه؛ "
                 "چیزی از تو ذخیره نمی‌شه.</i>"
             )
@@ -959,13 +974,14 @@ async def cb_captcha_answer(callback: CallbackQuery):
         if wrong_count >= CAPTCHA_MAX_WRONG:
             _captcha_locked_until[user.id] = datetime.utcnow() + timedelta(minutes=CAPTCHA_LOCK_MINUTES)
             await callback.answer(
-                f"❌ چندبار پیاپی جوابِ اشتباه دادی؛ برای {CAPTCHA_LOCK_MINUTES} دقیقه قفل شد.",
+                f"❌ چندبار پیاپی جوابِ اشتباه دادی؛ برای {to_persian_num(CAPTCHA_LOCK_MINUTES)} دقیقه قفل شد.",
                 show_alert=True,
             )
             try:
                 await callback.message.edit_text(
                     f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{CAPTCHA_LOCK_MINUTES}</b> دقیقه قفل شد. بعداً دوباره تلاش کن."
+                    f"<b>{to_persian_num(CAPTCHA_LOCK_MINUTES)}</b> دقیقه قفل شد.\n"
+                    "بعداً دوباره تلاش کن."
                 )
             except Exception:
                 pass
@@ -979,7 +995,7 @@ async def cb_captcha_answer(callback: CallbackQuery):
         await send_captcha_challenge(user)
 
 # ==============================================================
-#  فرمِ پذیرش با دکمه‌های پنل (جایگزینِ مینی‌اپِ وب)
+#  فرمِ پذیرش با دکمه‌های پنل
 # ==============================================================
 _pending_form: dict[int, dict] = {}
 
@@ -1016,7 +1032,7 @@ def interests_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
             ))
         buttons.append(row)
     buttons.append([InlineKeyboardButton(
-        text=f"🏁 ثبتِ نهایی ({len(selected)}/{MAX_INTERESTS})",
+        text=f"🏁 ثبتِ نهایی ({to_persian_num(len(selected))}/{to_persian_num(MAX_INTERESTS)})",
         callback_data="form_int_done",
         style="success" if selected else "primary",
     )])
@@ -1029,7 +1045,7 @@ async def start_membership_form(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"عالی بود، {user.first_name} 🌿\n\n"
+                f"عالی بود، {greet_user(user)} 🌿\n\n"
                 "برای تکمیلِ عضویت، فقط سه سوالِ کوتاه مونده — با همین دکمه‌ها جواب بده.\n\n"
                 f"{progress_bar(1)}  سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟"
             ),
@@ -1046,7 +1062,8 @@ async def cb_form_education(callback: CallbackQuery):
     label = dict(EDUCATION_OPTIONS).get(value, value)
     _pending_form[user.id] = {"education": value, "education_label": label}
     await callback.message.edit_text(
-        f"ثبت شد: <b>{label}</b> ✅\n\n{progress_bar(2)}  سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
+        f"ثبت شد: <b>{label}</b> ✅\n\n"
+        f"{progress_bar(2)}  سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
         reply_markup=referral_keyboard(),
     )
     _schedule_form_reminder(user.id)
@@ -1063,7 +1080,7 @@ async def cb_form_referral(callback: CallbackQuery):
     await callback.message.edit_text(
         f"ثبت شد: <b>{label}</b> ✅\n\n"
         f"{progress_bar(3)}  سوال ۳ از ۳ — کدوم بخش از این انبارِ دانش بیشتر به‌کارت میاد؟\n"
-        f"(حداکثر {MAX_INTERESTS} مورد را انتخاب کن)",
+        f"(حداکثر {to_persian_num(MAX_INTERESTS)} مورد را انتخاب کن)",
         reply_markup=interests_keyboard([]),
     )
     _schedule_form_reminder(user.id)
@@ -1078,7 +1095,7 @@ async def cb_form_interest_toggle(callback: CallbackQuery):
     if item in selected:
         selected.discard(item)
     elif len(selected) >= MAX_INTERESTS:
-        await callback.answer(f"حداکثر {MAX_INTERESTS} مورد رو می‌تونی انتخاب کنی.", show_alert=True)
+        await callback.answer(f"حداکثر {to_persian_num(MAX_INTERESTS)} مورد رو می‌تونی انتخاب کنی.", show_alert=True)
         return
     else:
         selected.add(item)
@@ -1108,6 +1125,30 @@ async def cb_form_back_to_referral(callback: CallbackQuery):
     )
     _schedule_form_reminder(user.id)
     await callback.answer()
+
+# ---------- ساخت کارت عضویت بهبودیافته (متنی) ----------
+def build_membership_card(user, data, member_count, jalali_now) -> str:
+    """ساخت کارت عضویت با جداکننده‌ی ساده و کنترل جهت متن."""
+    display_name = html_escape(user.full_name or user.first_name or "کاربر")
+    rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
+    interests_text = '، '.join(data.get('interests', []))
+
+    # استفاده از جداکننده‌ی خنثی و کنترل جهت با RLM در صورت نیاز
+    # \u200f = RIGHT-TO-LEFT MARK برای جلوگیری از تغییر جهت خطوط با نام لاتین
+    card = (
+        "✅ کارتِ عضویتِ رواق\n"
+        "──────────────────\n"
+        f"👤 \u200f{display_name}\n"
+        f"{rank_line}\n"
+        f"🎓 {data['education_label']}\n"
+        f"⭐️ {interests_text}\n"
+        f"🗓 {jalali_now}\n"
+        "──────────────────\n\n"
+        "از این لحظه، تو یکی از ساکنانِ این رواقی.\n"
+        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
+        "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد."
+    )
+    return sign(card)
 
 @dp.callback_query(F.data == "form_int_done")
 async def cb_form_submit(callback: CallbackQuery):
@@ -1157,40 +1198,29 @@ async def cb_form_submit(callback: CallbackQuery):
     if approved:
         await increment_stat("form_completed_and_joined")
 
-    display_name = user.first_name or "دوست عزیز"
+    display_name = html_escape(user.first_name or "دوست عزیز")
     if approved:
         rank_line = ""
         try:
             member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-            rank_line = f"┃ 🌱 ساکنِ شماره‌ی <b>{member_count}</b>‌ اُمِ رواق\n"
+            rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}\n"
         except Exception:
             pass
         jalali_now = format_jalali_datetime(datetime.utcnow())
-        membership_card = (
-            "┏━━━━━━━━━━━━━━━━━━┓\n"
-            f"┃   ✅ <b>کارتِ عضویتِ {GROUP_NAME}</b>\n"
-            "┣━━━━━━━━━━━━━━━━━━┫\n"
-            f"┃ 👤 {html_escape(display_name)}\n"
-            f"{rank_line}"
-            f"┃ 🎓 {data['education_label']}\n"
-            f"┃ ⭐️ {'، '.join(selected)}\n"
-            f"┃ 🗓 {jalali_now}\n"
-            "┗━━━━━━━━━━━━━━━━━━┛\n\n"
-            "از این لحظه، تو یکی از ساکنانِ این رواقی. کتابخانه‌ی "
-            "فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
-            "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد.\n\n"
-            "از پنل زیر برای دسترسی به امکانات استفاده کنید:"
-        )
+
+        # استفاده از کارت عضویت بهبودیافته
+        membership_card = build_membership_card(user, data, member_count if 'member_count' in locals() else None, jalali_now)
+
         await bot.send_message(
             chat_id=user.id,
-            text=sign(membership_card),
+            text=membership_card,
             reply_markup=user_panel_keyboard(),
         )
     else:
         await bot.send_message(
             chat_id=user.id,
             text=sign(
-                f"{display_name} جان، اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد. "
+                f"{display_name} جان، اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد.\n"
                 "کمی صبر کن، یا از طریقِ گروه با ادمین در میان بگذار."
             ),
         )
@@ -1210,7 +1240,11 @@ async def handle_join_request(join_request: ChatJoinRequest):
         try:
             await bot.send_message(
                 chat_id=user.id,
-                text=f"🔴 {user.first_name} جان، فعلاً عضوگیری نداریم. به محضِ روشن شدنِ ربات بهت پیام می‌دیم."
+                text=(
+                    f"🔴 {greet_user(user)},\n\n"
+                    "فعلاً درِ رواق برای عضوگیری بسته‌ست.\n"
+                    "به محضِ روشن شدن، خودم بهت خبر می‌دم."
+                )
             )
         except Exception as e:
             logger.warning("ارسال پیام خاموشی به کاربر %s ممکن نشد: %s", user.id, e)
@@ -1221,7 +1255,9 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await save_bot_state(state)
         return
 
+    # رفع جهش ناگهانی: ابتدا پیام زمینه‌ساز، سپس فرم یا تست
     if is_verified(user.id):
+        await send_reengagement_intro(user, context="rejoin")
         await start_membership_form(user)
         return
 
@@ -1314,8 +1350,8 @@ async def handle_member_left(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"متأسفانه از جمعِ ما فاصله گرفتی {user.first_name}. اگر یک "
-                "دقیقه وقت بگذاری و بگویی «چرا این بنا را ترک کردی؟»، به ما "
+                f"{greet_user(user)}، متأسفانه از جمعِ ما فاصله گرفتی.\n\n"
+                "اگر یک دقیقه وقت بگذاری و بگویی «چرا این بنا را ترک کردی؟»، به ما "
                 "کمک می‌کنی تا طرحِ بهتری بریزیم."
             ),
         )
@@ -1359,7 +1395,7 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
     except Exception as e:
         logger.warning("ارسال پاسخ نظرسنجی به کاربر %s ممکن نشد: %s", user_id, e)
 
-# ---------- پنل مدیریت (دستورات متنی) ----------
+# ---------- پنل مدیریت ----------
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -1414,10 +1450,12 @@ async def handle_broadcast(message: Message, command: CommandObject):
         await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
         return
 
-    await message.answer(f"⏳ در حال ارسال پیام به {len(user_ids)} نفر...")
+    await message.answer(f"⏳ در حال ارسال پیام به {to_persian_num(len(user_ids))} نفر...")
     sent, failed = await send_broadcast_text(text, user_ids)
     await message.answer(
-        f"✅ ارسال همگانی تمام شد.\nموفق: <b>{sent}</b>\nناموفق: <b>{failed}</b>"
+        f"✅ ارسال همگانی تمام شد.\n"
+        f"موفق: <b>{to_persian_num(sent)}</b>\n"
+        f"ناموفق: <b>{to_persian_num(failed)}</b>"
     )
 
 async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
@@ -1537,12 +1575,12 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         if announcements:
             text += "لیست اطلاعیه‌های فعلی:\n"
             for i, ann in enumerate(announcements, 1):
-                text += f"{i}. {ann}\n"
+                text += f"{to_persian_num(i)}. {ann}\n"
         else:
             text += "هیچ اطلاعیه‌ای وجود ندارد.\n"
 
         if files:
-            text += f"\n📎 {len(files)} فایل ضمیمه شده است."
+            text += f"\n📎 {to_persian_num(len(files))} فایل ضمیمه شده است."
 
         text += "\n\n📝 برای <b>جایگزین کردن</b> کل اطلاعیه‌ها، یک متن جدید (هر خط یک اطلاعیه) ارسال کنید.\n"
         text += "📎 می‌توانید همراه با متن، فایل یا عکس نیز ارسال کنید (ضمیمه می‌شود).\n"
@@ -1601,12 +1639,12 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         if faq_items:
             text += "لیست سوالات فعلی:\n"
             for i, item in enumerate(faq_items, 1):
-                text += f"{i}. س: {item['q']}\n   ج: {item['a']}\n"
+                text += f"{to_persian_num(i)}. س: {item['q']}\n   ج: {item['a']}\n"
         else:
             text += "هیچ سوالی ثبت نشده است.\n"
 
         if files:
-            text += f"\n📎 {len(files)} فایل ضمیمه شده است."
+            text += f"\n📎 {to_persian_num(len(files))} فایل ضمیمه شده است."
 
         text += "\n\n📝 برای <b>جایگزین کردن</b> کل سوالات، هر سوال و پاسخ را در یک خط به‌صورت زیر وارد کنید:\n"
         text += "سوال: پاسخ\n"
@@ -1712,7 +1750,7 @@ async def cb_broadcast_choose_audience(callback: CallbackQuery, state: FSMContex
 
     await state.set_state(BroadcastStates.waiting_for_text)
     await callback.message.edit_text(
-        f"مخاطب انتخاب‌شده: <b>{label}</b> ({audience_count} نفر)\n\n"
+        f"مخاطب انتخاب‌شده: <b>{label}</b> ({to_persian_num(audience_count)} نفر)\n\n"
         "حالا می‌توانید یک پیام متنی، عکس، سند، ویدئو یا هر نوع محتوای دیگری را بفرستید.\n\n"
         "برای انصراف، دستور /cancel را بفرستید.",
         reply_markup=admin_back_keyboard(),
@@ -1762,7 +1800,7 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     await message.answer(
         f"مخاطب: <b>{audience_label}</b>\n\n"
         f"{preview_text}\n\n"
-        f"این پیام برای <b>{len(user_ids)}</b> نفر ارسال می‌شود. مطمئنید؟",
+        f"این پیام برای <b>{to_persian_num(len(user_ids))}</b> نفر ارسال می‌شود. مطمئنید؟",
         reply_markup=confirm_keyboard,
     )
 
@@ -1806,7 +1844,9 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
         await asyncio.sleep(0.05)
 
     await callback.message.edit_text(
-        f"✅ ارسال همگانی تمام شد.\nموفق: <b>{sent}</b>\nناموفق: <b>{failed}</b>",
+        f"✅ ارسال همگانی تمام شد.\n"
+        f"موفق: <b>{to_persian_num(sent)}</b>\n"
+        f"ناموفق: <b>{to_persian_num(failed)}</b>",
         reply_markup=admin_back_keyboard(),
     )
 
@@ -1876,7 +1916,10 @@ async def handle_generic_member_message(message: Message):
         return
 
     await relay_message_to_admin(message.from_user, text)
-    await message.answer("پیامت به گوشِ ادمین‌های رواق رسید؛ به‌زودی جواب می‌گیری 🙏")
+    await message.answer(
+        "پیامت به گوشِ ادمین‌های رواق رسید.\n"
+        "به‌زودی جواب می‌گیری 🙏"
+    )
 
 # ==============================================================
 #  بخش پنل کاربری
@@ -1889,7 +1932,8 @@ class ContactAdminStates(StatesGroup):
 async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+        "🏛 به رواق خوش آمدید.\n"
+        "از پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=user_panel_keyboard()
     )
     await callback.answer()
@@ -1948,13 +1992,10 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         await send_with_action(callback.message.chat.id, "typing", 1.0)
         try:
             user = await bot.get_chat(user_id)
-            display_name = user.full_name or user.first_name or "کاربر"
+            display_name = html_escape(user.full_name or user.first_name or "کاربر")
         except Exception:
             display_name = "کاربر"
 
-        # نکته: تلگرام تاریخِ دقیقِ عضویت را در اختیار بات‌ها نمی‌گذارد،
-        # پس فقط خودِ وضعیتِ عضویت (که مستقیم و لحظه‌ای از تلگرام گرفته
-        # می‌شود، نه از دیتای محلیِ ما) را نشان می‌دهیم.
         is_member = False
         try:
             member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
@@ -1968,11 +2009,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         else:
             status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
 
-        # نکته: editMessageText پارامتر message_effect_id ندارد، پس برای
-        # نمایشِ افکتِ 🎉 مجبوریم پیامِ قبلی را حذف و یک پیامِ جدید با
-        # sendMessage ارسال کنیم. افکت فقط وقتی اعمال می‌شود که کاربر
-        # واقعاً عضو گروه باشد (حالت جشن‌گرفتنی)؛ برای حالت «عضو نیستید»
-        # افکتی ارسال نمی‌شود.
         try:
             await callback.message.delete()
         except Exception:
@@ -2068,7 +2104,7 @@ async def handle_contact_admin_message(message: Message, state: FSMContext):
     await state.clear()
 
 # ==============================================================
-#  بخش مدیریت محتوا (ادمین) - هندلرهای حذف یک اطلاعیه/سوال
+#  بخش مدیریت محتوا (ادمین)
 # ==============================================================
 
 class ContentEditStates(StatesGroup):
@@ -2098,9 +2134,13 @@ async def handle_delete_announcement_number(message: Message, state: FSMContext)
         deleted = announcements.pop(index - 1)
         config["settings"]["announcements"] = announcements
         await save_menu_config(config)
-        await message.answer(f"✅ اطلاعیهٔ شمارهٔ {index} با متن:\n«{deleted}»\nحذف شد.")
+        await message.answer(
+            f"✅ اطلاعیهٔ شمارهٔ {to_persian_num(index)} با متن:\n"
+            f"«{deleted}»\n"
+            "حذف شد."
+        )
     else:
-        await message.answer(f"❌ شمارهٔ {index} معتبر نیست. تعداد اطلاعیه‌ها: {len(announcements)}")
+        await message.answer(f"❌ شمارهٔ {to_persian_num(index)} معتبر نیست. تعداد اطلاعیه‌ها: {to_persian_num(len(announcements))}")
 
     await state.clear()
     await message.answer("برای ادامه، روی دکمه‌ی «ویرایش اطلاعیه‌ها» کلیک کنید.", reply_markup=admin_menu_edit_keyboard())
@@ -2126,14 +2166,17 @@ async def handle_delete_faq_number(message: Message, state: FSMContext):
         deleted = faq_items.pop(index - 1)
         config["settings"]["faq"] = faq_items
         await save_menu_config(config)
-        await message.answer(f"✅ سوال شمارهٔ {index} با متن:\n«{deleted['q']}»\nحذف شد.")
+        await message.answer(
+            f"✅ سوال شمارهٔ {to_persian_num(index)} با متن:\n"
+            f"«{deleted['q']}»\n"
+            "حذف شد."
+        )
     else:
-        await message.answer(f"❌ شمارهٔ {index} معتبر نیست. تعداد سوالات: {len(faq_items)}")
+        await message.answer(f"❌ شمارهٔ {to_persian_num(index)} معتبر نیست. تعداد سوالات: {to_persian_num(len(faq_items))}")
 
     await state.clear()
     await message.answer("برای ادامه، روی دکمه‌ی «ویرایش سوالات متداول» کلیک کنید.", reply_markup=admin_menu_edit_keyboard())
 
-# ---------- هندلرهای ویرایش محتوا ----------
 @dp.message(ContentEditStates.editing_announcements)
 async def handle_edit_announcements(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -2170,7 +2213,10 @@ async def handle_edit_announcements(message: Message, state: FSMContext):
     await save_menu_config(config)
 
     if message.text:
-        await message.answer(f"✅ {len(config['settings']['announcements'])} اطلاعیه ثبت شد.", reply_markup=admin_menu_edit_keyboard())
+        await message.answer(
+            f"✅ {to_persian_num(len(config['settings']['announcements']))} اطلاعیه ثبت شد.",
+            reply_markup=admin_menu_edit_keyboard()
+        )
     else:
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
 
@@ -2217,7 +2263,10 @@ async def handle_edit_faq(message: Message, state: FSMContext):
     await save_menu_config(config)
 
     if message.text:
-        await message.answer(f"✅ {len(config['settings']['faq'])} سوال و پاسخ ثبت شد.", reply_markup=admin_menu_edit_keyboard())
+        await message.answer(
+            f"✅ {to_persian_num(len(config['settings']['faq']))} سوال و پاسخ ثبت شد.",
+            reply_markup=admin_menu_edit_keyboard()
+        )
     else:
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
 
@@ -2579,7 +2628,7 @@ async def _finish_attendance(chat_id: int):
     else:
         await bot.send_message(
             chat_id=admin_id,
-            text=f"📋 <b>دوره‌ی حضور و غیاب به پایان رسید.</b>\nتعداد کل شرکت‌کنندگان: <b>{total}</b> نفر"
+            text=f"📋 <b>دوره‌ی حضور و غیاب به پایان رسید.</b>\nتعداد کل شرکت‌کنندگان: <b>{to_persian_num(total)}</b> نفر"
         )
 
         if total > 30:
@@ -2587,7 +2636,7 @@ async def _finish_attendance(chat_id: int):
             await bot.send_document(
                 chat_id=admin_id,
                 document=excel_file,
-                caption=f"📄 لیست کامل {total} نفر شرکت‌کننده"
+                caption=f"📄 لیست کامل {to_persian_num(total)} نفر شرکت‌کننده"
             )
         else:
             lines = ["👤 <b>شرکت‌کنندگان:</b>"]
@@ -2613,7 +2662,7 @@ async def _finish_attendance(chat_id: int):
                     await bot.send_document(
                         chat_id=admin_id,
                         document=BufferedInputFile(f.read(), filename="لیست_حاضرین.txt"),
-                        caption=f"📄 لیست کامل حاضرین (تعداد {total} نفر)"
+                        caption=f"📄 لیست کامل حاضرین (تعداد {to_persian_num(total)} نفر)"
                     )
 
     data["active"] = None
@@ -2703,9 +2752,9 @@ async def cmd_attendance_status(message: Message):
     await message.answer(
         f"📊 <b>وضعیت حضور و غیاب</b>\n\n"
         f"⏰ شروع: <code>{started}</code>\n"
-        f"👤 شرکت‌کنندگان: <b>{participants_count}</b> نفر\n"
-        f"🔔 تعداد یادآوری‌های ارسال‌شده: <b>{reminder_count}</b>\n"
-        f"⏳ یادآوری‌های باقی‌مانده: <b>{remaining}</b>"
+        f"👤 شرکت‌کنندگان: <b>{to_persian_num(participants_count)}</b> نفر\n"
+        f"🔔 تعداد یادآوری‌های ارسال‌شده: <b>{to_persian_num(reminder_count)}</b>\n"
+        f"⏳ یادآوری‌های باقی‌مانده: <b>{to_persian_num(remaining)}</b>"
     )
 
 @dp.message(Command("attendance_end"))
@@ -2740,7 +2789,7 @@ async def cmd_attendance_report(message: Message):
         excel_file = await build_attendance_excel(participants)
         await message.answer_document(
             document=excel_file,
-            caption=f"📄 لیست حاضرین تا این لحظه (تعداد {total} نفر)"
+            caption=f"📄 لیست حاضرین تا این لحظه (تعداد {to_persian_num(total)} نفر)"
         )
     else:
         lines = ["📋 لیست حاضرین تا این لحظه:"]
@@ -2882,7 +2931,6 @@ async def global_error_handler(update: Update, exception: Exception):
         try:
             error_summary = f"{exception.__class__.__name__}: {str(exception)[:100]}"
 
-            # زمینه‌ی بیشتر برای دیباگِ سریع‌تر: کدوم مرحله از قیف (فرم/کپچا/غیره)
             context_bits = []
             if user_id in _pending_captcha:
                 context_bits.append("در حالِ پاسخ‌دادن به تستِ ضدربات")
