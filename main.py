@@ -3,11 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با کارت عضویت تصویری (استوری اینستاگرام)
-- استفاده از ماژول card_generator برای تولید کارت
-- رفع باگ 'set' object is not subscriptable
-- پیام‌های یکدست و مینیمال
+نسخهٔ نهایی با طراحی مینیمال و حرفه‌ای
+- حذف صدا زدن بی‌مورد اسم کاربر
+- کارت عضویت ساده و بدون مشکل Bidi
+- یکدست‌سازی تمام پیام‌ها با لحن برند
 - رفع جهش ناگهانی به فرم
+- استفاده از اعداد فارسی و خط‌فاصله‌ی استاندارد
 """
 
 import asyncio
@@ -15,12 +16,10 @@ import json
 import logging
 import os
 import random
-import io
 from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
 
 import jdatetime
 import pytz
@@ -48,11 +47,6 @@ from aiohttp import web
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from PIL import Image
-import aiohttp
-
-# ---------- import ماژول کارت‌ژنراتور ----------
-from card_generator import generate_membership_card, to_persian_num
 
 # --------------------------------------------------------------
 # ۱) تنظیمات اولیه
@@ -60,7 +54,7 @@ from card_generator import generate_membership_card, to_persian_num
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
 
-MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"
+MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"  # 🎉
 GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")
 NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
 ADMIN_IDS = {
@@ -80,12 +74,6 @@ FUNNEL_USERS_FILE = Path(__file__).parent / "data" / "funnel_users.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
-
-# پوشه‌های فونت و اسمت
-FONTS_DIR = Path(__file__).parent / "fonts"
-ASSETS_DIR = Path(__file__).parent / "assets"
-FONTS_DIR.mkdir(exist_ok=True, parents=True)
-ASSETS_DIR.mkdir(exist_ok=True, parents=True)
 
 REFERRAL_LABELS = {
     "instagram": "📷 اینستاگرام",
@@ -121,7 +109,6 @@ INTERESTS: list[str] = [
 MAX_INTERESTS = 3
 
 GROUP_NAME = "رواق"
-# ===== خط زیر اصلاح شده است (کوتیشن بسته شده) =====
 SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
 
 GROUP_RULES_URL = os.environ.get("GROUP_RULES_URL", "").strip()
@@ -136,11 +123,13 @@ RULES_FALLBACK_TEXT = (
     "اطلاعاتِ خود را ثبت کنید."
 )
 
+# ---------- ریت‌لیمیت تستِ ضدربات ----------
 CAPTCHA_MAX_WRONG = 5
 CAPTCHA_LOCK_MINUTES = 5
 _captcha_wrong_count: dict[int, int] = {}
 _captcha_locked_until: dict[int, datetime] = {}
 
+# ---------- یادآوریِ عدم‌فعالیت وسطِ فرم ----------
 FORM_REMINDER_MINUTES = 10
 _form_reminder_tasks: dict[int, asyncio.Task] = {}
 
@@ -214,6 +203,7 @@ LEAVE_REASONS: list[tuple[str, str]] = [
     ),
 ]
 
+# ---------- زمان و تاریخ شمسی ----------
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 def utc_to_tehran(utc_dt: datetime) -> datetime:
@@ -228,7 +218,15 @@ def format_jalali_datetime(utc_dt: datetime) -> str:
     return jalali.strftime("%Y/%m/%d %H:%M:%S")
 
 # ---------- توابع کمکی برای نگارش فارسی ----------
+def to_persian_num(num) -> str:
+    mapping = {
+        '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
+        '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
+    }
+    return ''.join(mapping.get(ch, ch) for ch in str(num))
+
 def greet_user(user, suffix="عزیز") -> str:
+    """خطاب به کاربر فقط در موارد ضروری (اولین پیام و تبریک)."""
     name = html_escape(user.first_name or "کاربر")
     return f"{name} {suffix}"
 
@@ -751,8 +749,9 @@ async def save_bot_state(state: dict) -> None:
     async with _write_lock:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
-# ---------- تابع زمینه‌ساز قبل از فرم ----------
+# ---------- تابع زمینه‌ساز قبل از فرم (رفع جهش ناگهانی) ----------
 async def send_reengagement_intro(user, context: str = "default") -> None:
+    """ارسال پیام زمینه‌ساز بدون تکرار بی‌مورد اسم."""
     if context == "pending":
         text = (
             "🟢 <b>ربات فعال شد</b>\n\n"
@@ -802,38 +801,6 @@ async def send_with_action(chat_id: int, action: str = "typing", delay: float = 
     if delay > 0:
         await asyncio.sleep(delay)
 
-# ---------- تابع دانلود عکس پروفایل ----------
-async def download_profile_photo(user_id: int):
-    try:
-        photos = await bot.get_user_profile_photos(user_id, limit=1)
-        if photos.total_count == 0:
-            return None
-        file_id = photos.photos[0][-1].file_id
-        file = await bot.get_file(file_id)
-        file_bytes = await bot.download_file(file.file_path)
-        return Image.open(io.BytesIO(file_bytes.read()))
-    except Exception as e:
-        logger.warning(f"دریافت عکس پروفایل برای {user_id} ممکن نشد: {e}")
-        return None
-
-# ---------- کارت متنی (fallback) ----------
-def build_membership_card_text(user, data, member_count, jalali_now) -> str:
-    display_name = html_escape(user.full_name or user.first_name or "کاربر")
-    rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
-    interests_text = '، '.join(data.get('interests', []))
-    card = (
-        "✅ <b>کارتِ عضویتِ رواق</b>\n\n"
-        f"👤 {display_name}\n"
-        f"{rank_line}\n"
-        f"🎓 {data['education_label']}\n"
-        f"⭐️ {interests_text}\n"
-        f"🗓 {jalali_now}\n\n"
-        "از این لحظه، شما یکی از ساکنانِ این رواق هستید.\n"
-        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به روی شما گشوده شد.\n"
-        "امیدواریم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌تان باشد."
-    )
-    return sign(card)
-
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message):
@@ -872,7 +839,7 @@ async def handle_start(message: Message):
         )
 
 # ==============================================================
-#  تست ضدِ ربات
+#  تست ضدِ ربات — دکمه‌های چندگزینه‌ای
 # ==============================================================
 _pending_captcha: dict[int, int] = {}
 
@@ -1018,7 +985,7 @@ async def cb_captcha_answer(callback: CallbackQuery):
         await send_captcha_challenge(user)
 
 # ==============================================================
-#  فرمِ پذیرش
+#  فرمِ پذیرش با دکمه‌های پنل
 # ==============================================================
 _pending_form: dict[int, dict] = {}
 
@@ -1150,6 +1117,25 @@ async def cb_form_back_to_referral(callback: CallbackQuery):
     _schedule_form_reminder(user.id)
     await callback.answer()
 
+# ---------- ساخت کارت عضویت (نسخه‌ی ساده و بدون مشکل Bidi) ----------
+def build_membership_card(user, data, member_count, jalali_now) -> str:
+    display_name = html_escape(user.full_name or user.first_name or "کاربر")
+    rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
+    interests_text = '، '.join(data.get('interests', []))
+
+    card = (
+        "✅ <b>کارتِ عضویتِ رواق</b>\n\n"
+        f"👤 {display_name}\n"
+        f"{rank_line}\n"
+        f"🎓 {data['education_label']}\n"
+        f"⭐️ {interests_text}\n"
+        f"🗓 {jalali_now}\n\n"
+        "از این لحظه، شما یکی از ساکنانِ این رواق هستید.\n"
+        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به روی شما گشوده شد.\n"
+        "امیدواریم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌تان باشد."
+    )
+    return sign(card)
+
 @dp.callback_query(F.data == "form_int_done")
 async def cb_form_submit(callback: CallbackQuery):
     user = callback.from_user
@@ -1199,39 +1185,22 @@ async def cb_form_submit(callback: CallbackQuery):
         await increment_stat("form_completed_and_joined")
 
     if approved:
-        member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+        rank_line = ""
+        member_count = None
+        try:
+            member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+            rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}"
+        except Exception:
+            pass
         jalali_now = format_jalali_datetime(datetime.utcnow())
 
-        profile_image = await download_profile_photo(user.id)
+        membership_card = build_membership_card(user, data, member_count, jalali_now)
 
-        try:
-            card_image = await generate_membership_card(
-                user=user,
-                data=data,
-                member_count=member_count,
-                jalali_now=jalali_now,
-                profile_image=profile_image,
-                qr_data=GROUP_INVITE_LINK or "https://t.me/irarchit",
-            )
-
-            await bot.send_photo(
-                chat_id=user.id,
-                photo=card_image,
-                caption=sign(
-                    "از این لحظه، شما یکی از ساکنانِ این رواق هستید.\n"
-                    "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به روی شما گشوده شد.\n\n"
-                    "📱 این کارت را در استوری خود به اشتراک بگذارید و دوستان معمار خود را دعوت کنید."
-                ),
-                reply_markup=user_panel_keyboard(),
-            )
-        except Exception as e:
-            logger.error(f"خطا در تولید کارت تصویری: {e}")
-            membership_card = build_membership_card_text(user, data, member_count, jalali_now)
-            await bot.send_message(
-                chat_id=user.id,
-                text=membership_card,
-                reply_markup=user_panel_keyboard(),
-            )
+        await bot.send_message(
+            chat_id=user.id,
+            text=membership_card,
+            reply_markup=user_panel_keyboard(),
+        )
     else:
         await bot.send_message(
             chat_id=user.id,
@@ -1484,7 +1453,7 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
         await asyncio.sleep(0.05)
     return sent, failed
 
-# ---------- هندلرهای ادمین ----------
+# ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
 @dp.callback_query(F.data.startswith("admin:"))
 async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
@@ -1725,7 +1694,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     await callback.answer("❌ گزینه نامعتبر", show_alert=True)
 
-# ---------- FSM برای برودکست ----------
+# ---------- هندلرهای اختصاصی برای FSM ----------
 class BroadcastStates(StatesGroup):
     choosing_audience = State()
     waiting_for_text = State()
@@ -1936,7 +1905,10 @@ async def handle_generic_member_message(message: Message):
         "به‌زودی پاسخ دریافت خواهید کرد 🙏"
     )
 
-# ---------- بخش پنل کاربری ----------
+# ==============================================================
+#  بخش پنل کاربری
+# ==============================================================
+
 class ContactAdminStates(StatesGroup):
     waiting_for_message = State()
 
@@ -2115,7 +2087,10 @@ async def handle_contact_admin_message(message: Message, state: FSMContext):
     await message.answer("✅ پیام شما به ادمین ارسال شد.", reply_markup=user_panel_keyboard())
     await state.clear()
 
-# ---------- مدیریت محتوا ----------
+# ==============================================================
+#  بخش مدیریت محتوا (ادمین)
+# ==============================================================
+
 class ContentEditStates(StatesGroup):
     editing_announcements = State()
     editing_faq = State()
@@ -2281,7 +2256,10 @@ async def handle_edit_faq(message: Message, state: FSMContext):
 
     await state.clear()
 
-# ---------- حذف کاربر ----------
+# ==============================================================
+#  بخش حذف کاربر (ادمین)
+# ==============================================================
+
 class DeleteUserStates(StatesGroup):
     waiting_for_user_id = State()
     confirming = State()
@@ -2395,7 +2373,10 @@ async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("عملیات حذف لغو شد.", reply_markup=admin_panel_keyboard())
     await callback.answer()
 
-# ---------- ارسال مستقیم ----------
+# ==============================================================
+#  بخش ارسال مستقیم به کاربر
+# ==============================================================
+
 class AdminSendMsgStates(StatesGroup):
     waiting_for_identifier = State()
     waiting_for_message = State()
@@ -2496,7 +2477,10 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
         await message.answer(f"❌ خطا در ارسال پیام: {e}")
     await state.clear()
 
-# ---------- بخش حضور و غیاب ----------
+# ==============================================================
+#  بخش حضور و غیاب (با خروجی اکسل و ارسال فقط به ادمین)
+# ==============================================================
+
 def load_attendance_data() -> dict:
     if not ATTENDANCE_FILE.exists():
         return {"active": None}
@@ -2861,7 +2845,7 @@ async def restore_attendance_tasks():
             _attendance_tasks[f"reminder_{chat_id}"] = task
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
-# ---------- مسیر سلامت ----------
+# ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
@@ -2889,7 +2873,10 @@ async def stop_self_ping(app: web.Application) -> None:
         except asyncio.CancelledError:
             pass
 
-# ---------- مدیریت خطاها ----------
+# ==============================================================
+#  مدیریت خطاهای سراسری
+# ==============================================================
+
 @dp.errors()
 async def global_error_handler(update: Update, exception: Exception):
     logger.error(f"❌ خطای سراسری: {exception}", exc_info=True)
