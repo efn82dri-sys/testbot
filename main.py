@@ -9,19 +9,20 @@
 - مدیریت محتوا با قابلیت حذف اطلاعیه‌ها و سوالات
 - دکمهٔ «دعوت از دوستان» در پنل کاربری
 - اسپینر لودینگ در فرم و رفع باگ تیک قوانین
+- حذفِ احرازِ هویت با شماره تلفن، جایگزینی با تستِ ضدربات (دکمه‌های چندگزینه‌ای)
+- حذفِ مینی‌اپِ وب، جایگزینی با فرمِ پذیرشِ تماماً دکمه‌ای (پنل شیشه‌ای)
+- متن‌های شخصی‌سازی‌شده با نامِ کاربر و جزئیاتِ پویا (رتبه‌ی عضویت و ...)
 """
 
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import parse_qsl
 
 import jdatetime
 import pytz
@@ -39,20 +40,17 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    KeyboardButton,
-    MenuButtonWebApp,
     Message,
     PollAnswer,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
     Update,
-    WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+from hokm.router import hokm_router
 
 # --------------------------------------------------------------
 # ۱) تنظیمات اولیه
@@ -73,26 +71,50 @@ ADMIN_IDS = {
 WEBHOOK_HOST = os.environ["WEBHOOK_HOST"].rstrip("/")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-WEBAPP_URL = f"{WEBHOOK_HOST}/webapp/index.html"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
 
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
-PHONES_FILE = Path(__file__).parent / "data" / "phones.json"
+VERIFIED_FILE = Path(__file__).parent / "data" / "verified_humans.json"
 FUNNEL_USERS_FILE = Path(__file__).parent / "data" / "funnel_users.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
 
 REFERRAL_LABELS = {
-    "instagram": "اینستاگرام",
-    "friends": "معرفی دوستان",
-    "other_groups": "سایر گروه‌ها و کانال‌ها",
-    "search": "جستجوی اینترنتی",
-    "other": "سایر موارد",
+    "instagram": "📷 اینستاگرام",
+    "friends": "👥 معرفی دوستان",
+    "other_groups": "💬 سایر گروه‌ها و کانال‌ها",
+    "search": "🔍 جستجوی اینترنتی",
+    "other": "✨ سایر موارد",
 }
+
+EDUCATION_OPTIONS: list[tuple[str, str]] = [
+    ("diploma", "دیپلم / پیش‌دانشگاهی"),
+    ("associate", "کاردانی"),
+    ("bachelor", "کارشناسی"),
+    ("master", "کارشناسی ارشد"),
+    ("phd", "دکتری"),
+    ("other", "سایر"),
+]
+
+INTERESTS: list[str] = [
+    "اتاق پرامپت",
+    "فرصت‌های شغلی",
+    "پرزانته و پرتفولیو",
+    "آکادمی آنلاین",
+    "کتابخانه و ضوابط ملی",
+    "رادیو معماری",
+    "بانک پروژه",
+    "معماری جهان",
+    "فایل‌های گرافیکی",
+    "دنیای نرم‌افزار و پلاگین",
+    "آبجکت، فمیلی و متریال",
+    "پلان و نقشه‌های اجرایی",
+]
+MAX_INTERESTS = 3
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -100,6 +122,7 @@ logger = logging.getLogger(__name__)
 storage = MemoryStorage()
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=storage)
+dp.include_router(hokm_router)  # 🃏 بازیِ گروهیِ حکم — hokm/router.py
 
 _write_lock = asyncio.Lock()
 _pending_leave_polls: dict[str, int] = {}
@@ -169,22 +192,22 @@ async def increment_stat(field: str) -> None:
         stats[field] = stats.get(field, 0) + 1
         STATS_FILE.write_text(json.dumps(stats, ensure_ascii=False), encoding="utf-8")
 
-def load_phones() -> dict:
-    if not PHONES_FILE.exists():
+def load_verified() -> dict:
+    if not VERIFIED_FILE.exists():
         return {}
     try:
-        return json.loads(PHONES_FILE.read_text(encoding="utf-8"))
+        return json.loads(VERIFIED_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {}
 
-async def save_phone(user_id: int, phone: str) -> None:
+async def mark_verified(user_id: int) -> None:
     async with _write_lock:
-        phones = load_phones()
-        phones[str(user_id)] = phone
-        PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
+        verified = load_verified()
+        verified[str(user_id)] = datetime.utcnow().isoformat()
+        VERIFIED_FILE.write_text(json.dumps(verified, ensure_ascii=False), encoding="utf-8")
 
-def get_saved_phone(user_id: int) -> str:
-    return load_phones().get(str(user_id), "")
+def is_verified(user_id: int) -> bool:
+    return str(user_id) in load_verified()
 
 # ---------- کاربرانِ واردشده به قیف (استارت ربات یا درخواست عضویت) ----------
 def load_funnel_users() -> set[int]:
@@ -262,20 +285,20 @@ async def build_stats_text() -> str:
 
     stats = load_stats()
     funnel_count = len(load_funnel_users())
-    phone_count = len(load_phones())
+    verified_count = len(load_verified())
     form_joined_count = stats.get("form_completed_and_joined", 0)
 
     # نرخ افت هر مرحله نسبت به مرحله‌ی قبل، برای اینکه ادمین سریع بفهمد
     # بیشترین ریزشِ کاربر کجای مسیر (قیف) اتفاق می‌افتد.
-    phone_rate = (phone_count / funnel_count * 100) if funnel_count else 0
-    joined_rate = (form_joined_count / phone_count * 100) if phone_count else 0
+    verified_rate = (verified_count / funnel_count * 100) if funnel_count else 0
+    joined_rate = (form_joined_count / verified_count * 100) if verified_count else 0
 
     return (
         "📐 <b>داشبورد رواق (آمار لحظه‌ای)</b>\n\n"
         f"👥 ساکنینِ فعلی گروه: <b>{member_count}</b>\n\n"
         "<b>قیفِ عضویت:</b>\n"
         f"1️⃣ استارت ربات / پیامِ درخواست عضویت: <b>{funnel_count}</b>\n"
-        f"2️⃣ شماره‌ی تلفنِ تأییدشده: <b>{phone_count}</b> ({phone_rate:.0f}٪)\n"
+        f"2️⃣ تاییدِ عدمِ ربات‌بودن: <b>{verified_count}</b> ({verified_rate:.0f}٪)\n"
         f"3️⃣ فرمِ تکمیل‌شده + ورود به گروه: <b>{form_joined_count}</b> ({joined_rate:.0f}٪)\n\n"
         f"📝 کل فرم‌های ثبت‌شده (شامل موارد تأییدنشده): <b>{form_count}</b>\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
@@ -343,8 +366,8 @@ async def build_stats_detail_text() -> str:
     return "\n".join(lines)
 
 def build_export_file() -> BufferedInputFile | None:
-    phones = load_phones()
-    if not phones and not DATA_FILE.exists():
+    verified = load_verified()
+    if not verified and not DATA_FILE.exists():
         return None
 
     form_records = {}
@@ -361,7 +384,7 @@ def build_export_file() -> BufferedInputFile | None:
                 except json.JSONDecodeError:
                     continue
 
-    all_user_ids = set(phones.keys()) | set(form_records.keys())
+    all_user_ids = set(verified.keys()) | set(form_records.keys())
     if not all_user_ids:
         return None
 
@@ -371,7 +394,6 @@ def build_export_file() -> BufferedInputFile | None:
             uid_int = int(uid_str)
         except ValueError:
             continue
-        phone = phones.get(uid_str, "")
         record = form_records.get(uid_str, {})
 
         username = record.get("username")
@@ -388,7 +410,6 @@ def build_export_file() -> BufferedInputFile | None:
             uid_str,
             f"@{username}" if username else "-",
             full_name or "-",
-            phone or "-",
             submitted_at[:16] if submitted_at else "-",
             education,
             referral,
@@ -396,13 +417,12 @@ def build_export_file() -> BufferedInputFile | None:
             form_status,
         ])
 
-    rows.sort(key=lambda r: (r[4] == "-", r[4]), reverse=False)
+    rows.sort(key=lambda r: (r[3] == "-", r[3]), reverse=False)
 
     headers = [
         "آیدی عددی",
         "نام کاربری",
         "نام کامل",
-        "شماره تلفن",
         "تاریخ و ساعت ثبت (UTC)",
         "مقطع تحصیلی",
         "نحوه آشنایی",
@@ -664,14 +684,10 @@ async def process_pending_requests():
     for user_id in pending:
         try:
             user = await bot.get_chat(user_id)
-            await bot.send_message(
-                chat_id=user_id,
-                text=(
-                    f"سلام {user.first_name}،\n\n"
-                    "ربات اکنون فعال شده است. برای تکمیل عضویت، لطفاً شمارهٔ تلفن خود را ارسال کنید."
-                ),
-                reply_markup=phone_request_keyboard(),
-            )
+            if is_verified(user_id):
+                await start_membership_form(user)
+            else:
+                await send_captcha_challenge(user)
             logger.info("پیام به کاربر %s ارسال شد", user_id)
         except Exception as e:
             logger.warning("پردازش درخواست معلق برای %s ناموفق: %s", user_id, e)
@@ -693,14 +709,16 @@ async def handle_start(message: Message):
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
+    display_name = message.from_user.first_name or "دوست عزیز"
+
     if is_form_completed(user_id) or await is_user_member(user_id):
         await message.answer(
-            "🏛 به رواق خوش آمدید.\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+            f"🏛 خوش برگشتی {display_name}!\nاز پنل زیر یکی از گزینه‌ها را انتخاب کن:",
             reply_markup=user_panel_keyboard()
         )
     else:
         await message.answer(
-            "به رواق خوش آمدی؛ درگاهِ تخصصیِ فایل‌های معماری و عمران.\n"
+            f"سلام {display_name}، به رواق خوش اومدی؛ درگاهِ تخصصیِ فایل‌های معماری و عمران.\n"
             "این‌جا انبارِ دانشِ هزاران معمار و مهندس است. برای ورود، کافی‌ست "
             "درخواستِ عضویت در گروه را ثبت کنی. مسیرِ بعدی را برایت می‌گشایم.\n\n"
             "🔗 لینک دعوت گروه:\n" + GROUP_INVITE_LINK,
@@ -711,45 +729,274 @@ async def handle_start(message: Message):
             )
         )
 
-def phone_request_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 اشتراک‌گذاری شماره تلفن", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
+# ==============================================================
+#  تست ضدِ ربات — دکمه‌های چندگزینه‌ای (جایگزینِ احرازِ هویت با شماره)
+# ==============================================================
+_pending_captcha: dict[int, int] = {}
+
+def captcha_keyboard(correct: int, wrong: int) -> InlineKeyboardMarkup:
+    options = [correct, wrong]
+    random.shuffle(options)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text=str(v), callback_data=f"captcha:{v}", style="primary")
+            for v in options
+        ]]
     )
 
-async def send_vpn_warning_and_form(user) -> None:
+async def send_captcha_challenge(user) -> None:
+    a, b = random.randint(2, 89), random.randint(2, 89)
+    while b == a:
+        b = random.randint(2, 89)
+    correct, wrong = max(a, b), min(a, b)
+    _pending_captcha[user.id] = correct
     try:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                "⚠️ <b>توجه مهم</b>\n\n"
-                "برای باز کردن فرم عضویت، حتماً از یک <b>VPN یا پروکسی متصل به اینترنت</b> استفاده کنید.\n"
-                "در غیر این صورت ممکن است صفحه‌ی فرم برای شما باز نشود.\n\n"
-                "پس از اطمینان از اتصال، روی دکمه‌ی زیر کلیک کنید."
+                f"سلام {user.first_name} 👋\n\n"
+                "قبل از باز شدنِ فرمِ پذیرش، یک تاییدِ خیلی ساده لازم است تا مطمئن شویم "
+                "پشتِ این پیام یک آدمِ واقعی است، نه یک ربات.\n\n"
+                f"❓ کدوم عدد بزرگ‌تره؟"
             ),
+            reply_markup=captcha_keyboard(correct, wrong),
         )
     except Exception as e:
-        logger.warning("ارسال پیام VPN به کاربر %s ممکن نشد: %s", user.id, e)
+        logger.warning("ارسال تستِ ضدربات به کاربر %s ممکن نشد: %s", user.id, e)
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📝 تکمیل فرم پذیرش",
-                    web_app=WebAppInfo(url=WEBAPP_URL),
-                )
-            ]
-        ]
-    )
+@dp.callback_query(F.data.startswith("captcha:"))
+async def cb_captcha_answer(callback: CallbackQuery):
+    user = callback.from_user
+    try:
+        chosen = int(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer()
+        return
+
+    correct = _pending_captcha.get(user.id)
+    if correct is None:
+        await callback.answer("این چالش منقضی شده. لطفاً دوباره درخواستِ عضویت بده.", show_alert=True)
+        return
+
+    if chosen == correct:
+        _pending_captcha.pop(user.id, None)
+        await mark_verified(user.id)
+        try:
+            await callback.message.edit_text(f"✅ تاییدِ انسان‌بودن با موفقیت انجام شد، {user.first_name} جان.")
+        except Exception:
+            pass
+        await callback.answer("تایید شد ✅")
+        await start_membership_form(user)
+    else:
+        await callback.answer("❌ جواب درست نبود، یک چالشِ تازه برایت می‌فرستم.", show_alert=True)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_captcha_challenge(user)
+
+# ==============================================================
+#  فرمِ پذیرش با دکمه‌های پنل (جایگزینِ مینی‌اپِ وب)
+# ==============================================================
+_pending_form: dict[int, dict] = {}
+
+def education_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    for i in range(0, len(EDUCATION_OPTIONS), 2):
+        row = [InlineKeyboardButton(text=EDUCATION_OPTIONS[i][1], callback_data=f"form_edu:{EDUCATION_OPTIONS[i][0]}", style="primary")]
+        if i + 1 < len(EDUCATION_OPTIONS):
+            row.append(InlineKeyboardButton(text=EDUCATION_OPTIONS[i+1][1], callback_data=f"form_edu:{EDUCATION_OPTIONS[i+1][0]}", style="primary"))
+        buttons.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def referral_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    items = list(REFERRAL_LABELS.items())
+    for i in range(0, len(items), 2):
+        row = [InlineKeyboardButton(text=items[i][1], callback_data=f"form_ref:{items[i][0]}", style="primary")]
+        if i + 1 < len(items):
+            row.append(InlineKeyboardButton(text=items[i+1][1], callback_data=f"form_ref:{items[i+1][0]}", style="primary"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="form_back:edu", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def interests_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
+    buttons = []
+    for i in range(0, len(INTERESTS), 2):
+        row = []
+        for item in INTERESTS[i:i + 2]:
+            is_sel = item in selected
+            row.append(InlineKeyboardButton(
+                text=f"✅ {item}" if is_sel else item,
+                callback_data=f"form_int:{item}",
+                style="success" if is_sel else "primary",
+            ))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(
+        text=f"🏁 ثبتِ نهایی ({len(selected)}/{MAX_INTERESTS})",
+        callback_data="form_int_done",
+        style="success" if selected else "primary",
+    )])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="form_back:ref", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+async def start_membership_form(user) -> None:
+    _pending_form[user.id] = {}
     try:
         await bot.send_message(
             chat_id=user.id,
-            text="اکنون می‌توانید فرم را پر کنید.",
-            reply_markup=keyboard,
+            text=(
+                f"عالی بود، {user.first_name} 🌿\n\n"
+                "برای تکمیلِ عضویت، فقط سه سوالِ کوتاه مونده — با همین دکمه‌ها جواب بده.\n\n"
+                "سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟"
+            ),
+            reply_markup=education_keyboard(),
         )
     except Exception as e:
-        logger.warning("ارسال دکمه‌ی فرم به کاربر %s ممکن نشد: %s", user.id, e)
+        logger.warning("ارسالِ فرمِ پذیرش به کاربر %s ممکن نشد: %s", user.id, e)
+
+@dp.callback_query(F.data.startswith("form_edu:"))
+async def cb_form_education(callback: CallbackQuery):
+    user = callback.from_user
+    value = callback.data.split(":", 1)[1]
+    label = dict(EDUCATION_OPTIONS).get(value, value)
+    _pending_form[user.id] = {"education": value, "education_label": label}
+    await callback.message.edit_text(
+        f"ثبت شد: <b>{label}</b> ✅\n\nسوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
+        reply_markup=referral_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("form_ref:"))
+async def cb_form_referral(callback: CallbackQuery):
+    user = callback.from_user
+    value = callback.data.split(":", 1)[1]
+    data = _pending_form.setdefault(user.id, {})
+    data["referral"] = value
+    data["interests"] = set()
+    label = REFERRAL_LABELS.get(value, value)
+    await callback.message.edit_text(
+        f"ثبت شد: <b>{label}</b> ✅\n\n"
+        f"سوال ۳ از ۳ — کدوم بخش از این انبارِ دانش بیشتر به‌کارت میاد؟\n"
+        f"(حداکثر {MAX_INTERESTS} مورد را انتخاب کن)",
+        reply_markup=interests_keyboard([]),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("form_int:"))
+async def cb_form_interest_toggle(callback: CallbackQuery):
+    user = callback.from_user
+    item = callback.data.split(":", 1)[1]
+    data = _pending_form.setdefault(user.id, {})
+    selected: set = data.setdefault("interests", set())
+    if item in selected:
+        selected.discard(item)
+    elif len(selected) >= MAX_INTERESTS:
+        await callback.answer(f"حداکثر {MAX_INTERESTS} مورد رو می‌تونی انتخاب کنی.", show_alert=True)
+        return
+    else:
+        selected.add(item)
+    await callback.message.edit_reply_markup(reply_markup=interests_keyboard(list(selected)))
+    await callback.answer()
+
+@dp.callback_query(F.data == "form_back:edu")
+async def cb_form_back_to_education(callback: CallbackQuery):
+    user = callback.from_user
+    _pending_form[user.id] = {}
+    await callback.message.edit_text(
+        "سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟",
+        reply_markup=education_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "form_back:ref")
+async def cb_form_back_to_referral(callback: CallbackQuery):
+    user = callback.from_user
+    data = _pending_form.setdefault(user.id, {})
+    data.pop("referral", None)
+    data.pop("interests", None)
+    await callback.message.edit_text(
+        "سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
+        reply_markup=referral_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "form_int_done")
+async def cb_form_submit(callback: CallbackQuery):
+    user = callback.from_user
+    data = _pending_form.get(user.id)
+    if not data or not data.get("education") or not data.get("referral"):
+        await callback.answer("انگار مسیر قطع شده. لطفاً دوباره درخواستِ عضویت بده.", show_alert=True)
+        return
+    selected = list(data.get("interests") or [])
+    if not selected:
+        await callback.answer("حداقل یک مورد رو انتخاب کن.", show_alert=True)
+        return
+
+    await callback.answer("⏳ در حال ثبتِ نهایی...")
+    try:
+        await callback.message.edit_text("⏳ در حال بررسیِ اطلاعات...")
+    except Exception:
+        pass
+
+    record = {
+        "user_id": user.id,
+        "username": user.username,
+        "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
+        "submitted_at": datetime.utcnow().isoformat(),
+        "education": data["education"],
+        "education_label": data["education_label"],
+        "referral": data["referral"],
+        "interests": selected,
+    }
+
+    async with _write_lock:
+        with open(DATA_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    _user_cache[str(user.id)] = record
+    _pending_form.pop(user.id, None)
+    logger.info("فرم کاربر %s ذخیره شد.", user.id)
+
+    approved = False
+    try:
+        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
+        approved = True
+    except Exception as e:
+        logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user.id, e)
+
+    if approved:
+        await increment_stat("form_completed_and_joined")
+
+    display_name = user.first_name or "دوست عزیز"
+    if approved:
+        rank_line = ""
+        try:
+            member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
+            rank_line = f"تو ساکنِ شماره‌ی <b>{member_count}</b>‌ اُمِ این رواقی 🌱\n\n"
+        except Exception:
+            pass
+        await bot.send_message(
+            chat_id=user.id,
+            text=(
+                f"🏛 آفرین {display_name}! سندِ عضویت‌ات صادر شد.\n"
+                f"{rank_line}"
+                f"علایقی که ثبت کردی: <b>{'، '.join(selected)}</b>\n\n"
+                "از این لحظه، تو یکی از ساکنانِ این رواقی. کتابخانه‌ی "
+                "فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
+                "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد.\n\n"
+                "از پنل زیر برای دسترسی به امکانات استفاده کنید:"
+            ),
+            reply_markup=user_panel_keyboard(),
+        )
+    else:
+        await bot.send_message(
+            chat_id=user.id,
+            text=(
+                f"{display_name} جان، اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد. "
+                "کمی صبر کن، یا از طریقِ گروه با ادمین در میان بگذار."
+            ),
+        )
 
 # ---------- درخواست عضویت ----------
 @dp.chat_join_request()
@@ -766,7 +1013,7 @@ async def handle_join_request(join_request: ChatJoinRequest):
         try:
             await bot.send_message(
                 chat_id=user.id,
-                text="🔴 فعلاً عضوگیری نداریم. به محض روشن شدن ربات، به شما پیام خواهیم داد."
+                text=f"🔴 {user.first_name} جان، فعلاً عضوگیری نداریم. به محضِ روشن شدنِ ربات بهت پیام می‌دیم."
             )
         except Exception as e:
             logger.warning("ارسال پیام خاموشی به کاربر %s ممکن نشد: %s", user.id, e)
@@ -777,41 +1024,11 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await save_bot_state(state)
         return
 
-    if get_saved_phone(user.id):
-        await send_vpn_warning_and_form(user)
+    if is_verified(user.id):
+        await start_membership_form(user)
         return
 
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                f"سلام {user.first_name}،\n\n"
-                "طبق سیاست‌های جدید تلگرام، برای احراز هویت و جلوگیری از ورود ربات‌ها، "
-                "لازم است شماره تلفن خود را با استفاده از دکمه‌ی پایین صفحه تأیید کنید.\n"
-                "پس از تأیید، فرم عضویت برای شما فعال می‌شود."
-            ),
-            reply_markup=phone_request_keyboard(),
-        )
-    except Exception as e:
-        logger.warning("نمی‌توان به کاربر %s پیام داد: %s", user.id, e)
-
-# ---------- دریافت شماره تلفن ----------
-@dp.message(F.contact)
-async def handle_contact_shared(message: Message):
-    contact = message.contact
-    user = message.from_user
-
-    if contact.user_id != user.id:
-        await message.answer(
-            "این‌جا فقط شماره‌ی خودت کلیدِ ورود است. لطفاً با همان دکمه، "
-            "شماره‌ی خودت را به اشتراک بگذار.",
-            reply_markup=phone_request_keyboard(),
-        )
-        return
-
-    await save_phone(user.id, contact.phone_number)
-    await message.answer("مسیر باز شد ✅", reply_markup=ReplyKeyboardRemove())
-    await send_vpn_warning_and_form(user)
+    await send_captcha_challenge(user)
 
 # ---------- رویداد تغییر وضعیت عضو ----------
 @dp.chat_member()
@@ -1821,10 +2038,10 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
     try:
         await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
         async with _write_lock:
-            phones = load_phones()
-            if str(user_id) in phones:
-                del phones[str(user_id)]
-                PHONES_FILE.write_text(json.dumps(phones, ensure_ascii=False), encoding="utf-8")
+            verified = load_verified()
+            if str(user_id) in verified:
+                del verified[str(user_id)]
+                VERIFIED_FILE.write_text(json.dumps(verified, ensure_ascii=False), encoding="utf-8")
 
             if DATA_FILE.exists():
                 new_lines = []
@@ -2336,100 +2553,6 @@ async def restore_attendance_tasks():
             _attendance_tasks[f"reminder_{chat_id}"] = task
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
-# ==============================================================
-#  اعتبارسنجی initData و دریافت فرم (وب‌هوک)
-# ==============================================================
-
-def validate_init_data(init_data: str):
-    try:
-        pairs = dict(parse_qsl(init_data, strict_parsing=True))
-    except ValueError:
-        return None
-
-    received_hash = pairs.pop("hash", None)
-    if not received_hash:
-        return None
-
-    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
-    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
-    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(computed_hash, received_hash):
-        return None
-
-    user_raw = pairs.get("user")
-    if not user_raw:
-        return None
-    return json.loads(user_raw)
-
-async def handle_submit(request: web.Request) -> web.Response:
-    try:
-        payload = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
-
-    init_data = payload.get("initData", "")
-    form_data = payload.get("form", {})
-
-    user = validate_init_data(init_data)
-    if user is None:
-        logger.warning("initData نامعتبر بود — درخواست رد شد.")
-        return web.json_response({"ok": False, "error": "invalid_init_data"}, status=403)
-
-    user_id = user["id"]
-
-    record = {
-        "user_id": user_id,
-        "username": user.get("username"),
-        "full_name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
-        "phone": get_saved_phone(user_id),
-        "submitted_at": datetime.utcnow().isoformat(),
-        **form_data,
-    }
-
-    async with _write_lock:
-        with open(DATA_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    _user_cache[str(user_id)] = record
-    logger.info("فرم کاربر %s ذخیره شد.", user_id)
-
-    approved = False
-    try:
-        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
-        approved = True
-    except Exception as e:
-        logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user_id, e)
-
-    if approved:
-        await increment_stat("form_completed_and_joined")
-
-    try:
-        if approved:
-            await bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "🏛 آفرین! سندِ عضویت‌ات صادر شد.\n"
-                    "از این لحظه، تو یکی از ساکنانِ این رواقی. کتابخانه‌ی "
-                    "فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
-                    "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد.\n\n"
-                    "از پنل زیر برای دسترسی به امکانات استفاده کنید:"
-                ),
-                reply_markup=user_panel_keyboard(),
-            )
-        else:
-            await bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد. "
-                    "کمی صبر کن، یا از طریقِ گروه با ادمین در میان بگذار."
-                ),
-            )
-    except Exception as e:
-        logger.warning("ارسال پیام تاییدیه به کاربر %s ممکن نشد: %s", user_id, e)
-
-    return web.json_response({"ok": approved})
-
 # ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
@@ -2528,20 +2651,12 @@ async def on_startup(app: web.Application):
     )
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
 
-    await bot.set_chat_menu_button(
-        menu_button=MenuButtonWebApp(text="mini app", web_app=WebAppInfo(url=WEBAPP_URL))
-    )
-    logger.info("Menu Button روی مینی‌اپ تنظیم شد.")
-
     await restore_attendance_tasks()
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
 def create_app() -> web.Application:
     app = web.Application()
 
-    webapp_dir = Path(__file__).parent / "webapp"
-    app.router.add_static("/webapp/", path=str(webapp_dir), show_index=False)
-    app.router.add_post("/api/submit", handle_submit)
     app.router.add_get("/health", handle_health)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
