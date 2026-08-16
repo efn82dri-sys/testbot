@@ -121,7 +121,8 @@ INTERESTS: list[str] = [
 MAX_INTERESTS = 3
 
 GROUP_NAME = "رواق"
-SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛
+# ===== خط زیر اصلاح شده است (کوتیشن بسته شده) =====
+SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
 
 GROUP_RULES_URL = os.environ.get("GROUP_RULES_URL", "").strip()
 RULES_FALLBACK_TEXT = (
