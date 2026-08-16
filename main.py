@@ -3,12 +3,12 @@
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
 ====================================================================
-نسخهٔ نهایی با اصلاحات UI/UX:
-- رفع جهش ناگهانی به فرم (افزودن پیام‌های زمینه‌ساز)
-- یکدست‌سازی خط‌شکنی و نگارش فارسی در تمام پیام‌ها
-- بهبود کارت عضویت (حذف کاراکترهای جعبه‌ای، استفاده از جداکننده‌ی ساده)
-- تابع کمکی greet_user برای خطاب یکدست
-- تابع کمکی to_persian_num برای اعداد فارسی
+نسخهٔ نهایی با طراحی مینیمال و حرفه‌ای
+- حذف صدا زدن بی‌مورد اسم کاربر
+- کارت عضویت ساده و بدون مشکل Bidi
+- یکدست‌سازی تمام پیام‌ها با لحن برند
+- رفع جهش ناگهانی به فرم
+- استفاده از اعداد فارسی و خط‌فاصله‌ی استاندارد
 """
 
 import asyncio
@@ -111,7 +111,6 @@ MAX_INTERESTS = 3
 GROUP_NAME = "رواق"
 SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
 
-# لینکِ قوانین و حریمِ خصوصی (اگر تنظیم نشود، متنِ پیش‌فرض نمایش داده می‌شود)
 GROUP_RULES_URL = os.environ.get("GROUP_RULES_URL", "").strip()
 RULES_FALLBACK_TEXT = (
     "📜 <b>قوانین و حریمِ خصوصیِ رواق</b>\n\n"
@@ -150,10 +149,10 @@ def _schedule_form_reminder(user_id: int) -> None:
             await bot.send_message(
                 chat_id=user_id,
                 text=(
-                    "⏳ یادت نره وسطِ فرمِ پذیرش موندی!\n\n"
-                    "هر وقت آماده بودی، همینجا روی یکی از دکمه‌های بالا بزن تا "
-                    "ادامه بدیم.\n"
-                    "اگه مشکلی پیش اومده، از «📞 ارتباط با ادمین» کمک بگیر."
+                    "⏳ <b>تکمیل فرم</b>\n\n"
+                    "فرم پذیرش نیمه‌کاره باقی مانده است.\n"
+                    "هر زمان آماده بودید، روی یکی از دکمه‌های بالا کلیک کنید تا ادامه دهید.\n"
+                    "در صورت بروز مشکل، از گزینهٔ «📞 ارتباط با ادمین» کمک بگیرید."
                 ),
             )
         except Exception as e:
@@ -183,23 +182,23 @@ LEAVE_REASONS: list[tuple[str, str]] = [
     (
         "فایل‌ها و محتوای گروه به‌دردم نخورد",
         "حیف شد! اگر دقیقاً بگویی دنبالِ چه فایلی بودی، حتماً در انبارِ این "
-        "رواق گم‌شده‌ای پیدا می‌شود که به‌کارت بیاید.\n"
+        "رواق گم‌شده‌ای پیدا می‌شود که به‌کارت بیاید.\n\n"
         "به ادمین‌ها پیام بده، شاید درِ گنج‌خانه‌ای تازه باز شود 🙏",
     ),
     (
         "پیام‌های زیاد گروه رو شلوغ می‌کرد",
         "راستی؟ می‌دونی که می‌تونی گروه رو روی حالتِ سکوت بذاری و فقط گاهی "
-        "سراغِ «پیام‌های سنجاق‌شده» (همون فایل‌های طلایی) بیای؟\n"
+        "سراغِ «پیام‌های سنجاق‌شده» (همون فایل‌های طلایی) بیای؟\n\n"
         "بدونِ اینکه اعلان‌ها اذیتت کنن 🔕",
     ),
     (
         "فعلاً به این موضوع نیاز ندارم",
-        "کاملاً درک می‌کنم. بساطِ معماری گاهی خلوت‌شدن هم می‌خواد.\n"
+        "کاملاً درک می‌کنم. بساطِ معماری گاهی خلوت‌شدن هم می‌خواد.\n\n"
         "هر وقت دوباره خواستی قدم بذاری، درِ رواق به رویت باز است 🙌",
     ),
     (
         "دلیل دیگه‌ای دارم",
-        "ممنون که وقت گذاشتی.\n"
+        "ممنون که وقت گذاشتی.\n\n"
         "اگه حرفِ دلت رو مستقیم با ادمین‌ها در میون بذاری، به ما در مرمتِ این فضا کمکِ بزرگی کردی 🙏",
     ),
 ]
@@ -220,24 +219,21 @@ def format_jalali_datetime(utc_dt: datetime) -> str:
 
 # ---------- توابع کمکی برای نگارش فارسی ----------
 def to_persian_num(num) -> str:
-    """تبدیل اعداد انگلیسی به فارسی."""
     mapping = {
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
         '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
     }
     return ''.join(mapping.get(ch, ch) for ch in str(num))
 
-def greet_user(user, suffix="جان") -> str:
-    """خطاب یکدست به کاربر با اسم و پسوند محترمانه."""
-    name = html_escape(user.first_name or "دوست عزیز")
+def greet_user(user, suffix="عزیز") -> str:
+    """خطاب به کاربر فقط در موارد ضروری (اولین پیام و تبریک)."""
+    name = html_escape(user.first_name or "کاربر")
     return f"{name} {suffix}"
 
 def sign(text: str) -> str:
-    """پیام‌های مهم را با امضای ثابتِ تیم می‌بندد."""
     return f"{text}{SIGNATURE}"
 
 def progress_bar(step: int, total: int = 3) -> str:
-    """نوارِ پیشرفتِ بصری برای مراحلِ فرم، مثلاً 🟩🟩⬜."""
     step = max(0, min(step, total))
     return ("🟩" * step) + ("⬜" * (total - step))
 
@@ -276,7 +272,6 @@ async def mark_verified(user_id: int) -> None:
 def is_verified(user_id: int) -> bool:
     return str(user_id) in load_verified()
 
-# ---------- کاربرانِ واردشده به قیف ----------
 def load_funnel_users() -> set[int]:
     if not FUNNEL_USERS_FILE.exists():
         return set()
@@ -756,27 +751,26 @@ async def save_bot_state(state: dict) -> None:
 
 # ---------- تابع زمینه‌ساز قبل از فرم (رفع جهش ناگهانی) ----------
 async def send_reengagement_intro(user, context: str = "default") -> None:
-    """ارسال پیامِ زمینه‌سازی قبل از شروع فرم، بسته به موقعیت."""
+    """ارسال پیام زمینه‌ساز بدون تکرار بی‌مورد اسم."""
     if context == "pending":
         text = (
-            f"🟢 {greet_user(user)},\n\n"
-            "ربات دوباره روشن شد و نوبتِ توئه.\n"
-            "چون قبلاً تاییدِ ضدربات رو رد کرده بودی، دیگه لازم نیست دوباره انجامش بدی — "
-            "می‌ریم سراغ فرم."
+            "🟢 <b>ربات فعال شد</b>\n\n"
+            "فرایند عضویت از مرحله‌ی تکمیل‌شده ادامه می‌یابد.\n"
+            "لطفاً فرم پذیرش را تکمیل کنید."
         )
     elif context == "rejoin":
         text = (
-            f"👋 {greet_user(user)},\n\n"
-            "قبلاً تاییدِ ضدربات رو انجام داده بودی، پس مستقیم می‌ریم سراغ فرمِ پذیرش."
+            "👋 <b>خوش آمدید</b>\n\n"
+            "تایید ضدربات قبلاً انجام شده است.\n"
+            "اکنون فرم پذیرش برای شما ارسال می‌شود."
         )
     else:
         text = (
-            f"👋 {greet_user(user)},\n\n"
-            "خوشحالیم که می‌خوای عضو رواق بشی.\n"
-            "یه فرمِ سه‌سوالی داری پیش رو، کمکت می‌کنه بهتر شناخته بشی."
+            "👋 <b>خوش آمدید</b>\n\n"
+            "پس از تکمیل مراحل اولیه، فرم پذیرش در اختیار شما قرار می‌گیرد."
         )
     await bot.send_message(chat_id=user.id, text=sign(text))
-    await asyncio.sleep(1.2)  # مکث کوتاه برای خواندن پیام
+    await asyncio.sleep(1.2)
 
 async def process_pending_requests():
     state = load_bot_state()
@@ -814,12 +808,10 @@ async def handle_start(message: Message):
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
-    display_name = html_escape(message.from_user.first_name or "دوست عزیز")
-
     if is_form_completed(user_id) or await is_user_member(user_id):
         await message.answer(
-            f"🏛 {display_name}، خوش برگشتی!\n\n"
-            "از پنل زیر یکی از گزینه‌ها را انتخاب کن:",
+            "🏛 <b>به رواق خوش آمدید</b>\n\n"
+            "از پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
             reply_markup=user_panel_keyboard()
         )
     else:
@@ -827,16 +819,16 @@ async def handle_start(message: Message):
         try:
             member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
             member_count_str = to_persian_num(member_count)
-            member_count_line = f"همین الان <b>{member_count_str}</b> معمار و مهندس اینجان 👥\n\n"
+            member_count_line = f"هم‌اکنون <b>{member_count_str}</b> معمار و مهندس در اینجا حضور دارند.\n\n"
         except Exception:
             pass
         await message.answer(
             sign(
-                f"سلام {display_name}، به {GROUP_NAME} خوش اومدی.\n\n"
-                f"این‌جا انبارِ دانشِ هزاران معمار و مهندس است.\n"
+                f"{greet_user(message.from_user)}، به {GROUP_NAME} خوش آمدید.\n\n"
+                "اینجا انبارِ تخصصیِ فایل‌های معماری و عمران است.\n"
                 f"{member_count_line}"
-                "برای ورود، کافی‌ست درخواستِ عضویت در گروه را ثبت کنی.\n"
-                "مسیرِ بعدی را برایت می‌گشایم."
+                "برای عضویت، کافی‌ست درخواستِ پیوستن به گروه را ثبت کنید.\n"
+                "مسیرِ بعدی برای شما گشوده خواهد شد."
             ),
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -862,11 +854,10 @@ def captcha_keyboard(correct: int, wrong: int) -> InlineKeyboardMarkup:
     )
 
 async def send_welcome_intro(user) -> None:
-    """پیامِ خوش‌آمدِ اعتمادسازِ اول: معرفیِ کوتاهِ گروه + آمارِ زنده."""
     stats_line = ""
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-        stats_line = f"👥 همین الان <b>{to_persian_num(member_count)}</b> نفر همین‌جان.\n\n"
+        stats_line = f"👥 همین الان <b>{to_persian_num(member_count)}</b> نفر در رواق حضور دارند.\n\n"
     except Exception:
         pass
     try:
@@ -875,10 +866,10 @@ async def send_welcome_intro(user) -> None:
             text=(
                 f"🏛 <b>{GROUP_NAME}</b>، درگاهِ تخصصیِ فایل‌های معماری و عمران.\n\n"
                 f"{stats_line}"
-                "درخواستِ عضویتت رو دیدیم.\n"
-                "فقط دو قدمِ کوچیک مونده تا درِ رواق برات باز بشه:\n"
-                "۱. یک تاییدِ خیلی ساده که ربات نیستی\n"
-                "۲. سه سوالِ کوتاه برای شناختِ بهتر"
+                "درخواست عضویت شما ثبت شد.\n"
+                "برای ورود، دو مرحله ساده باقی مانده است:\n"
+                "۱. تایید عدم ربات‌بودن\n"
+                "۲. تکمیل فرم پذیرش"
             ),
         )
     except Exception as e:
@@ -903,8 +894,8 @@ async def send_captcha_challenge(user) -> None:
                 chat_id=user.id,
                 text=(
                     f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{to_persian_num(minutes_left)}</b> دقیقهٔ دیگه قفل شده.\n"
-                    "لطفاً کمی صبر کن و دوباره تلاش کن."
+                    f"<b>{to_persian_num(minutes_left)}</b> دقیقهٔ دیگه قفل شده.\n\n"
+                    "لطفاً کمی صبر کنید و دوباره تلاش کنید."
                 ),
             )
         except Exception as e:
@@ -920,10 +911,9 @@ async def send_captcha_challenge(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"سلام {greet_user(user)} 👋\n\n"
-                "قبل از باز شدنِ فرمِ پذیرش، یک تاییدِ خیلی ساده لازم است تا مطمئن شویم "
-                "پشتِ این پیام یک آدمِ واقعی است، نه یک ربات.\n\n"
-                f"❓ کدوم عدد بزرگ‌تره؟"
+                "🤖 <b>تایید عدم ربات‌بودن</b>\n\n"
+                "برای اطمینان از اینکه شما یک انسان هستید، لطفاً پاسخ دهید:\n\n"
+                f"❓ کدام عدد بزرگ‌تر است؟"
             ),
             reply_markup=captcha_keyboard(correct, wrong),
         )
@@ -958,9 +948,9 @@ async def cb_captcha_answer(callback: CallbackQuery):
         await mark_verified(user.id)
         try:
             await callback.message.edit_text(
-                f"✅ تاییدِ انسان‌بودن با موفقیت انجام شد، {greet_user(user)}.\n\n"
-                "<i>راستی، این تست فقط برای جلوگیری از ورودِ ربات‌های اسپمی به رواقه؛ "
-                "چیزی از تو ذخیره نمی‌شه.</i>"
+                "✅ <b>تایید شد</b>\n\n"
+                "شما یک انسان واقعی هستید.\n"
+                "این تست صرفاً برای جلوگیری از ورود ربات‌های اسپم انجام شد و اطلاعاتی ذخیره نمی‌شود."
             )
         except Exception:
             pass
@@ -980,8 +970,8 @@ async def cb_captcha_answer(callback: CallbackQuery):
             try:
                 await callback.message.edit_text(
                     f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{to_persian_num(CAPTCHA_LOCK_MINUTES)}</b> دقیقه قفل شد.\n"
-                    "بعداً دوباره تلاش کن."
+                    f"<b>{to_persian_num(CAPTCHA_LOCK_MINUTES)}</b> دقیقه قفل شد.\n\n"
+                    "بعداً دوباره تلاش کنید."
                 )
             except Exception:
                 pass
@@ -1045,9 +1035,10 @@ async def start_membership_form(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"عالی بود، {greet_user(user)} 🌿\n\n"
-                "برای تکمیلِ عضویت، فقط سه سوالِ کوتاه مونده — با همین دکمه‌ها جواب بده.\n\n"
-                f"{progress_bar(1)}  سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟"
+                "🌿 <b>تکمیل فرم عضویت</b>\n\n"
+                "تنها سه سوال کوتاه باقی مانده است.\n"
+                "لطفاً پاسخ‌ها را با استفاده از دکمه‌ها انتخاب کنید.\n\n"
+                f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟"
             ),
             reply_markup=education_keyboard(),
         )
@@ -1062,8 +1053,8 @@ async def cb_form_education(callback: CallbackQuery):
     label = dict(EDUCATION_OPTIONS).get(value, value)
     _pending_form[user.id] = {"education": value, "education_label": label}
     await callback.message.edit_text(
-        f"ثبت شد: <b>{label}</b> ✅\n\n"
-        f"{progress_bar(2)}  سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
+        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
+        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
         reply_markup=referral_keyboard(),
     )
     _schedule_form_reminder(user.id)
@@ -1078,9 +1069,9 @@ async def cb_form_referral(callback: CallbackQuery):
     data["interests"] = set()
     label = REFERRAL_LABELS.get(value, value)
     await callback.message.edit_text(
-        f"ثبت شد: <b>{label}</b> ✅\n\n"
-        f"{progress_bar(3)}  سوال ۳ از ۳ — کدوم بخش از این انبارِ دانش بیشتر به‌کارت میاد؟\n"
-        f"(حداکثر {to_persian_num(MAX_INTERESTS)} مورد را انتخاب کن)",
+        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
+        f"{progress_bar(3)}  سوال ۳ از ۳ — کدام بخش از رواق برای شما جذاب‌تر است؟\n"
+        f"(حداکثر {to_persian_num(MAX_INTERESTS)} مورد)",
         reply_markup=interests_keyboard([]),
     )
     _schedule_form_reminder(user.id)
@@ -1095,7 +1086,7 @@ async def cb_form_interest_toggle(callback: CallbackQuery):
     if item in selected:
         selected.discard(item)
     elif len(selected) >= MAX_INTERESTS:
-        await callback.answer(f"حداکثر {to_persian_num(MAX_INTERESTS)} مورد رو می‌تونی انتخاب کنی.", show_alert=True)
+        await callback.answer(f"حداکثر {to_persian_num(MAX_INTERESTS)} مورد را می‌توانید انتخاب کنید.", show_alert=True)
         return
     else:
         selected.add(item)
@@ -1107,7 +1098,7 @@ async def cb_form_back_to_education(callback: CallbackQuery):
     user = callback.from_user
     _pending_form[user.id] = {}
     await callback.message.edit_text(
-        f"{progress_bar(1)}  سوال ۱ از ۳ — سطحِ حرفه‌ای‌ات چیه؟",
+        f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟",
         reply_markup=education_keyboard(),
     )
     _schedule_form_reminder(user.id)
@@ -1120,33 +1111,28 @@ async def cb_form_back_to_referral(callback: CallbackQuery):
     data.pop("referral", None)
     data.pop("interests", None)
     await callback.message.edit_text(
-        f"{progress_bar(2)}  سوال ۲ از ۳ — از کدوم مسیر به این رواق رسیدی؟",
+        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
         reply_markup=referral_keyboard(),
     )
     _schedule_form_reminder(user.id)
     await callback.answer()
 
-# ---------- ساخت کارت عضویت بهبودیافته (متنی) ----------
+# ---------- ساخت کارت عضویت (نسخه‌ی ساده و بدون مشکل Bidi) ----------
 def build_membership_card(user, data, member_count, jalali_now) -> str:
-    """ساخت کارت عضویت با جداکننده‌ی ساده و کنترل جهت متن."""
     display_name = html_escape(user.full_name or user.first_name or "کاربر")
     rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
     interests_text = '، '.join(data.get('interests', []))
 
-    # استفاده از جداکننده‌ی خنثی و کنترل جهت با RLM در صورت نیاز
-    # \u200f = RIGHT-TO-LEFT MARK برای جلوگیری از تغییر جهت خطوط با نام لاتین
     card = (
-        "✅ کارتِ عضویتِ رواق\n"
-        "──────────────────\n"
-        f"👤 \u200f{display_name}\n"
+        "✅ <b>کارتِ عضویتِ رواق</b>\n\n"
+        f"👤 {display_name}\n"
         f"{rank_line}\n"
         f"🎓 {data['education_label']}\n"
         f"⭐️ {interests_text}\n"
-        f"🗓 {jalali_now}\n"
-        "──────────────────\n\n"
-        "از این لحظه، تو یکی از ساکنانِ این رواقی.\n"
-        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به رویِ تو گشوده شد.\n"
-        "امیدوارم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌ات باشد."
+        f"🗓 {jalali_now}\n\n"
+        "از این لحظه، شما یکی از ساکنانِ این رواق هستید.\n"
+        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به روی شما گشوده شد.\n"
+        "امیدواریم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌تان باشد."
     )
     return sign(card)
 
@@ -1159,12 +1145,12 @@ async def cb_form_submit(callback: CallbackQuery):
         return
     selected = list(data.get("interests") or [])
     if not selected:
-        await callback.answer("حداقل یک مورد رو انتخاب کن.", show_alert=True)
+        await callback.answer("حداقل یک مورد را انتخاب کنید.", show_alert=True)
         return
 
-    await callback.answer("⏳ در حال ثبتِ نهایی...")
+    await callback.answer("⏳ در حال ثبت...")
     try:
-        await callback.message.edit_text("⏳ در حال بررسیِ اطلاعات...")
+        await callback.message.edit_text("⏳ در حال ثبت اطلاعات...")
     except Exception:
         pass
 
@@ -1198,18 +1184,17 @@ async def cb_form_submit(callback: CallbackQuery):
     if approved:
         await increment_stat("form_completed_and_joined")
 
-    display_name = html_escape(user.first_name or "دوست عزیز")
     if approved:
         rank_line = ""
+        member_count = None
         try:
             member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-            rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}\n"
+            rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}"
         except Exception:
             pass
         jalali_now = format_jalali_datetime(datetime.utcnow())
 
-        # استفاده از کارت عضویت بهبودیافته
-        membership_card = build_membership_card(user, data, member_count if 'member_count' in locals() else None, jalali_now)
+        membership_card = build_membership_card(user, data, member_count, jalali_now)
 
         await bot.send_message(
             chat_id=user.id,
@@ -1220,8 +1205,8 @@ async def cb_form_submit(callback: CallbackQuery):
         await bot.send_message(
             chat_id=user.id,
             text=sign(
-                f"{display_name} جان، اطلاعاتت ثبت شد، اما در بازشدنِ درِ رواق کمی تاخیر افتاد.\n"
-                "کمی صبر کن، یا از طریقِ گروه با ادمین در میان بگذار."
+                "اطلاعات شما ثبت شد، اما تایید عضویت با کمی تاخیر مواجه شد.\n"
+                "لطفاً شکیبا باشید یا از طریق گروه با ادمین تماس بگیرید."
             ),
         )
 
@@ -1241,9 +1226,9 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await bot.send_message(
                 chat_id=user.id,
                 text=(
-                    f"🔴 {greet_user(user)},\n\n"
-                    "فعلاً درِ رواق برای عضوگیری بسته‌ست.\n"
-                    "به محضِ روشن شدن، خودم بهت خبر می‌دم."
+                    "🔴 <b>عضویت موقتاً بسته است</b>\n\n"
+                    "درِ رواق برای عضوگیری بسته شده.\n"
+                    "به محضِ فعال‌سازی، به شما اطلاع داده خواهد شد."
                 )
             )
         except Exception as e:
@@ -1255,7 +1240,6 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await save_bot_state(state)
         return
 
-    # رفع جهش ناگهانی: ابتدا پیام زمینه‌ساز، سپس فرم یا تست
     if is_verified(user.id):
         await send_reengagement_intro(user, context="rejoin")
         await start_membership_form(user)
@@ -1314,10 +1298,10 @@ async def send_welcome_to_group(user) -> None:
         sent = await bot.send_message(
             chat_id=GROUP_CHAT_ID,
             text=(
-                f"{user_mention} عزیز خوش آمدی 👋\n\n"
+                f"{user_mention} عزیز خوش آمدید 👋\n\n"
                 "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
-                "▫️ برای شروع، خودت را در تایپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کن.\n\n"
-                "🏛 آماده‌ای برای پیشرفت؟"
+                "▫️ برای شروع، خود را در تایپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کنید.\n\n"
+                "🏛 آماده‌اید برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
             disable_notification=True,
@@ -1350,9 +1334,9 @@ async def handle_member_left(user) -> None:
         await bot.send_message(
             chat_id=user.id,
             text=(
-                f"{greet_user(user)}، متأسفانه از جمعِ ما فاصله گرفتی.\n\n"
-                "اگر یک دقیقه وقت بگذاری و بگویی «چرا این بنا را ترک کردی؟»، به ما "
-                "کمک می‌کنی تا طرحِ بهتری بریزیم."
+                "متأسفیم که از جمعِ رواق فاصله گرفتید.\n\n"
+                "اگر فرصتی باشد، مایلیم بدانیم چه عاملی باعث ترک شما شد.\n"
+                "نظرات شما به ما در بهبود این فضا کمک خواهد کرد."
             ),
         )
 
@@ -1373,7 +1357,7 @@ async def handle_member_left(user) -> None:
             )
         await bot.send_message(
             chat_id=user.id,
-            text="هرگاه خواستی، طاق‌ها هنوز پابرجایند — درِ رواق باز است 🏛",
+            text="هر زمان خواستید، درِ رواق به روی شما باز است 🏛",
             reply_markup=keyboard,
         )
     except Exception as e:
@@ -1516,9 +1500,9 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await state.set_state(BroadcastStates.choosing_audience)
         await callback.message.edit_text(
             "📢 <b>ارسال پیام همگانی</b>\n\n"
-            "اول مخاطب‌ها رو انتخاب کن — می‌تونی برای همه بفرستی، یا فقط برای "
-            "کسایی که یکی از این علایق رو موقعِ ثبت‌نام انتخاب کرده‌ان "
-            "(تگ‌گذاریِ خودکار بر اساسِ فرم):",
+            "ابتدا مخاطبان را انتخاب کنید:\n"
+            "— همه‌ی کاربرانی که فرم را تکمیل کرده‌اند\n"
+            "— یا فقط افرادی که علاقه‌ی خاصی دارند (بر اساس تگ‌های ثبت‌شده در فرم)",
             reply_markup=broadcast_audience_keyboard(),
         )
         await callback.answer()
@@ -1530,7 +1514,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             "📨 <b>ارسال پیام مستقیم</b>\n\n"
             "شناسهٔ کاربر را وارد کنید (آیدی عددی یا @username):\n"
             "مثال: 123456789  یا  @Ali_Arch\n\n"
-            "⚠️ بعد از شناسایی کاربر، می‌توانید هر نوع فایلی (عکس، سند، ویدئو، استیکر و...) ارسال کنید.\n"
+            "⚠️ پس از شناسایی کاربر، می‌توانید هر نوع فایلی (عکس، سند، ویدئو، استیکر و...) ارسال کنید.\n"
             "(برای لغو، /cancel بفرستید)",
             reply_markup=admin_back_keyboard()
         )
@@ -1917,8 +1901,8 @@ async def handle_generic_member_message(message: Message):
 
     await relay_message_to_admin(message.from_user, text)
     await message.answer(
-        "پیامت به گوشِ ادمین‌های رواق رسید.\n"
-        "به‌زودی جواب می‌گیری 🙏"
+        "پیام شما به ادمین‌های رواق ارسال شد.\n"
+        "به‌زودی پاسخ دریافت خواهید کرد 🙏"
     )
 
 # ==============================================================
@@ -1932,7 +1916,7 @@ class ContactAdminStates(StatesGroup):
 async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
-        "🏛 به رواق خوش آمدید.\n"
+        "🏛 <b>به رواق خوش آمدید</b>\n\n"
         "از پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=user_panel_keyboard()
     )
