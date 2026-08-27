@@ -639,7 +639,7 @@ def migrate_menu_config(config: dict) -> dict:
     defaults = {
         "vip": {"label": "🌟 گروه VIP", "response": ""},
         "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-        "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},  # اصلاح
+        "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
         "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
         "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
         "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -679,7 +679,7 @@ def load_menu_config() -> dict:
             "menu_items": {
                 "vip": {"label": "🌟 گروه VIP", "response": ""},
                 "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-                "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},  # اصلاح
+                "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
                 "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
                 "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -1392,7 +1392,7 @@ async def send_welcome_to_group(user) -> None:
             text=(
                 f"{user_mention} عزیز خوش آمدید 👋\n\n"
                 "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
-                "▫️ برای شروع، خود را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کنید.\n\n"  # اصلاح
+                "▫️ برای شروع، خود را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کنید.\n\n"
                 "🏛 آماده‌اید برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
@@ -2077,8 +2077,8 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 
     if key == "topics":
         await callback.message.edit_text(
-            "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"  # اصلاح
-            "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",  # اصلاح
+            "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"
+            "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",
             reply_markup=topics_panel_keyboard()
         )
         await callback.answer()
@@ -3023,11 +3023,9 @@ async def render_vip_page(index: int):
     index = index % len(categories)
     cat = categories[index]
     
-    # نمایش نام و توضیحات (با خطوط جدید)
     desc_lines = cat.get('description', '').split('\n')
     desc_text = '\n'.join([html_escape(line) for line in desc_lines])
     
-    # ساخت کپشن (همان محتوای قبلی) با شمارشگر در خط جدید
     caption = (
         f"🌟 <b>گروه VIP</b>\n"
         f"({to_persian_num(index + 1)}/{to_persian_num(len(categories))})\n\n"
@@ -3053,7 +3051,8 @@ async def render_vip_page(index: int):
     return caption, keyboard, image_file_id
 
 @dp.callback_query(F.data == "vip:open")
-async def cb_vip_open(callback: CallbackQuery):
+async def cb_vip_open(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     if VIP_GROUP_CHAT_ID is None:
         await callback.answer("گروه VIP هنوز راه‌اندازی نشده است.", show_alert=True)
         return
@@ -3090,36 +3089,42 @@ class VipSubscriptionStates(StatesGroup):
 
 @dp.callback_query(F.data == "vip:buy_subscription")
 async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
-    settings = load_vip_global_settings()
-    prices = settings.get("prices", {})
-    discount = settings.get("discount_percent", 0)
-    
-    text = "💎 <b>انتخاب مدت اشتراک VIP</b>\n\n"
-    for months in (3, 6, 12):
-        price = prices.get(str(months), 0)
-        if discount > 0:
-            final_price = int(price * (1 - discount / 100))
-            text += (
-                f"▫️ {to_persian_num(months)} ماهه: "
-                f"<s>{format_toman(price)}</s> → {format_toman(final_price)} "
-                f"(تخفیف {to_persian_num(discount)}%)\n"
-            )
-        else:
-            text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}\n"
-    
-    text += "\nلطفاً یکی از گزینه‌های بالا را انتخاب کنید."
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
-            [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
-            [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
-        ]
-    )
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await state.set_state(VipSubscriptionStates.choosing_duration)
-    await callback.answer()
+    await state.clear()
+    try:
+        settings = load_vip_global_settings()
+        prices = settings.get("prices", {})
+        discount = settings.get("discount_percent", 0)
+        
+        text = "💎 <b>انتخاب مدت اشتراک VIP</b>\n\n"
+        for months in (3, 6, 12):
+            price = prices.get(str(months), 0)
+            if discount > 0:
+                final_price = int(price * (1 - discount / 100))
+                text += (
+                    f"▫️ {to_persian_num(months)} ماهه: "
+                    f"<s>{format_toman(price)}</s> → {format_toman(final_price)} "
+                    f"(تخفیف {to_persian_num(discount)}%)\n"
+                )
+            else:
+                text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}\n"
+        
+        text += "\nلطفاً یکی از گزینه‌های بالا را انتخاب کنید."
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
+                [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
+                [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
+            ]
+        )
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=keyboard)
+        await state.set_state(VipSubscriptionStates.choosing_duration)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"خطا در باز کردن صفحه خرید: {e}")
+        await callback.answer("متأسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید.", show_alert=True)
 
 @dp.callback_query(F.data.startswith("vip:duration:"), VipSubscriptionStates.choosing_duration)
 async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
@@ -3458,7 +3463,7 @@ class VipCategoryStates(StatesGroup):
     waiting_new_name = State()
     waiting_new_desc = State()
     waiting_edit_value = State()
-    waiting_banner = State()  # state جدید برای آپلود بنر
+    waiting_banner = State()
 
 class VipGlobalSettingsStates(StatesGroup):
     waiting_price3 = State()
