@@ -2,7 +2,7 @@
 """
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
-نسخهٔ VIP با اشتراک کامل و دسته‌بندی‌های نمایشی
+نسخهٔ VIP با اشتراک کامل، بنر تصویری و تاپیک‌های حرفه‌ای
 ====================================================================
 """
 
@@ -34,6 +34,7 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
     PollAnswer,
     Update,
@@ -638,7 +639,7 @@ def migrate_menu_config(config: dict) -> dict:
     defaults = {
         "vip": {"label": "🌟 گروه VIP", "response": ""},
         "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-        "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
+        "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
         "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
         "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
         "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -678,7 +679,7 @@ def load_menu_config() -> dict:
             "menu_items": {
                 "vip": {"label": "🌟 گروه VIP", "response": ""},
                 "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
-                "topics": {"label": "📚 راهنمای تایپیک‌ها", "response": "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:"},
+                "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
                 "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
                 "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
@@ -711,7 +712,7 @@ async def save_menu_config(config: dict) -> None:
     async with _write_lock:
         MENU_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
-# ---------- پنل تایپیک‌ها ----------
+# ---------- پنل تاپیک‌ها ----------
 TOPICS = {
     "🎓 آکادمی آنلاین": "https://t.me/c/4388421316/146",
     "🛠 رفع اشکال تخصصی": "https://t.me/thedaraeii",
@@ -1391,7 +1392,7 @@ async def send_welcome_to_group(user) -> None:
             text=(
                 f"{user_mention} عزیز خوش آمدید 👋\n\n"
                 "▫️ اینجا انباری از فایل‌های تخصصی معماری و عمران است.\n"
-                "▫️ برای شروع، خود را در تایپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کنید.\n\n"
+                "▫️ برای شروع، خود را در تاپیک <a href='https://t.me/c/4388421316/95'>کافه معماری</a> معرفی کنید.\n\n"
                 "🏛 آماده‌اید برای پیشرفت؟"
             ),
             parse_mode=ParseMode.HTML,
@@ -2063,15 +2064,14 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         if VIP_GROUP_CHAT_ID is None:
             await callback.answer("گروه VIP هنوز راه‌اندازی نشده است.", show_alert=True)
             return
-        text, keyboard = await render_vip_page(0)
-        await callback.message.edit_text(text, reply_markup=keyboard)
+        await render_and_send_vip_page(callback.message, 0, edit=False)
         await callback.answer()
         return
 
     if key == "topics":
         await callback.message.edit_text(
-            "📚 <b>راهنمای تایپیک‌های رواق</b>\n\n"
-            "لطفاً یکی از تایپیک‌های زیر را انتخاب کنید:",
+            "📚 <b>راهنمای تاپیک‌های رواق</b>\n\n"
+            "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:",
             reply_markup=topics_panel_keyboard()
         )
         await callback.answer()
@@ -2964,7 +2964,7 @@ async def restore_attendance_tasks():
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
 # ==============================================================
-#  ماژول گروه VIP (نسخهٔ نهایی با اشتراک کامل)
+#  ماژول گروه VIP (نسخهٔ نهایی با بنر تصویری و اشتراک کامل)
 # ==============================================================
 
 def _cancel_vip_intro(user_id: int) -> None:
@@ -2990,7 +2990,7 @@ async def send_vip_intro_message(user_id: int) -> None:
     text = sign(
         "🌟 <b>یک قدم فراتر از رواق — گروه VIP</b>\n\n"
         "برای کسانی که می‌خواهند مسیرِ حرفه‌ای‌شان را جدی‌تر دنبال کنند، رواقِ VIP را راه‌اندازی کرده‌ایم:\n\n"
-        "▪️ هر نرم‌افزار، تایپیکِ اختصاصیِ خودش را دارد؛ بدونِ قاطی‌شدنِ موضوعات.\n"
+        "▪️ هر نرم‌افزار، تاپیکِ اختصاصیِ خودش را دارد؛ بدونِ قاطی‌شدنِ موضوعات.\n"
         "▪️ آموزشِ ویدئوییِ کامل برای هر نرم‌افزار — از صفر تا حرفه‌ای.\n"
         "▪️ آرشیوِ کاملِ پلاگین‌ها، فمیلی‌ها، آبجکت‌ها و متریال‌های به‌روز.\n"
         "▪️ همه‌چیز در یک‌جا؛ دیگر نیازی به خریدِ دوره‌های پراکنده‌ی دیگر نیست.\n\n"
@@ -3004,27 +3004,35 @@ async def send_vip_intro_message(user_id: int) -> None:
     )
     await bot.send_message(chat_id=user_id, text=text, reply_markup=keyboard)
 
-# ---------- پنل مرور دسته‌بندی‌های VIP (کاربر) ----------
-async def render_vip_page(index: int):
+# ---------- تابع نمایش VIP با بنر تصویری (اصلاح‌شده) ----------
+async def render_and_send_vip_page(message: Message, index: int, edit: bool = False):
+    """ارسال یا ویرایش پیام VIP با بنر تصویری"""
     categories = load_vip_categories()
     if not categories:
-        return (
-            "🌟 <b>گروه VIP</b>\n\nهنوز هیچ دسته‌بندی‌ای اضافه نشده. به‌زودی تکمیل می‌شود.",
-            InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")]]),
-        )
+        text = "🌟 <b>گروه VIP</b>\n\nهنوز هیچ دسته‌بندی‌ای اضافه نشده. به‌زودی تکمیل می‌شود."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")]])
+        if edit:
+            await message.edit_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        else:
+            await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        return
+
     index = index % len(categories)
     cat = categories[index]
+    total = len(categories)
     
-    # نمایش نام و توضیحات (با خطوط جدید)
+    # ساخت کپشن با شمارنده در خط جداگانه
+    counter_line = f"🌟 <b>گروه VIP</b>  —  {to_persian_num(index + 1)}/{to_persian_num(total)}"
     desc_lines = cat.get('description', '').split('\n')
     desc_text = '\n'.join([html_escape(line) for line in desc_lines])
     
-    text = (
-        f"🌟 <b>گروه VIP</b>  —  ({to_persian_num(index + 1)}/{to_persian_num(len(categories))})\n\n"
+    caption = (
+        f"{counter_line}\n\n"
         f"📦 <b>{html_escape(cat['name'])}</b>\n\n"
         f"{desc_text}\n"
     )
     
+    # ساخت دکمه‌ها
     rows = []
     nav_row = []
     if len(categories) > 1:
@@ -3037,16 +3045,64 @@ async def render_vip_page(index: int):
     
     rows.append([InlineKeyboardButton(text="💎 خرید اشتراک کامل", callback_data="vip:buy_subscription", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
     
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    image_file_id = cat.get("image_file_id")
+    
+    if edit:
+        # ویرایش پیام موجود با استفاده از edit_message_media یا edit_text
+        if image_file_id:
+            try:
+                await message.edit_media(
+                    media=InputMediaPhoto(
+                        media=image_file_id,
+                        caption=caption,
+                        parse_mode=ParseMode.HTML
+                    ),
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                logger.warning(f"ویرایش مدیا ناموفق: {e}")
+                # اگر ویرایش مدیا نشد، حذف و ارسال مجدد
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                await message.answer_photo(
+                    photo=image_file_id,
+                    caption=caption,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                )
+        else:
+            await message.edit_text(
+                caption,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML
+            )
+    else:
+        # ارسال جدید
+        if image_file_id:
+            await message.answer_photo(
+                photo=image_file_id,
+                caption=caption,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+        else:
+            await message.answer(
+                caption,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
 
+# ---------- هندلرهای VIP ----------
 @dp.callback_query(F.data == "vip:open")
 async def cb_vip_open(callback: CallbackQuery):
     if VIP_GROUP_CHAT_ID is None:
         await callback.answer("گروه VIP هنوز راه‌اندازی نشده است.", show_alert=True)
         return
-    text, keyboard = await render_vip_page(0)
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await render_and_send_vip_page(callback.message, 0, edit=False)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("vipnav:"))
@@ -3055,8 +3111,7 @@ async def cb_vip_nav(callback: CallbackQuery):
         index = int(callback.data.split(":", 1)[1])
     except ValueError:
         index = 0
-    text, keyboard = await render_vip_page(index)
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await render_and_send_vip_page(callback.message, index, edit=True)
     await callback.answer()
 
 # ---------- انتخاب مدت اشتراک ----------
@@ -3089,7 +3144,7 @@ async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
         ]
     )
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     await state.set_state(VipSubscriptionStates.choosing_duration)
     await callback.answer()
 
@@ -3122,13 +3177,13 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")]]
     )
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     await callback.answer()
 
 @dp.callback_query(F.data == "vip:cancel_payment")
 async def cb_vip_cancel_payment(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("عملیاتِ خرید لغو شد.", reply_markup=user_panel_keyboard())
+    await render_and_send_vip_page(callback.message, 0, edit=True)
     await callback.answer()
 
 def vip_admin_decision_keyboard(payment_id: str) -> InlineKeyboardMarkup:
@@ -3171,8 +3226,8 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         "user_id": user.id,
         "user_display": user.full_name or str(user.id),
         "username": user.username,
-        "category_id": "all",  # ثابت
-        "category_name": "اشتراک کامل VIP",  # ثابت
+        "category_id": "all",
+        "category_name": "اشتراک کامل VIP",
         "months": months,
         "price": price,
         "photo_file_id": photo_file_id,
@@ -3415,12 +3470,13 @@ async def _check_vip_expirations() -> None:
         await save_vip_subscriptions(subs)
 
 # ==============================================================
-#  پنل تنظیماتِ VIP (ادمین) — دسته‌بندی‌ها و قیمت‌های جهانی
+#  پنل تنظیماتِ VIP (ادمین) — دسته‌بندی‌ها با بنر و قیمت‌های جهانی
 # ==============================================================
 
 class VipCategoryStates(StatesGroup):
     waiting_new_name = State()
     waiting_new_desc = State()
+    waiting_new_image = State()
     waiting_edit_value = State()
 
 class VipGlobalSettingsStates(StatesGroup):
@@ -3435,7 +3491,8 @@ async def build_vip_settings_text() -> str:
         return "💎 <b>تنظیماتِ VIP</b>\n\nهنوز هیچ دسته‌بندی‌ای اضافه نشده است."
     lines = ["💎 <b>تنظیماتِ VIP</b>\n", "دسته‌بندی‌های فعلی:\n"]
     for i, cat in enumerate(categories, 1):
-        lines.append(f"{to_persian_num(i)}. <b>{html_escape(cat['name'])}</b>\n   {html_escape(cat.get('description', ''))[:60]}...")
+        has_banner = "🖼️" if cat.get("image_file_id") else "📝"
+        lines.append(f"{to_persian_num(i)}. {has_banner} <b>{html_escape(cat['name'])}</b>\n   {html_escape(cat.get('description', ''))[:60]}...")
     return "\n".join(lines)
 
 def vip_settings_keyboard() -> InlineKeyboardMarkup:
@@ -3455,6 +3512,7 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
             [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
+            [InlineKeyboardButton(text="🖼️ ویرایشِ بنر تصویری", callback_data=f"vipset:field:{cat_id}:image", style="primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")],
         ]
     )
@@ -3466,7 +3524,9 @@ async def cb_vipset_add(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(VipCategoryStates.waiting_new_name)
     await callback.message.edit_text(
-        "➕ <b>افزودنِ دسته‌بندیِ جدید</b>\n\nنامِ دسته‌بندی را ارسال کنید:\n(برای لغو، /cancel بفرستید)",
+        "➕ <b>افزودنِ دسته‌بندیِ جدید</b>\n\n"
+        "مرحله ۱: نامِ دسته‌بندی را ارسال کنید.\n"
+        "(برای لغو، /cancel بفرستید)",
         reply_markup=admin_back_keyboard(),
     )
     await callback.answer()
@@ -3481,7 +3541,11 @@ async def handle_vipset_new_name(message: Message, state: FSMContext):
         return
     await state.update_data(new_cat_name=message.text.strip())
     await state.set_state(VipCategoryStates.waiting_new_desc)
-    await message.answer("توضیحاتِ دسته‌بندی را ارسال کنید (می‌توانید از خط جدید استفاده کنید):")
+    await message.answer(
+        "مرحله ۲: توضیحاتِ دسته‌بندی را ارسال کنید.\n"
+        "می‌توانید از خط جدید برای لیست تاپیک‌ها استفاده کنید.\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
 
 @dp.message(VipCategoryStates.waiting_new_desc)
 async def handle_vipset_new_desc(message: Message, state: FSMContext):
@@ -3491,20 +3555,47 @@ async def handle_vipset_new_desc(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    
+    await state.update_data(new_cat_desc=message.text.strip())
+    await state.set_state(VipCategoryStates.waiting_new_image)
+    await message.answer(
+        "مرحله ۳: (اختیاری) یک تصویر بنر برای این دسته‌بندی ارسال کنید.\n"
+        "می‌توانید عکس یا فایل تصویری بفرستید.\n"
+        "اگر نمی‌خواهید بنر داشته باشد، دستور /skip را بفرستید."
+    )
+
+@dp.message(VipCategoryStates.waiting_new_image)
+async def handle_vipset_new_image(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/skip"):
+        image_file_id = None
+    elif message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    elif message.photo:
+        image_file_id = message.photo[-1].file_id
+    elif message.document and (message.document.mime_type or "").startswith("image/"):
+        image_file_id = message.document.file_id
+    else:
+        await message.answer("❌ لطفاً یک عکس یا فایل تصویری ارسال کنید، یا /skip را بزنید.")
+        return
+
     data = await state.get_data()
     categories = load_vip_categories()
     new_cat = {
         "id": f"cat_{uuid.uuid4().hex[:8]}",
         "name": data["new_cat_name"],
-        "description": message.text.strip(),
+        "description": data["new_cat_desc"],
+        "image_file_id": image_file_id,
         "created_at": datetime.utcnow().isoformat(),
     }
     categories.append(new_cat)
     await save_vip_categories(categories)
     await state.clear()
     await message.answer(
-        f"✅ دسته‌بندیِ «{html_escape(new_cat['name'])}» با موفقیت اضافه شد.",
+        f"✅ دسته‌بندیِ «{html_escape(new_cat['name'])}» با موفقیت اضافه شد.\n"
+        f"{'🖼️ بنر تصویری تنظیم شد.' if image_file_id else 'بدون بنر تصویری.'}",
         reply_markup=admin_back_keyboard(),
     )
 
@@ -3518,10 +3609,12 @@ async def cb_vipset_edit(callback: CallbackQuery, state: FSMContext):
     if not cat:
         await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
         return
+    has_banner = "✅" if cat.get("image_file_id") else "❌"
     text = (
         f"✏️ <b>ویرایشِ دسته‌بندی</b>\n\n"
         f"نام: <b>{html_escape(cat['name'])}</b>\n"
-        f"توضیحات:\n{html_escape(cat.get('description', ''))}\n\n"
+        f"توضیحات:\n{html_escape(cat.get('description', ''))}\n"
+        f"بنر تصویری: {has_banner}\n\n"
         "کدام مورد را می‌خواهید ویرایش کنید؟"
     )
     await callback.message.edit_text(text, reply_markup=vip_category_edit_keyboard(cat_id))
@@ -3539,16 +3632,25 @@ async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
         return
 
     await state.update_data(edit_cat_id=cat_id, edit_field=field)
-    await state.set_state(VipCategoryStates.waiting_edit_value)
-
-    prompts = {
-        "name": "نامِ جدید را ارسال کنید:",
-        "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
-    }
-    await callback.message.edit_text(
-        prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
-        reply_markup=admin_back_keyboard(),
-    )
+    
+    if field == "image":
+        await state.set_state(VipCategoryStates.waiting_new_image)
+        await callback.message.edit_text(
+            "🖼️ یک تصویر بنر جدید برای این دسته‌بندی ارسال کنید.\n"
+            "اگر می‌خواهید بنر فعلی حذف شود، /remove بفرستید.\n"
+            "برای لغو، /cancel بفرستید.",
+            reply_markup=admin_back_keyboard(),
+        )
+    else:
+        await state.set_state(VipCategoryStates.waiting_edit_value)
+        prompts = {
+            "name": "نامِ جدید را ارسال کنید:",
+            "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
+        }
+        await callback.message.edit_text(
+            prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
+            reply_markup=admin_back_keyboard(),
+        )
     await callback.answer()
 
 @dp.message(VipCategoryStates.waiting_edit_value)
@@ -3578,6 +3680,47 @@ async def handle_vipset_edit_value(message: Message, state: FSMContext):
     await save_vip_categories(categories)
     await state.clear()
     await message.answer("✅ با موفقیت به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+# هندلر مخصوص ویرایش بنر (از حالت waiting_new_image استفاده می‌کنیم)
+@dp.message(VipCategoryStates.waiting_new_image)
+async def handle_vipset_edit_image(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    data = await state.get_data()
+    cat_id = data.get("edit_cat_id")
+    if not cat_id:
+        # این یعنی حالت افزودن جدید است که قبلاً هندلر جدا دارد
+        return
+    
+    if message.text and message.text.startswith("/remove"):
+        image_file_id = None
+    elif message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    elif message.photo:
+        image_file_id = message.photo[-1].file_id
+    elif message.document and (message.document.mime_type or "").startswith("image/"):
+        image_file_id = message.document.file_id
+    else:
+        await message.answer("❌ لطفاً یک عکس یا فایل تصویری ارسال کنید، یا /remove را بزنید.")
+        return
+
+    categories = load_vip_categories()
+    cat = next((c for c in categories if c["id"] == cat_id), None)
+    if not cat:
+        await state.clear()
+        await message.answer("این دسته‌بندی دیگر موجود نیست.", reply_markup=admin_panel_keyboard())
+        return
+
+    cat["image_file_id"] = image_file_id
+    await save_vip_categories(categories)
+    await state.clear()
+    await message.answer(
+        f"✅ بنر تصویری {'به‌روزرسانی' if image_file_id else 'حذف'} شد.",
+        reply_markup=admin_back_keyboard()
+    )
 
 @dp.callback_query(F.data.startswith("vipset:delete:"))
 async def cb_vipset_delete(callback: CallbackQuery):
