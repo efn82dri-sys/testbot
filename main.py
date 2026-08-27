@@ -2,13 +2,8 @@
 """
 ====================================================================
  ربات تلگرام «رواق» — مرجع فایل‌های معماری و عمران
+نسخهٔ VIP با اشتراک کامل و دسته‌بندی‌های نمایشی
 ====================================================================
-نسخهٔ نهایی با طراحی مینیمال و حرفه‌ای
-- حذف صدا زدن بی‌مورد اسم کاربر
-- کارت عضویت ساده و بدون مشکل Bidi
-- یکدست‌سازی تمام پیام‌ها با لحن برند
-- رفع جهش ناگهانی به فرم
-- استفاده از اعداد فارسی و خط‌فاصله‌ی استاندارد
 """
 
 import asyncio
@@ -55,7 +50,7 @@ from openpyxl.utils import get_column_letter
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_CHAT_ID = int(os.environ["GROUP_CHAT_ID"])
 
-MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"  # 🎉
+MESSAGE_EFFECT_PARTY_POPPER = "5046509860389126442"
 GROUP_INVITE_LINK = os.environ.get("GROUP_INVITE_LINK", "")
 NOTIFY_CHAT_ID = os.environ.get("NOTIFY_CHAT_ID", "").strip()
 ADMIN_IDS = {
@@ -90,6 +85,7 @@ VIP_INTRO_DELAY_MINUTES = int(os.environ.get("VIP_INTRO_DELAY_MINUTES", 30))
 VIP_CATEGORIES_FILE = Path(__file__).parent / "data" / "vip_categories.json"
 VIP_SUBSCRIPTIONS_FILE = Path(__file__).parent / "data" / "vip_subscriptions.json"
 VIP_PAYMENTS_FILE = Path(__file__).parent / "data" / "vip_payments.json"
+VIP_GLOBAL_SETTINGS_FILE = Path(__file__).parent / "data" / "vip_global_settings.json"
 
 VIP_MONTHS_TO_DAYS = {3: 90, 6: 180, 12: 365}
 _vip_intro_tasks: dict[int, asyncio.Task] = {}
@@ -236,7 +232,7 @@ def format_jalali_datetime(utc_dt: datetime) -> str:
     jalali = to_jalali(utc_dt)
     return jalali.strftime("%Y/%m/%d %H:%M:%S")
 
-# ---------- توابع کمکی برای نگارش فارسی ----------
+# ---------- توابع کمکی ----------
 def to_persian_num(num) -> str:
     mapping = {
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
@@ -245,7 +241,6 @@ def to_persian_num(num) -> str:
     return ''.join(mapping.get(ch, ch) for ch in str(num))
 
 def greet_user(user, suffix="عزیز") -> str:
-    """خطاب به کاربر فقط در موارد ضروری (اولین پیام و تبریک)."""
     name = html_escape(user.first_name or "کاربر")
     return f"{name} {suffix}"
 
@@ -256,7 +251,6 @@ def progress_bar(step: int, total: int = 3) -> str:
     step = max(0, min(step, total))
     return ("🟩" * step) + ("⬜" * (total - step))
 
-# ---------- توابع کمکی ----------
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
@@ -415,9 +409,28 @@ async def save_vip_payments(data: dict) -> None:
         VIP_PAYMENTS_FILE.parent.mkdir(exist_ok=True)
         VIP_PAYMENTS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+def load_vip_global_settings() -> dict:
+    if not VIP_GLOBAL_SETTINGS_FILE.exists():
+        return {
+            "prices": {"3": 150000, "6": 250000, "12": 400000},
+            "discount_percent": 0,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+    try:
+        return json.loads(VIP_GLOBAL_SETTINGS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"prices": {"3": 150000, "6": 250000, "12": 400000}, "discount_percent": 0}
+
+async def save_vip_global_settings(settings: dict) -> None:
+    settings["updated_at"] = datetime.utcnow().isoformat()
+    async with _write_lock:
+        VIP_GLOBAL_SETTINGS_FILE.parent.mkdir(exist_ok=True)
+        VIP_GLOBAL_SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
 def format_toman(amount: int) -> str:
     return f"{to_persian_num(f'{amount:,}')} تومان"
 
+# ---------- توابع آمار ----------
 async def build_stats_text() -> str:
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
@@ -789,6 +802,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="💎 تنظیمات VIP", callback_data="admin:vip_settings", style="success"),
+                InlineKeyboardButton(text="💰 تنظیم قیمت اشتراک", callback_data="admin:vip_global_settings", style="primary"),
             ],
             [
                 InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
@@ -826,9 +840,8 @@ async def save_bot_state(state: dict) -> None:
     async with _write_lock:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
-# ---------- تابع زمینه‌ساز قبل از فرم (رفع جهش ناگهانی) ----------
+# ---------- تابع زمینه‌ساز قبل از فرم ----------
 async def send_reengagement_intro(user, context: str = "default") -> None:
-    """ارسال پیام زمینه‌ساز بدون تکرار بی‌مورد اسم."""
     if context == "pending":
         text = (
             "🟢 <b>ربات فعال شد</b>\n\n"
@@ -916,7 +929,7 @@ async def handle_start(message: Message):
         )
 
 # ==============================================================
-#  تست ضدِ ربات — دکمه‌های چندگزینه‌ای
+#  تست ضدِ ربات
 # ==============================================================
 _pending_captcha: dict[int, int] = {}
 
@@ -1062,7 +1075,7 @@ async def cb_captcha_answer(callback: CallbackQuery):
         await send_captcha_challenge(user)
 
 # ==============================================================
-#  فرمِ پذیرش با دکمه‌های پنل
+#  فرمِ پذیرش
 # ==============================================================
 _pending_form: dict[int, dict] = {}
 
@@ -1194,7 +1207,7 @@ async def cb_form_back_to_referral(callback: CallbackQuery):
     _schedule_form_reminder(user.id)
     await callback.answer()
 
-# ---------- ساخت کارت عضویت (نسخه‌ی ساده و بدون مشکل Bidi) ----------
+# ---------- ساخت کارت عضویت ----------
 def build_membership_card(user, data, member_count, jalali_now) -> str:
     display_name = html_escape(user.full_name or user.first_name or "کاربر")
     rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
@@ -1775,6 +1788,15 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.message.edit_text(
             await build_vip_settings_text(),
             reply_markup=vip_settings_keyboard(),
+        )
+        await callback.answer()
+        return
+
+    if action == "vip_global_settings":
+        await state.clear()
+        await callback.message.edit_text(
+            await build_vip_global_settings_text(),
+            reply_markup=vip_global_settings_keyboard(),
         )
         await callback.answer()
         return
@@ -2574,7 +2596,7 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
     await state.clear()
 
 # ==============================================================
-#  بخش حضور و غیاب (با خروجی اکسل و ارسال فقط به ادمین)
+#  بخش حضور و غیاب
 # ==============================================================
 
 def load_attendance_data() -> dict:
@@ -2942,7 +2964,7 @@ async def restore_attendance_tasks():
             logger.info("تسک پایان دوره بازیابی شد. پایان در %s ثانیه.", remaining_to_end)
 
 # ==============================================================
-#  ماژول گروه VIP
+#  ماژول گروه VIP (نسخهٔ نهایی با اشتراک کامل)
 # ==============================================================
 
 def _cancel_vip_intro(user_id: int) -> None:
@@ -2983,48 +3005,6 @@ async def send_vip_intro_message(user_id: int) -> None:
     await bot.send_message(chat_id=user_id, text=text, reply_markup=keyboard)
 
 # ---------- پنل مرور دسته‌بندی‌های VIP (کاربر) ----------
-def vip_category_page_text(cat: dict, index: int, total: int) -> str:
-    prices = cat.get("prices", {})
-    lines = [
-        f"🌟 <b>گروه VIP</b>  —  ({to_persian_num(index + 1)}/{to_persian_num(total)})\n",
-        f"📦 <b>{html_escape(cat['name'])}</b>\n",
-        f"{html_escape(cat.get('description', ''))}\n",
-        "💳 <b>تعرفه‌های اشتراک:</b>",
-    ]
-    for months in (3, 6, 12):
-        price = prices.get(str(months))
-        if price:
-            lines.append(f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}")
-    return "\n".join(lines)
-
-def vip_category_page_keyboard(cat: dict, index: int, total: int) -> InlineKeyboardMarkup:
-    prices = cat.get("prices", {})
-    rows = []
-
-    price_row = []
-    for months in (3, 6, 12):
-        price = prices.get(str(months))
-        if price:
-            price_row.append(InlineKeyboardButton(
-                text=f"💠 {to_persian_num(months)} ماهه",
-                callback_data=f"vipbuy:{cat['id']}:{months}",
-                style="success",
-            ))
-    if price_row:
-        rows.append(price_row)
-
-    nav_row = []
-    if total > 1:
-        prev_index = (index - 1) % total
-        next_index = (index + 1) % total
-        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"vipnav:{prev_index}", style="primary"))
-        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"vipnav:{next_index}", style="primary"))
-    if nav_row:
-        rows.append(nav_row)
-
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
 async def render_vip_page(index: int):
     categories = load_vip_categories()
     if not categories:
@@ -3034,7 +3014,31 @@ async def render_vip_page(index: int):
         )
     index = index % len(categories)
     cat = categories[index]
-    return vip_category_page_text(cat, index, len(categories)), vip_category_page_keyboard(cat, index, len(categories))
+    
+    # نمایش نام و توضیحات (با خطوط جدید)
+    desc_lines = cat.get('description', '').split('\n')
+    desc_text = '\n'.join([html_escape(line) for line in desc_lines])
+    
+    text = (
+        f"🌟 <b>گروه VIP</b>  —  ({to_persian_num(index + 1)}/{to_persian_num(len(categories))})\n\n"
+        f"📦 <b>{html_escape(cat['name'])}</b>\n\n"
+        f"{desc_text}\n"
+    )
+    
+    rows = []
+    nav_row = []
+    if len(categories) > 1:
+        prev_index = (index - 1) % len(categories)
+        next_index = (index + 1) % len(categories)
+        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"vipnav:{prev_index}", style="primary"))
+        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"vipnav:{next_index}", style="primary"))
+    if nav_row:
+        rows.append(nav_row)
+    
+    rows.append([InlineKeyboardButton(text="💎 خرید اشتراک کامل", callback_data="vip:buy_subscription", style="success")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
+    
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 @dp.callback_query(F.data == "vip:open")
 async def cb_vip_open(callback: CallbackQuery):
@@ -3055,36 +3059,59 @@ async def cb_vip_nav(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
 
-# ---------- روند پرداخت ----------
-class VipPaymentStates(StatesGroup):
+# ---------- انتخاب مدت اشتراک ----------
+class VipSubscriptionStates(StatesGroup):
+    choosing_duration = State()
     waiting_for_receipt = State()
 
-@dp.callback_query(F.data.startswith("vipbuy:"))
-async def cb_vip_buy(callback: CallbackQuery, state: FSMContext):
-    _, cat_id, months_raw = callback.data.split(":", 2)
-    months = int(months_raw)
-    cat = get_vip_category(cat_id)
-    if not cat:
-        await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
-        return
-    price = (cat.get("prices") or {}).get(str(months))
-    if not price:
-        await callback.answer("این پکیج موجود نیست.", show_alert=True)
-        return
-
-    await state.update_data(
-        vip_cat_id=cat_id,
-        vip_cat_name=cat["name"],
-        vip_months=months,
-        vip_price=price,
+@dp.callback_query(F.data == "vip:buy_subscription")
+async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
+    settings = load_vip_global_settings()
+    prices = settings.get("prices", {})
+    discount = settings.get("discount_percent", 0)
+    
+    text = "💎 <b>انتخاب مدت اشتراک VIP</b>\n\n"
+    for months in (3, 6, 12):
+        price = prices.get(str(months), 0)
+        if discount > 0:
+            final_price = int(price * (1 - discount / 100))
+            text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(final_price)} (تخفیف {to_persian_num(discount)}%)\n"
+        else:
+            text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}\n"
+    
+    text += "\nلطفاً یکی از گزینه‌های بالا را انتخاب کنید."
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
+            [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
+            [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
+        ]
     )
-    await state.set_state(VipPaymentStates.waiting_for_receipt)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await state.set_state(VipSubscriptionStates.choosing_duration)
+    await callback.answer()
 
+@dp.callback_query(F.data.startswith("vip:duration:"), VipSubscriptionStates.choosing_duration)
+async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
+    months = int(callback.data.split(":", 2)[2])
+    settings = load_vip_global_settings()
+    price = settings.get("prices", {}).get(str(months), 0)
+    discount = settings.get("discount_percent", 0)
+    if discount > 0:
+        final_price = int(price * (1 - discount / 100))
+    else:
+        final_price = price
+    
+    await state.update_data(vip_months=months, vip_price=final_price)
+    await state.set_state(VipSubscriptionStates.waiting_for_receipt)
+    
     text = sign(
         f"💳 <b>پرداختِ اشتراکِ VIP</b>\n\n"
-        f"📦 دسته: <b>{html_escape(cat['name'])}</b>\n"
         f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
-        f"💰 مبلغ: <b>{format_toman(price)}</b>\n\n"
+        f"💰 مبلغ: <b>{format_toman(final_price)}</b>\n"
+        f"{'✨ تخفیف ' + to_persian_num(discount) + '% اعمال شد.' if discount > 0 else ''}\n\n"
         f"لطفاً مبلغ فوق را به شماره‌کارتِ زیر واریز کنید:\n\n"
         f"<code>{VIP_CARD_NUMBER}</code>\n"
         f"به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
@@ -3112,7 +3139,7 @@ def vip_admin_decision_keyboard(payment_id: str) -> InlineKeyboardMarkup:
         ]]
     )
 
-@dp.message(VipPaymentStates.waiting_for_receipt)
+@dp.message(VipSubscriptionStates.waiting_for_receipt)
 async def handle_vip_receipt(message: Message, state: FSMContext):
     if message.text and message.text.startswith("/"):
         await state.clear()
@@ -3130,11 +3157,9 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         return
 
     data = await state.get_data()
-    cat_id = data.get("vip_cat_id")
-    cat_name = data.get("vip_cat_name")
     months = data.get("vip_months")
     price = data.get("vip_price")
-    if not cat_id or not months or not price:
+    if not months or not price:
         await state.clear()
         await message.answer("مسیرِ خرید قطع شده. لطفاً دوباره از پنلِ VIP اقدام کنید.", reply_markup=user_panel_keyboard())
         return
@@ -3146,8 +3171,8 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         "user_id": user.id,
         "user_display": user.full_name or str(user.id),
         "username": user.username,
-        "category_id": cat_id,
-        "category_name": cat_name,
+        "category_id": "all",  # ثابت
+        "category_name": "اشتراک کامل VIP",  # ثابت
         "months": months,
         "price": price,
         "photo_file_id": photo_file_id,
@@ -3173,7 +3198,6 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
     caption = (
         f"💳 <b>درخواستِ جدیدِ اشتراکِ VIP</b>\n\n"
         f"👤 {html_escape(user.full_name or str(user.id))} ({username_part})\n"
-        f"📦 دسته: <b>{html_escape(cat_name)}</b>\n"
         f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
         f"💰 مبلغ: <b>{format_toman(price)}</b>\n\n"
         f"شناسه پرداخت: <code>{payment_id}</code>"
@@ -3269,8 +3293,8 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         subs = load_vip_subscriptions()
         user_subs = subs.setdefault(str(user_id), [])
         user_subs.append({
-            "category_id": payment["category_id"],
-            "category_name": payment["category_name"],
+            "category_id": "all",
+            "category_name": "اشتراک کامل VIP",
             "months": payment["months"],
             "price": payment["price"],
             "start": now.isoformat(),
@@ -3302,7 +3326,6 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
                 chat_id=user_id,
                 text=sign(
                     "✅ <b>پرداختِ شما تایید شد</b>\n\n"
-                    f"📦 دسته: <b>{html_escape(payment['category_name'])}</b>\n"
                     f"🗓 مدت: <b>{to_persian_num(payment['months'])} ماهه</b>\n"
                     f"⏳ تا تاریخِ: <b>{end_jalali}</b>\n\n"
                     "برای ورود به گروهِ VIP از لینکِ زیر استفاده کنید (این لینک فقط یک‌بار قابلِ استفاده است):"
@@ -3346,7 +3369,7 @@ async def _check_vip_expirations() -> None:
                         chat_id=int(user_id_str),
                         text=sign(
                             f"⏳ <b>یادآوریِ اشتراکِ VIP</b>\n\n"
-                            f"اشتراکِ «{html_escape(sub['category_name'])}» شما تا "
+                            f"اشتراکِ VIP شما تا "
                             f"<b>{to_persian_num(int(remaining_days) + 1)}</b> روزِ دیگر به پایان می‌رسد.\n"
                             "برای تمدید، از پنلِ VIP اقدام کنید."
                         ),
@@ -3370,7 +3393,7 @@ async def _check_vip_expirations() -> None:
                     await bot.send_message(
                         chat_id=int(user_id_str),
                         text=sign(
-                            f"⌛️ اشتراکِ «{html_escape(sub['category_name'])}» شما به پایان رسید.\n"
+                            f"⌛️ اشتراکِ VIP شما به پایان رسید.\n"
                             "برای تمدید، از پنلِ VIP اقدام کنید."
                         ),
                         reply_markup=InlineKeyboardMarkup(
@@ -3383,7 +3406,7 @@ async def _check_vip_expirations() -> None:
                     try:
                         await bot.send_message(
                             chat_id=NOTIFY_CHAT_ID_INT,
-                            text=f"⌛️ اشتراکِ VIP کاربر <code>{user_id_str}</code> ({sub['category_name']}) به پایان رسید.",
+                            text=f"⌛️ اشتراکِ VIP کاربر <code>{user_id_str}</code> به پایان رسید.",
                         )
                     except Exception:
                         pass
@@ -3392,16 +3415,19 @@ async def _check_vip_expirations() -> None:
         await save_vip_subscriptions(subs)
 
 # ==============================================================
-#  پنل تنظیماتِ VIP (ادمین) — مدیریتِ دسته‌بندی‌ها و قیمت‌ها
+#  پنل تنظیماتِ VIP (ادمین) — دسته‌بندی‌ها و قیمت‌های جهانی
 # ==============================================================
 
 class VipCategoryStates(StatesGroup):
     waiting_new_name = State()
     waiting_new_desc = State()
-    waiting_new_price3 = State()
-    waiting_new_price6 = State()
-    waiting_new_price12 = State()
     waiting_edit_value = State()
+
+class VipGlobalSettingsStates(StatesGroup):
+    waiting_price3 = State()
+    waiting_price6 = State()
+    waiting_price12 = State()
+    waiting_discount = State()
 
 async def build_vip_settings_text() -> str:
     categories = load_vip_categories()
@@ -3409,11 +3435,7 @@ async def build_vip_settings_text() -> str:
         return "💎 <b>تنظیماتِ VIP</b>\n\nهنوز هیچ دسته‌بندی‌ای اضافه نشده است."
     lines = ["💎 <b>تنظیماتِ VIP</b>\n", "دسته‌بندی‌های فعلی:\n"]
     for i, cat in enumerate(categories, 1):
-        prices = cat.get("prices", {})
-        price_str = " | ".join(
-            f"{m} ماهه: {format_toman(prices[str(m)])}" for m in (3, 6, 12) if prices.get(str(m))
-        )
-        lines.append(f"{to_persian_num(i)}. <b>{html_escape(cat['name'])}</b>\n   {price_str or 'قیمتی ثبت نشده'}")
+        lines.append(f"{to_persian_num(i)}. <b>{html_escape(cat['name'])}</b>\n   {html_escape(cat.get('description', ''))[:60]}...")
     return "\n".join(lines)
 
 def vip_settings_keyboard() -> InlineKeyboardMarkup:
@@ -3433,9 +3455,6 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
             [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
-            [InlineKeyboardButton(text="💰 قیمتِ ۳ ماهه", callback_data=f"vipset:field:{cat_id}:price3", style="primary")],
-            [InlineKeyboardButton(text="💰 قیمتِ ۶ ماهه", callback_data=f"vipset:field:{cat_id}:price6", style="primary")],
-            [InlineKeyboardButton(text="💰 قیمتِ ۱۲ ماهه", callback_data=f"vipset:field:{cat_id}:price12", style="primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")],
         ]
     )
@@ -3447,7 +3466,7 @@ async def cb_vipset_add(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(VipCategoryStates.waiting_new_name)
     await callback.message.edit_text(
-        "➕ <b>افزودنِ دسته‌بندیِ جدید</b>\n\nنامِ دسته‌بندی را ارسال کنید (مثال: پلاگین‌های 3ds Max):\n(برای لغو، /cancel بفرستید)",
+        "➕ <b>افزودنِ دسته‌بندیِ جدید</b>\n\nنامِ دسته‌بندی را ارسال کنید:\n(برای لغو، /cancel بفرستید)",
         reply_markup=admin_back_keyboard(),
     )
     await callback.answer()
@@ -3462,7 +3481,7 @@ async def handle_vipset_new_name(message: Message, state: FSMContext):
         return
     await state.update_data(new_cat_name=message.text.strip())
     await state.set_state(VipCategoryStates.waiting_new_desc)
-    await message.answer("توضیحاتِ کوتاهی برای این دسته‌بندی ارسال کنید:")
+    await message.answer("توضیحاتِ دسته‌بندی را ارسال کنید (می‌توانید از خط جدید استفاده کنید):")
 
 @dp.message(VipCategoryStates.waiting_new_desc)
 async def handle_vipset_new_desc(message: Message, state: FSMContext):
@@ -3472,78 +3491,18 @@ async def handle_vipset_new_desc(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    await state.update_data(new_cat_desc=message.text.strip())
-    await state.set_state(VipCategoryStates.waiting_new_price3)
-    await message.answer("قیمتِ اشتراکِ ۳ ماهه را فقط به‌صورتِ عدد (تومان) ارسال کنید:")
-
-async def _parse_price(message: Message) -> int | None:
-    if not message.text:
-        return None
-    digits = message.text.strip().replace(",", "").replace("٬", "")
-    persian_to_en = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
-    digits = digits.translate(persian_to_en)
-    if not digits.isdigit():
-        return None
-    return int(digits)
-
-@dp.message(VipCategoryStates.waiting_new_price3)
-async def handle_vipset_new_price3(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    if message.text and message.text.startswith("/"):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
-        return
-    price = await _parse_price(message)
-    if price is None:
-        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
-        return
-    await state.update_data(new_cat_price3=price)
-    await state.set_state(VipCategoryStates.waiting_new_price6)
-    await message.answer("قیمتِ اشتراکِ ۶ ماهه را وارد کنید:")
-
-@dp.message(VipCategoryStates.waiting_new_price6)
-async def handle_vipset_new_price6(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    if message.text and message.text.startswith("/"):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
-        return
-    price = await _parse_price(message)
-    if price is None:
-        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
-        return
-    await state.update_data(new_cat_price6=price)
-    await state.set_state(VipCategoryStates.waiting_new_price12)
-    await message.answer("قیمتِ اشتراکِ ۱۲ ماهه را وارد کنید:")
-
-@dp.message(VipCategoryStates.waiting_new_price12)
-async def handle_vipset_new_price12(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    if message.text and message.text.startswith("/"):
-        await state.clear()
-        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
-        return
-    price = await _parse_price(message)
-    if price is None:
-        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
-        return
-
+    
     data = await state.get_data()
     categories = load_vip_categories()
     new_cat = {
         "id": f"cat_{uuid.uuid4().hex[:8]}",
         "name": data["new_cat_name"],
-        "description": data["new_cat_desc"],
-        "prices": {"3": data["new_cat_price3"], "6": data["new_cat_price6"], "12": price},
+        "description": message.text.strip(),
         "created_at": datetime.utcnow().isoformat(),
     }
     categories.append(new_cat)
     await save_vip_categories(categories)
     await state.clear()
-
     await message.answer(
         f"✅ دسته‌بندیِ «{html_escape(new_cat['name'])}» با موفقیت اضافه شد.",
         reply_markup=admin_back_keyboard(),
@@ -3559,14 +3518,10 @@ async def cb_vipset_edit(callback: CallbackQuery, state: FSMContext):
     if not cat:
         await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
         return
-    prices = cat.get("prices", {})
     text = (
         f"✏️ <b>ویرایشِ دسته‌بندی</b>\n\n"
         f"نام: <b>{html_escape(cat['name'])}</b>\n"
-        f"توضیحات: {html_escape(cat.get('description', ''))}\n"
-        f"قیمتِ ۳ ماهه: {format_toman(prices.get('3', 0))}\n"
-        f"قیمتِ ۶ ماهه: {format_toman(prices.get('6', 0))}\n"
-        f"قیمتِ ۱۲ ماهه: {format_toman(prices.get('12', 0))}\n\n"
+        f"توضیحات:\n{html_escape(cat.get('description', ''))}\n\n"
         "کدام مورد را می‌خواهید ویرایش کنید؟"
     )
     await callback.message.edit_text(text, reply_markup=vip_category_edit_keyboard(cat_id))
@@ -3588,10 +3543,7 @@ async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
 
     prompts = {
         "name": "نامِ جدید را ارسال کنید:",
-        "description": "توضیحاتِ جدید را ارسال کنید:",
-        "price3": "قیمتِ جدیدِ ۳ ماهه را (فقط عدد) ارسال کنید:",
-        "price6": "قیمتِ جدیدِ ۶ ماهه را (فقط عدد) ارسال کنید:",
-        "price12": "قیمتِ جدیدِ ۱۲ ماهه را (فقط عدد) ارسال کنید:",
+        "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
     }
     await callback.message.edit_text(
         prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
@@ -3618,14 +3570,7 @@ async def handle_vipset_edit_value(message: Message, state: FSMContext):
         await message.answer("این دسته‌بندی دیگر موجود نیست.", reply_markup=admin_panel_keyboard())
         return
 
-    if field in ("price3", "price6", "price12"):
-        price = await _parse_price(message)
-        if price is None:
-            await message.answer("❌ لطفاً فقط عدد وارد کنید.")
-            return
-        key = field.replace("price", "")
-        cat.setdefault("prices", {})[key] = price
-    elif field == "name":
+    if field == "name":
         cat["name"] = message.text.strip()
     elif field == "description":
         cat["description"] = message.text.strip()
@@ -3663,6 +3608,135 @@ async def cb_vipset_delete_confirm(callback: CallbackQuery):
     await save_vip_categories(categories)
     await callback.answer("✅ حذف شد.")
     await callback.message.edit_text(await build_vip_settings_text(), reply_markup=vip_settings_keyboard())
+
+# ---------- تنظیمات قیمت‌های جهانی ----------
+async def build_vip_global_settings_text() -> str:
+    settings = load_vip_global_settings()
+    prices = settings.get("prices", {})
+    discount = settings.get("discount_percent", 0)
+    return (
+        f"💰 <b>تنظیم قیمت اشتراک VIP</b>\n\n"
+        f"قیمت ۳ ماهه: {format_toman(prices.get('3', 0))}\n"
+        f"قیمت ۶ ماهه: {format_toman(prices.get('6', 0))}\n"
+        f"قیمت ۱۲ ماهه: {format_toman(prices.get('12', 0))}\n"
+        f"تخفیف درصدی: {to_persian_num(discount)}%\n"
+        f"آخرین بروزرسانی: {format_jalali_datetime(datetime.fromisoformat(settings.get('updated_at', datetime.utcnow().isoformat())))}"
+    )
+
+def vip_global_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ قیمت ۳ ماهه", callback_data="vipglob:price3", style="primary")],
+            [InlineKeyboardButton(text="✏️ قیمت ۶ ماهه", callback_data="vipglob:price6", style="primary")],
+            [InlineKeyboardButton(text="✏️ قیمت ۱۲ ماهه", callback_data="vipglob:price12", style="primary")],
+            [InlineKeyboardButton(text="✏️ تخفیف درصدی", callback_data="vipglob:discount", style="primary")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="danger")],
+        ]
+    )
+
+@dp.callback_query(F.data.startswith("vipglob:"))
+async def cb_vipglob(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    field = callback.data.split(":", 1)[1]
+    state_map = {
+        "price3": VipGlobalSettingsStates.waiting_price3,
+        "price6": VipGlobalSettingsStates.waiting_price6,
+        "price12": VipGlobalSettingsStates.waiting_price12,
+        "discount": VipGlobalSettingsStates.waiting_discount,
+    }
+    await state.set_state(state_map.get(field))
+    prompts = {
+        "price3": "قیمت جدیدِ ۳ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "price6": "قیمت جدیدِ ۶ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "price12": "قیمت جدیدِ ۱۲ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "discount": "تخفیف درصدی جدید را (فقط عدد، مثل 10 برای ۱۰٪) وارد کنید:",
+    }
+    await callback.message.edit_text(prompts.get(field, "مقدار جدید را وارد کنید:"), reply_markup=admin_back_keyboard())
+    await callback.answer()
+
+async def _parse_price_or_discount(message: Message) -> tuple[int | None, bool]:
+    if not message.text:
+        return None, False
+    digits = message.text.strip().replace(",", "").replace("٬", "")
+    persian_to_en = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+    digits = digits.translate(persian_to_en)
+    if not digits.isdigit():
+        return None, False
+    return int(digits), True
+
+@dp.message(VipGlobalSettingsStates.waiting_price3)
+async def handle_vipglob_price3(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["3"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۳ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_price6)
+async def handle_vipglob_price6(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["6"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۶ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_price12)
+async def handle_vipglob_price12(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["12"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۱۲ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_discount)
+async def handle_vipglob_discount(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    discount, ok = await _parse_price_or_discount(message)
+    if not ok or discount < 0 or discount > 100:
+        await message.answer("❌ لطفاً عددی بین ۰ تا ۱۰۰ وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["discount_percent"] = discount
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer(f"✅ تخفیف به {to_persian_num(discount)}% تنظیم شد.", reply_markup=admin_back_keyboard())
 
 # ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
