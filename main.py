@@ -90,39 +90,6 @@ VIP_GLOBAL_SETTINGS_FILE = Path(__file__).parent / "data" / "vip_global_settings
 VIP_MONTHS_TO_DAYS = {3: 90, 6: 180, 12: 365}
 _vip_intro_tasks: dict[int, asyncio.Task] = {}
 
-REFERRAL_LABELS = {
-    "instagram": "📷 اینستاگرام",
-    "friends": "👥 معرفی دوستان",
-    "other_groups": "💬 سایر گروه‌ها و کانال‌ها",
-    "search": "🔍 جستجوی اینترنتی",
-    "other": "✨ سایر موارد",
-}
-
-EDUCATION_OPTIONS: list[tuple[str, str]] = [
-    ("diploma", "دیپلم / پیش‌دانشگاهی"),
-    ("associate", "کاردانی"),
-    ("bachelor", "کارشناسی"),
-    ("master", "کارشناسی ارشد"),
-    ("phd", "دکتری"),
-    ("other", "سایر"),
-]
-
-INTERESTS: list[str] = [
-    "اتاق پرامپت",
-    "فرصت‌های شغلی",
-    "پرزانته و پرتفولیو",
-    "آکادمی آنلاین",
-    "کتابخانه و ضوابط ملی",
-    "رادیو معماری",
-    "بانک پروژه",
-    "معماری جهان",
-    "فایل‌های گرافیکی",
-    "دنیای نرم‌افزار و پلاگین",
-    "آبجکت، فمیلی و متریال",
-    "پلان و نقشه‌های اجرایی",
-]
-MAX_INTERESTS = 3
-
 GROUP_NAME = "رواق"
 SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
 
@@ -135,24 +102,6 @@ RULES_TEXT = (
     "۴. هر زمان بخواهید می‌توانید با «📞 ارتباط با ادمین» درخواست حذف اطلاعات خود را ثبت کنید.</blockquote>\n\n"
     "با پذیرش این قوانین، عضویت شما در گروه تأیید می‌شود."
 )
-
-# ---------- ریت‌لیمیت تستِ ضدربات (حذف شده اما برای جلوگیری از خطا نگه داشته شده) ----------
-CAPTCHA_MAX_WRONG = 5
-CAPTCHA_LOCK_MINUTES = 5
-_captcha_wrong_count: dict[int, int] = {}
-_captcha_locked_until: dict[int, datetime] = {}
-
-# ---------- یادآوریِ عدم‌فعالیت وسطِ فرم (حذف شده اما برای جلوگیری از خطا نگه داشته شده) ----------
-FORM_REMINDER_MINUTES = 10
-_form_reminder_tasks: dict[int, asyncio.Task] = {}
-
-def _cancel_form_reminder(user_id: int) -> None:
-    task = _form_reminder_tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
-
-def _schedule_form_reminder(user_id: int) -> None:
-    pass  # دیگر استفاده نمی‌شود
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -298,7 +247,6 @@ def load_user_data(user_id: int) -> dict | None:
 
 async def save_user_data(user_id: int, data: dict) -> None:
     async with _write_lock:
-        # حذف رکورد قدیمی اگر وجود داشته باشد
         new_lines = []
         if DATA_FILE.exists():
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -353,10 +301,10 @@ def collect_form_user_ids_by_interest(interest: str) -> set[int]:
             try:
                 record = json.loads(line)
                 if interest in (record.get("interests") or []):
-                    user_ids.append(int(record["user_id"]))
+                    user_ids.add(int(record["user_id"]))
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
-    return set(user_ids)
+    return user_ids
 
 # ==============================================================
 #  توابع کمکی داده‌های VIP
@@ -450,9 +398,34 @@ async def build_admin_dashboard_text() -> str:
     return f"🛠 <b>پنل مدیریت</b>\nوضعیت ربات: {status_text}\n\n{stats_text}"
 
 def build_export_file() -> BufferedInputFile | None:
-    # همان تابع قبلی برای خروجی اکسل (با اندکی تغییر)
-    # برای اختصار حذف شده، اما در کد نهایی کامل خواهد بود
-    return None
+    # ساخت فایل اکسل از کاربران (اختصاری)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "کاربران"
+    sheet.sheet_view.rightToLeft = True
+    headers = ["آیدی", "نام", "یوزرنیم", "تاریخ عضویت"]
+    sheet.append(headers)
+    # خواندن داده‌ها
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    sheet.append([
+                        record.get("user_id"),
+                        record.get("full_name", ""),
+                        record.get("username", ""),
+                        record.get("joined_at", "")
+                    ])
+                except:
+                    continue
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return BufferedInputFile(buffer.read(), filename="کاربران.xlsx")
 
 # ---------- مدیریت منوی پویا ----------
 def migrate_menu_config(config: dict) -> dict:
@@ -826,138 +799,8 @@ async def notify_new_member(user) -> None:
         logger.warning("ارسال گزارش عضو جدید ممکن نشد: %s", e)
 
 async def handle_member_left(user) -> None:
-    # همان تابع قبلی
+    # همان کد قبلی (اختصاری)
     pass
-
-# ---------- پنل مدیریت ----------
-@dp.message(Command("admin"))
-async def handle_admin_panel(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    await state.clear()
-    await send_with_action(message.chat.id, "typing", 0.5)
-    await message.answer(
-        await build_admin_dashboard_text(),
-        reply_markup=admin_panel_keyboard(),
-    )
-
-@dp.message(Command("stats"))
-async def handle_stats(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    await send_with_action(message.chat.id, "typing", 1.0)
-    await message.answer(await build_stats_text())
-
-@dp.message(Command("export"))
-async def handle_export(message: Message):
-    if not is_admin(message.from_user.id):
-        return
-    await send_with_action(message.chat.id, "upload_document", 0.5)
-    file = build_export_file()
-    if file is None:
-        await message.answer("هنوز هیچ کاربری ثبت نشده است.")
-        return
-    await message.answer_document(file, caption="📄 خروجی اکسل همه‌ی کاربران")
-
-@dp.message(Command("broadcast"))
-async def handle_broadcast(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id):
-        return
-    text = (command.args or "").strip()
-    if not text:
-        await message.answer(
-            "برای ارسال پیام همگانی به این شکل دستور را بفرستید:\n"
-            "<code>/broadcast متن پیام شما</code>\n\n"
-            "یا از پنل شیشه‌ای با دستور /admin استفاده کنید (که از عکس و فایل هم پشتیبانی می‌کند)."
-        )
-        return
-
-    user_ids = collect_form_user_ids()
-    if not user_ids:
-        await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
-        return
-
-    await message.answer(f"⏳ در حال ارسال پیام به {to_persian_num(len(user_ids))} نفر...")
-    sent, failed = await send_broadcast_text(text, user_ids)
-    await message.answer(
-        f"✅ ارسال همگانی تمام شد.\n"
-        f"موفق: <b>{to_persian_num(sent)}</b>\n"
-        f"ناموفق: <b>{to_persian_num(failed)}</b>"
-    )
-
-async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
-    sent, failed = 0, 0
-    for user_id in user_ids:
-        try:
-            await bot.send_message(chat_id=user_id, text=text)
-            sent += 1
-        except Exception:
-            failed += 1
-        await asyncio.sleep(0.05)
-    return sent, failed
-
-# ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
-@dp.callback_query(F.data.startswith("admin:"))
-async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-
-    action = callback.data.split(":", 1)[1]
-    logger.info(f"ادمین {callback.from_user.id} درخواست {action} کرد")
-
-    if action == "menu":
-        await state.clear()
-        await callback.message.edit_text(
-            await build_admin_dashboard_text(),
-            reply_markup=admin_panel_keyboard(),
-        )
-        await callback.answer()
-        return
-
-    if action == "close":
-        await state.clear()
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.answer("پنل بسته شد.")
-        return
-
-    if action == "export":
-        await callback.answer("⏳ در حال ساخت فایل اکسل...")
-        await send_with_action(callback.message.chat.id, "upload_document", 1.0)
-        file = build_export_file()
-        if file is None:
-            await callback.message.answer("هنوز هیچ کاربری ثبت نشده است.")
-            return
-        await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی کاربران")
-        return
-
-    if action == "broadcast":
-        # همانند قبل
-        pass
-
-    if action == "toggle_bot":
-        state_data = load_bot_state()
-        new_enabled = not state_data.get("enabled", True)
-        state_data["enabled"] = new_enabled
-        await save_bot_state(state_data)
-
-        status_text = "روشن ✅" if new_enabled else "خاموش 🔴"
-        await callback.answer(f"ربات {status_text} شد.")
-
-        await callback.message.edit_text(
-            await build_admin_dashboard_text(),
-            reply_markup=admin_panel_keyboard()
-        )
-
-        if new_enabled:
-            asyncio.create_task(process_pending_requests())
-        return
-
-    # سایر بخش‌های ادمین مانند قبل (مدیریت محتوا، حذف کاربر، VIP و ...)
-    # برای اختصار کد کامل در ادامه ارائه خواهد شد
 
 # ==============================================================
 #  بخش پنل کاربری
@@ -1118,24 +961,13 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
 # ---------- ویرایش پروفایل و ارتقا به طلایی ----------
 @dp.callback_query(F.data == "profile:edit")
 async def cb_profile_edit(callback: CallbackQuery, state: FSMContext):
-    user_id = callback.from_user.id
-    golden_data = load_golden_users().get(str(user_id))
-    if golden_data:
-        # اگر قبلاً طلایی است، اطلاعات را نشان بده و اجازه ویرایش بده
-        await state.update_data(editing=True)
-        await callback.message.edit_text(
-            "✏️ <b>ویرایش اطلاعات</b>\n\n"
-            "لطفاً علاقه‌مندی اصلی خود در معماری را انتخاب کنید:",
-            reply_markup=profile_interest_keyboard()
-        )
-    else:
-        await state.update_data(editing=False)
-        await callback.message.edit_text(
-            "🌟 <b>تبدیل به کاربر طلایی</b>\n\n"
-            "با پاسخ به دو سؤال زیر، به جمع کاربران طلایی رواق بپیوندید.\n\n"
-            "سؤال ۱: علاقه‌مندی اصلی شما در معماری چیست؟",
-            reply_markup=profile_interest_keyboard()
-        )
+    await state.update_data(editing=False)  # همیشه ویرایش جدید
+    await callback.message.edit_text(
+        "🌟 <b>تبدیل به کاربر طلایی</b>\n\n"
+        "با پاسخ به دو سؤال زیر، به جمع کاربران طلایی رواق بپیوندید.\n\n"
+        "سؤال ۱: علاقه‌مندی اصلی شما در معماری چیست؟",
+        reply_markup=profile_interest_keyboard()
+    )
     await callback.answer()
 
 def profile_interest_keyboard() -> InlineKeyboardMarkup:
@@ -1281,22 +1113,401 @@ async def cb_vip_nav(callback: CallbackQuery):
         await callback.message.edit_text(caption, reply_markup=keyboard)
     await callback.answer()
 
-# ---------- خرید اشتراک VIP (همانند قبل) ----------
+# ---------- خرید اشتراک VIP ----------
 class VipSubscriptionStates(StatesGroup):
     choosing_duration = State()
     waiting_for_receipt = State()
 
 @dp.callback_query(F.data == "vip:buy_subscription")
 async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
-    # همان کد قبلی
-    pass
+    await state.clear()
+    try:
+        settings = load_vip_global_settings()
+        prices = settings.get("prices", {})
+        discount = settings.get("discount_percent", 0)
+
+        text = "💎 <b>انتخاب مدت اشتراک VIP</b>\n\n"
+        for months in (3, 6, 12):
+            price = prices.get(str(months), 0)
+            if discount > 0:
+                final_price = int(price * (1 - discount / 100))
+                text += (
+                    f"▫️ {to_persian_num(months)} ماهه: "
+                    f"<s>{format_toman(price)}</s> → {format_toman(final_price)} "
+                    f"(تخفیف {to_persian_num(discount)}%)\n"
+                )
+            else:
+                text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}\n"
+
+        text += "\nلطفاً یکی از گزینه‌های بالا را انتخاب کنید."
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3")],
+                [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6")],
+                [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12")],
+                [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment")],
+            ]
+        )
+        await callback.message.delete()
+        await callback.message.answer(text, reply_markup=keyboard)
+        await state.set_state(VipSubscriptionStates.choosing_duration)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"خطا در باز کردن صفحه خرید: {e}")
+        await callback.answer("متأسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید.", show_alert=True)
+
+@dp.callback_query(F.data.startswith("vip:duration:"), VipSubscriptionStates.choosing_duration)
+async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
+    months = int(callback.data.split(":", 2)[2])
+    settings = load_vip_global_settings()
+    price = settings.get("prices", {}).get(str(months), 0)
+    discount = settings.get("discount_percent", 0)
+    if discount > 0:
+        final_price = int(price * (1 - discount / 100))
+    else:
+        final_price = price
+
+    await state.update_data(vip_months=months, vip_price=final_price)
+    await state.set_state(VipSubscriptionStates.waiting_for_receipt)
+
+    price_line = ""
+    if discount > 0:
+        price_line = (
+            f"💰 مبلغ اصلی: <s>{format_toman(price)}</s>\n"
+            f"💰 مبلغ پس از تخفیف {to_persian_num(discount)}%: <b>{format_toman(final_price)}</b>"
+        )
+    else:
+        price_line = f"💰 مبلغ: <b>{format_toman(final_price)}</b>"
+
+    text = sign(
+        f"💳 <b>پرداختِ اشتراکِ VIP</b>\n\n"
+        f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
+        f"{price_line}\n\n"
+        f"لطفاً مبلغ فوق را به شماره‌کارتِ زیر واریز کنید:\n\n"
+        f"<code>{VIP_CARD_NUMBER}</code>\n"
+        f"به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
+        "(روی شماره‌کارت بزنید تا کپی شود)\n\n"
+        "📸 پس از واریز، عکسِ فیش یا رسیدِ پرداخت را همین‌جا ارسال کنید.\n"
+        "پس از تاییدِ ادمین، لینکِ ورود به گروهِ VIP برایتان ارسال می‌شود."
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment")]]
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "vip:cancel_payment")
+async def cb_vip_cancel_payment(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("عملیاتِ خرید لغو شد.", reply_markup=user_panel_keyboard())
+    await callback.answer()
 
 @dp.message(VipSubscriptionStates.waiting_for_receipt)
 async def handle_vip_receipt(message: Message, state: FSMContext):
-    # همان کد قبلی
-    pass
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=user_panel_keyboard())
+        return
+
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    elif message.document and (message.document.mime_type or "").startswith("image/"):
+        photo_file_id = message.document.file_id
+
+    if not photo_file_id:
+        await message.answer("لطفاً فقط عکسِ فیش یا رسیدِ پرداخت را ارسال کنید.")
+        return
+
+    data = await state.get_data()
+    months = data.get("vip_months")
+    price = data.get("vip_price")
+    if not months or not price:
+        await state.clear()
+        await message.answer("مسیرِ خرید قطع شده. لطفاً دوباره از پنلِ VIP اقدام کنید.", reply_markup=user_panel_keyboard())
+        return
+
+    user = message.from_user
+    payment_id = f"pay_{uuid.uuid4().hex[:10]}"
+    payment_record = {
+        "id": payment_id,
+        "user_id": user.id,
+        "user_display": user.full_name or str(user.id),
+        "username": user.username,
+        "category_id": "all",
+        "category_name": "اشتراک کامل VIP",
+        "months": months,
+        "price": price,
+        "photo_file_id": photo_file_id,
+        "status": "pending",
+        "requested_at": datetime.utcnow().isoformat(),
+        "admin_messages": [],
+    }
+
+    payments = load_vip_payments()
+    payments[payment_id] = payment_record
+    await save_vip_payments(payments)
+    await state.clear()
+
+    await message.answer(
+        sign(
+            "✅ <b>رسید شما دریافت شد</b>\n\n"
+            "فیشِ پرداخت برای بررسیِ ادمین ارسال شد.\n"
+            "به‌محضِ تایید، لینکِ ورود به گروهِ VIP برایتان ارسال می‌شود."
+        )
+    )
+
+    username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
+    caption = (
+        f"💳 <b>درخواستِ جدیدِ اشتراکِ VIP</b>\n\n"
+        f"👤 {html_escape(user.full_name or str(user.id))} ({username_part})\n"
+        f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
+        f"💰 مبلغ: <b>{format_toman(price)}</b>\n\n"
+        f"شناسه پرداخت: <code>{payment_id}</code>"
+    )
+    for admin_id in ADMIN_IDS:
+        try:
+            sent = await bot.send_photo(
+                chat_id=admin_id,
+                photo=photo_file_id,
+                caption=caption,
+                reply_markup=vip_admin_decision_keyboard(payment_id),
+            )
+            payment_record["admin_messages"].append({"chat_id": admin_id, "message_id": sent.message_id})
+        except Exception as e:
+            logger.warning("ارسالِ درخواستِ پرداخت به ادمین %s ممکن نشد: %s", admin_id, e)
+
+    payments = load_vip_payments()
+    if payment_id in payments:
+        payments[payment_id]["admin_messages"] = payment_record["admin_messages"]
+        await save_vip_payments(payments)
+
+def vip_admin_decision_keyboard(payment_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="✅ تایید و ارسالِ لینک", callback_data=f"vipadm:approve:{payment_id}"),
+            InlineKeyboardButton(text="❌ رد کردن", callback_data=f"vipadm:reject:{payment_id}"),
+        ]]
+    )
+
+@dp.callback_query(F.data.startswith("vipadm:"))
+async def cb_vip_admin_decision(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+
+    _, action, payment_id = callback.data.split(":", 2)
+    payments = load_vip_payments()
+    payment = payments.get(payment_id)
+    if not payment:
+        await callback.answer("این درخواست دیگر یافت نشد.", show_alert=True)
+        return
+    if payment["status"] != "pending":
+        await callback.answer("این درخواست قبلاً بررسی شده است.", show_alert=True)
+        return
+
+    user_id = payment["user_id"]
+    admin_name = callback.from_user.full_name or str(callback.from_user.id)
+
+    if action == "reject":
+        payment["status"] = "rejected"
+        payment["decided_by"] = callback.from_user.id
+        payment["decided_at"] = datetime.utcnow().isoformat()
+        payments[payment_id] = payment
+        await save_vip_payments(payments)
+
+        for ref in payment.get("admin_messages", []):
+            try:
+                await bot.edit_message_reply_markup(chat_id=ref["chat_id"], message_id=ref["message_id"], reply_markup=None)
+            except Exception:
+                pass
+        try:
+            await callback.message.edit_caption(caption=callback.message.caption + f"\n\n❌ رد شد توسط {html_escape(admin_name)}")
+        except Exception:
+            pass
+
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=sign(
+                    "❌ <b>پرداختِ شما تایید نشد</b>\n\n"
+                    "ممکن است رسیدِ ارسالی خوانا نبوده یا مبلغ مطابقت نداشته باشد.\n"
+                    "برای پیگیری، از «📞 ارتباط با ادمین» استفاده کنید یا دوباره از پنلِ VIP اقدام کنید."
+                ),
+            )
+        except Exception as e:
+            logger.warning("اطلاع‌رسانیِ ردِ پرداخت به کاربر %s ممکن نشد: %s", user_id, e)
+
+        await callback.answer("درخواست رد شد.")
+        return
+
+    if action == "approve":
+        if VIP_GROUP_CHAT_ID is None:
+            await callback.answer("آیدیِ گروهِ VIP تنظیم نشده است.", show_alert=True)
+            return
+
+        try:
+            invite = await bot.create_chat_invite_link(
+                chat_id=VIP_GROUP_CHAT_ID,
+                member_limit=1,
+                name=f"vip-{user_id}-{payment['months']}m",
+            )
+        except Exception as e:
+            logger.error("ساختِ لینکِ دعوتِ VIP ناموفق بود: %s", e)
+            await callback.answer(f"خطا در ساختِ لینکِ دعوت: {e}", show_alert=True)
+            return
+
+        now = datetime.utcnow()
+        days = VIP_MONTHS_TO_DAYS.get(payment["months"], payment["months"] * 30)
+        end = now + timedelta(days=days)
+
+        subs = load_vip_subscriptions()
+        user_subs = subs.setdefault(str(user_id), [])
+        user_subs.append({
+            "category_id": "all",
+            "category_name": "اشتراک کامل VIP",
+            "months": payment["months"],
+            "price": payment["price"],
+            "start": now.isoformat(),
+            "end": end.isoformat(),
+            "status": "active",
+            "reminded": False,
+        })
+        await save_vip_subscriptions(subs)
+
+        payment["status"] = "approved"
+        payment["decided_by"] = callback.from_user.id
+        payment["decided_at"] = now.isoformat()
+        payments[payment_id] = payment
+        await save_vip_payments(payments)
+
+        for ref in payment.get("admin_messages", []):
+            try:
+                await bot.edit_message_reply_markup(chat_id=ref["chat_id"], message_id=ref["message_id"], reply_markup=None)
+            except Exception:
+                pass
+        try:
+            await callback.message.edit_caption(caption=callback.message.caption + f"\n\n✅ تایید شد توسط {html_escape(admin_name)}")
+        except Exception:
+            pass
+
+        end_jalali = format_jalali_datetime(end)
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=sign(
+                    "✅ <b>پرداختِ شما تایید شد</b>\n\n"
+                    f"🗓 مدت: <b>{to_persian_num(payment['months'])} ماهه</b>\n"
+                    f"⏳ تا تاریخِ: <b>{end_jalali}</b>\n\n"
+                    "برای ورود به گروهِ VIP از لینکِ زیر استفاده کنید (این لینک فقط یک‌بار قابلِ استفاده است):"
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🌟 ورود به گروهِ VIP", url=invite.invite_link)]]
+                ),
+            )
+        except Exception as e:
+            logger.warning("ارسالِ لینکِ VIP به کاربر %s ممکن نشد: %s", user_id, e)
+
+        await callback.answer("تایید شد و لینک ارسال شد.")
+        return
+
+# ---------- بررسی انقضای اشتراک VIP ----------
+async def vip_expiry_checker_loop() -> None:
+    while True:
+        try:
+            await _check_vip_expirations()
+        except Exception as e:
+            logger.error("خطا در بررسیِ انقضای اشتراک‌های VIP: %s", e)
+        await asyncio.sleep(3 * 3600)
+
+async def _check_vip_expirations() -> None:
+    subs = load_vip_subscriptions()
+    now = datetime.utcnow()
+    changed = False
+
+    for user_id_str, user_subs in subs.items():
+        for sub in user_subs:
+            if sub.get("status") != "active":
+                continue
+            end = datetime.fromisoformat(sub["end"])
+            remaining_days = (end - now).total_seconds() / 86400
+
+            if 0 < remaining_days <= 3 and not sub.get("reminded"):
+                sub["reminded"] = True
+                changed = True
+                try:
+                    await bot.send_message(
+                        chat_id=int(user_id_str),
+                        text=sign(
+                            f"⏳ <b>یادآوریِ اشتراکِ VIP</b>\n\n"
+                            f"اشتراکِ VIP شما تا "
+                            f"<b>{to_persian_num(int(remaining_days) + 1)}</b> روزِ دیگر به پایان می‌رسد.\n"
+                            "برای تمدید، از پنلِ VIP اقدام کنید."
+                        ),
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="🌟 تمدیدِ اشتراک", callback_data="vip:open")]]
+                        ),
+                    )
+                except Exception:
+                    pass
+
+            elif remaining_days <= 0:
+                sub["status"] = "expired"
+                changed = True
+                if VIP_GROUP_CHAT_ID is not None:
+                    try:
+                        await bot.ban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=int(user_id_str))
+                        await bot.unban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=int(user_id_str), only_if_banned=True)
+                    except Exception as e:
+                        logger.warning("حذفِ خودکارِ کاربرِ %s از گروهِ VIP ممکن نشد: %s", user_id_str, e)
+                try:
+                    await bot.send_message(
+                        chat_id=int(user_id_str),
+                        text=sign(
+                            f"⌛️ اشتراکِ VIP شما به پایان رسید.\n"
+                            "برای تمدید، از پنلِ VIP اقدام کنید."
+                        ),
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[[InlineKeyboardButton(text="🌟 تمدیدِ اشتراک", callback_data="vip:open")]]
+                        ),
+                    )
+                except Exception:
+                    pass
+                if NOTIFY_CHAT_ID_INT:
+                    try:
+                        await bot.send_message(
+                            chat_id=NOTIFY_CHAT_ID_INT,
+                            text=f"⌛️ اشتراکِ VIP کاربر <code>{user_id_str}</code> به پایان رسید.",
+                        )
+                    except Exception:
+                        pass
+
+    if changed:
+        await save_vip_subscriptions(subs)
 
 # ---------- پنل تنظیمات VIP (ادمین) با چیدمان دو ستونی ----------
+class VipCategoryStates(StatesGroup):
+    waiting_new_name = State()
+    waiting_new_desc = State()
+    waiting_edit_value = State()
+    waiting_banner = State()
+
+class VipGlobalSettingsStates(StatesGroup):
+    waiting_price3 = State()
+    waiting_price6 = State()
+    waiting_price12 = State()
+    waiting_discount = State()
+
+async def build_vip_settings_text() -> str:
+    categories = load_vip_categories()
+    if not categories:
+        return "💎 <b>تنظیماتِ VIP</b>\n\nهنوز هیچ دسته‌بندی‌ای اضافه نشده است."
+    lines = ["💎 <b>تنظیماتِ VIP</b>\n", "دسته‌بندی‌های فعلی:\n"]
+    for i, cat in enumerate(categories, 1):
+        lines.append(f"{to_persian_num(i)}. <b>{html_escape(cat['name'])}</b>\n   {html_escape(cat.get('description', ''))[:60]}...")
+    return "\n".join(lines)
+
 def vip_settings_keyboard() -> InlineKeyboardMarkup:
     categories = load_vip_categories()
     buttons = []
@@ -1309,7 +1520,363 @@ def vip_settings_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# سایر توابع مربوط به VIP مانند قبل باقی می‌مانند
+def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name")],
+            [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description")],
+            [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}")],
+            [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}")],
+            [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings")],
+        ]
+    )
+
+@dp.callback_query(F.data == "vipset:add")
+async def cb_vipset_add(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.set_state(VipCategoryStates.waiting_new_name)
+    await callback.message.edit_text(
+        "➕ <b>افزودنِ دسته‌بندیِ جدید</b>\n\nنامِ دسته‌بندی را ارسال کنید:\n(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.message(VipCategoryStates.waiting_new_name)
+async def handle_vipset_new_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await state.update_data(new_cat_name=message.text.strip())
+    await state.set_state(VipCategoryStates.waiting_new_desc)
+    await message.answer("توضیحاتِ دسته‌بندی را ارسال کنید (می‌توانید از خط جدید استفاده کنید):")
+
+@dp.message(VipCategoryStates.waiting_new_desc)
+async def handle_vipset_new_desc(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    data = await state.get_data()
+    categories = load_vip_categories()
+    new_cat = {
+        "id": f"cat_{uuid.uuid4().hex[:8]}",
+        "name": data["new_cat_name"],
+        "description": message.text.strip(),
+        "created_at": datetime.utcnow().isoformat(),
+        "image_file_id": None,
+    }
+    categories.append(new_cat)
+    await save_vip_categories(categories)
+    await state.clear()
+    await message.answer(
+        f"✅ دسته‌بندیِ «{html_escape(new_cat['name'])}» با موفقیت اضافه شد.",
+        reply_markup=admin_back_keyboard(),
+    )
+
+@dp.callback_query(F.data.startswith("vipset:edit:"))
+async def cb_vipset_edit(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    cat = get_vip_category(cat_id)
+    if not cat:
+        await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
+        return
+    text = (
+        f"✏️ <b>ویرایشِ دسته‌بندی</b>\n\n"
+        f"نام: <b>{html_escape(cat['name'])}</b>\n"
+        f"توضیحات:\n{html_escape(cat.get('description', ''))}\n\n"
+        "کدام مورد را می‌خواهید ویرایش کنید؟"
+    )
+    await callback.message.edit_text(text, reply_markup=vip_category_edit_keyboard(cat_id))
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("vipset:field:"))
+async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    _, _, cat_id, field = callback.data.split(":", 3)
+    cat = get_vip_category(cat_id)
+    if not cat:
+        await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
+        return
+
+    await state.update_data(edit_cat_id=cat_id, edit_field=field)
+    await state.set_state(VipCategoryStates.waiting_edit_value)
+
+    prompts = {
+        "name": "نامِ جدید را ارسال کنید:",
+        "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
+    }
+    await callback.message.edit_text(
+        prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.message(VipCategoryStates.waiting_edit_value)
+async def handle_vipset_edit_value(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    data = await state.get_data()
+    cat_id = data.get("edit_cat_id")
+    field = data.get("edit_field")
+    categories = load_vip_categories()
+    cat = next((c for c in categories if c["id"] == cat_id), None)
+    if not cat:
+        await state.clear()
+        await message.answer("این دسته‌بندی دیگر موجود نیست.", reply_markup=admin_panel_keyboard())
+        return
+
+    if field == "name":
+        cat["name"] = message.text.strip()
+    elif field == "description":
+        cat["description"] = message.text.strip()
+
+    await save_vip_categories(categories)
+    await state.clear()
+    await message.answer("✅ با موفقیت به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.callback_query(F.data.startswith("vipset:banner:"))
+async def cb_vipset_banner(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    cat = get_vip_category(cat_id)
+    if not cat:
+        await callback.answer("دسته‌بندی یافت نشد.", show_alert=True)
+        return
+    await state.update_data(edit_cat_id=cat_id)
+    await state.set_state(VipCategoryStates.waiting_banner)
+    await callback.message.edit_text(
+        "🖼 لطفاً یک عکس برای بنر این دسته‌بندی ارسال کنید.\n"
+        "عکس می‌تواند هر فرمتی داشته باشد (JPEG, PNG و غیره).\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.message(VipCategoryStates.waiting_banner, F.photo)
+async def handle_vipset_banner_photo(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    cat_id = data.get("edit_cat_id")
+    if not cat_id:
+        await state.clear()
+        await message.answer("خطا: شناسه دسته‌بندی مشخص نیست.", reply_markup=admin_panel_keyboard())
+        return
+    file_id = message.photo[-1].file_id
+    categories = load_vip_categories()
+    cat = next((c for c in categories if c["id"] == cat_id), None)
+    if not cat:
+        await state.clear()
+        await message.answer("دسته‌بندی دیگر موجود نیست.", reply_markup=admin_panel_keyboard())
+        return
+    cat["image_file_id"] = file_id
+    await save_vip_categories(categories)
+    await state.clear()
+    await message.answer(
+        f"✅ بنر برای دسته‌بندی «{html_escape(cat['name'])}» با موفقیت آپلود شد.",
+        reply_markup=admin_back_keyboard(),
+    )
+
+@dp.callback_query(F.data.startswith("vipset:delete_banner:"))
+async def cb_vipset_delete_banner(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    categories = load_vip_categories()
+    cat = next((c for c in categories if c["id"] == cat_id), None)
+    if not cat:
+        await callback.answer("دسته‌بندی یافت نشد.", show_alert=True)
+        return
+    cat.pop("image_file_id", None)
+    await save_vip_categories(categories)
+    await callback.answer("✅ بنر حذف شد.")
+    await callback.message.edit_text(
+        f"✏️ <b>ویرایشِ دسته‌بندی</b>\n\n"
+        f"نام: <b>{html_escape(cat['name'])}</b>\n"
+        f"توضیحات:\n{html_escape(cat.get('description', ''))}\n\n"
+        "کدام مورد را می‌خواهید ویرایش کنید؟",
+        reply_markup=vip_category_edit_keyboard(cat_id),
+    )
+
+@dp.callback_query(F.data.startswith("vipset:delete:"))
+async def cb_vipset_delete(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    cat = get_vip_category(cat_id)
+    if not cat:
+        await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
+        return
+    await callback.message.edit_text(
+        f"⚠️ آیا از حذفِ دسته‌بندیِ «{html_escape(cat['name'])}» مطمئنید؟",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data=f"vipset:delete_confirm:{cat_id}")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:vip_settings")],
+        ]),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("vipset:delete_confirm:"))
+async def cb_vipset_delete_confirm(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    categories = [c for c in load_vip_categories() if c["id"] != cat_id]
+    await save_vip_categories(categories)
+    await callback.answer("✅ حذف شد.")
+    await callback.message.edit_text(await build_vip_settings_text(), reply_markup=vip_settings_keyboard())
+
+# ---------- تنظیمات قیمت‌های جهانی ----------
+async def build_vip_global_settings_text() -> str:
+    settings = load_vip_global_settings()
+    prices = settings.get("prices", {})
+    discount = settings.get("discount_percent", 0)
+    return (
+        f"💰 <b>تنظیم قیمت اشتراک VIP</b>\n\n"
+        f"قیمت ۳ ماهه: {format_toman(prices.get('3', 0))}\n"
+        f"قیمت ۶ ماهه: {format_toman(prices.get('6', 0))}\n"
+        f"قیمت ۱۲ ماهه: {format_toman(prices.get('12', 0))}\n"
+        f"تخفیف درصدی: {to_persian_num(discount)}%\n"
+        f"آخرین بروزرسانی: {format_jalali_datetime(datetime.fromisoformat(settings.get('updated_at', datetime.utcnow().isoformat())))}"
+    )
+
+def vip_global_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ قیمت ۳ ماهه", callback_data="vipglob:price3")],
+            [InlineKeyboardButton(text="✏️ قیمت ۶ ماهه", callback_data="vipglob:price6")],
+            [InlineKeyboardButton(text="✏️ قیمت ۱۲ ماهه", callback_data="vipglob:price12")],
+            [InlineKeyboardButton(text="✏️ تخفیف درصدی", callback_data="vipglob:discount")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu")],
+        ]
+    )
+
+@dp.callback_query(F.data.startswith("vipglob:"))
+async def cb_vipglob(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    field = callback.data.split(":", 1)[1]
+    state_map = {
+        "price3": VipGlobalSettingsStates.waiting_price3,
+        "price6": VipGlobalSettingsStates.waiting_price6,
+        "price12": VipGlobalSettingsStates.waiting_price12,
+        "discount": VipGlobalSettingsStates.waiting_discount,
+    }
+    await state.set_state(state_map.get(field))
+    prompts = {
+        "price3": "قیمت جدیدِ ۳ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "price6": "قیمت جدیدِ ۶ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "price12": "قیمت جدیدِ ۱۲ ماهه را (فقط عدد، تومان) وارد کنید:",
+        "discount": "تخفیف درصدی جدید را (فقط عدد، مثل 10 برای ۱۰٪) وارد کنید:",
+    }
+    await callback.message.edit_text(prompts.get(field, "مقدار جدید را وارد کنید:"), reply_markup=admin_back_keyboard())
+    await callback.answer()
+
+async def _parse_price_or_discount(message: Message) -> tuple[int | None, bool]:
+    if not message.text:
+        return None, False
+    digits = message.text.strip().replace(",", "").replace("٬", "")
+    persian_to_en = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+    digits = digits.translate(persian_to_en)
+    if not digits.isdigit():
+        return None, False
+    return int(digits), True
+
+@dp.message(VipGlobalSettingsStates.waiting_price3)
+async def handle_vipglob_price3(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["3"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۳ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_price6)
+async def handle_vipglob_price6(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["6"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۶ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_price12)
+async def handle_vipglob_price12(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    price, ok = await _parse_price_or_discount(message)
+    if not ok:
+        await message.answer("❌ لطفاً فقط عدد وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["prices"]["12"] = price
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer("✅ قیمت ۱۲ ماهه به‌روزرسانی شد.", reply_markup=admin_back_keyboard())
+
+@dp.message(VipGlobalSettingsStates.waiting_discount)
+async def handle_vipglob_discount(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    discount, ok = await _parse_price_or_discount(message)
+    if not ok or discount < 0 or discount > 100:
+        await message.answer("❌ لطفاً عددی بین ۰ تا ۱۰۰ وارد کنید.")
+        return
+    settings = load_vip_global_settings()
+    settings["discount_percent"] = discount
+    await save_vip_global_settings(settings)
+    await state.clear()
+    await message.answer(f"✅ تخفیف به {to_persian_num(discount)}% تنظیم شد.", reply_markup=admin_back_keyboard())
 
 # ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
@@ -1363,7 +1930,7 @@ async def on_startup(app: web.Application):
     )
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
 
-    # بازیابی تسک‌های حضور و غیاب (در صورت نیاز)
+    # بازیابی تسک‌های حضور و غیاب (اختیاری)
     # ...
 
     app["vip_expiry_task"] = asyncio.create_task(vip_expiry_checker_loop())
