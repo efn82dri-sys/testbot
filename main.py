@@ -139,6 +139,17 @@ RULES_FALLBACK_TEXT = (
     "اطلاعاتِ خود را ثبت کنید."
 )
 
+# ---------- قوانین گروه (مطابق تصویر) ----------
+RULES_TEXT = (
+    "قوانین گروه🌱\n\n"
+    "همون‌طور که می‌دونید، هدف ما از VIP کردن این فضا این بود که یه پاتوق زنده، پرانرژی و خلاق برای معمارای واقعی داشته باشیم، نه یه فضای بی‌سروصدا که فقط فایل‌ها دانلود بشن و کسی با کسی حرف نزنه! 🥱\n\n"
+    "برای اینکه اتمسفر گرم و پویای گروهمون حفظ بشه، یه قانون ثابت داریم:\n\n"
+    "🤖 <b>سنجش فعالیت توسط ربات:</b>\n"
+    "ربات گروه به‌طور هوشمند تعامل بچه‌ها رو ثبت می‌کنه. اگه توی یک هفته (۷ روز) هیچ فعالیتی (مثل گپ زدن، نظر دادن توی بحث‌ها یا تعامل) نداشته باشید، ربات به این مِتُد حساسه و اکانت رو به‌طور خودکار از گروه حذف می‌کنه.\n\n"
+    "دوست داریم جاتون همیشه اینجا امن و برقرار باشه؛ پس حضور گرمتون رو از <a href='https://t.me/c/4388421316/95'>کافه معماری</a> دریغ نکنید و توی بحث‌ها و آپدیت‌ها همراهمون باشید. ❤️☕️\n\n"
+    "@IRarchit"
+)
+
 # ---------- ریت‌لیمیت تستِ ضدربات (منسوخ) ----------
 CAPTCHA_MAX_WRONG = 5
 CAPTCHA_LOCK_MINUTES = 5
@@ -993,16 +1004,6 @@ async def cb_captcha_answer(callback: CallbackQuery):
 #  قوانین گروه و پذیرش
 # ==============================================================
 
-RULES_TEXT = (
-    "سلام به همگی 👋\n\n"
-    "همون طور که می‌دونید، هدف ما از VIP کردن این فضا این بود که به پاتوق زنده، پرانرژی و خلاق برای معماری واقعی داشته باشیم، نه به فضای بی‌سروصدا که فقط فایل‌ها دانلود بشن و کسی با کسی حرف نزنه!\n\n"
-    "برای اینکه اتمسفر گرم و پویای گروهمون حفظ بشه، به قانون ثابت داریم:\n\n"
-    "<b>سنجش فعالیت توسط ربات:</b>\n"
-    "ربات گروه به‌طور هوشمند تعامل بچه‌ها رو ثبت می‌کنه. اگه توی یک هفته (7 روز) هیچ فعالیتی (مثل گپ زدن، نظر دادن توی بحث‌ها یا تعامل) نداشته باشید، ربات به این مذخ حساسه و اکانت رو به‌طور خودکار از گروه حذف می‌کنه.\n\n"
-    "دوست داریم جاتون همیشه اینجا امن و برقرار باشه؛ پس حضور گر متون رو از کافه معماری دریغ نکنید و توی بحث‌ها و آپدیت‌ها همراهمون باشید.\n\n"
-    "@IRarchit"
-)
-
 @dp.chat_join_request()
 async def handle_join_request(join_request: ChatJoinRequest):
     if join_request.chat.id != GROUP_CHAT_ID:
@@ -1239,6 +1240,7 @@ async def cb_form_submit(callback: CallbackQuery):
         "education_label": data["education_label"],
         "referral": data["referral"],
         "interests": selected,
+        "status": "golden"  # کاربر پس از تکمیل پروفایل به کاربر طلایی تبدیل می‌شود
     }
 
     async with _write_lock:
@@ -1283,12 +1285,15 @@ async def show_profile(message: Message, user, record: dict):
     interests_str = "، ".join(interests) if interests else "هیچکدام"
     submitted_at = record.get("submitted_at", "")
     jalali_date = format_jalali_datetime(datetime.fromisoformat(submitted_at)) if submitted_at else "نامشخص"
+    status = record.get("status", "normal")
+    status_display = "🌟 طلایی" if status == "golden" else "عادی"
 
     text = (
         "👤 <b>پروفایل شما</b>\n\n"
         f"نام: {html_escape(record.get('full_name', 'نامشخص'))}\n"
         f"یوزرنیم: @{user.username}" if user.username else "ندارد"
-        f"\nمقطع تحصیلی: {education_label}\n"
+        f"\nوضعیت: {status_display}\n"
+        f"مقطع تحصیلی: {education_label}\n"
         f"نحوه آشنایی: {referral_label}\n"
         f"علایق: {interests_str}\n"
         f"تاریخ ثبت: {jalali_date}\n\n"
@@ -1875,7 +1880,7 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         return
 
 # ==============================================================
-#  پنل تنظیمات VIP (ادمین) - بازطراحی شده
+#  پنل تنظیمات VIP (ادمین) - با دکمه‌های دو ستونی و حذف
 # ==============================================================
 
 class VipCategoryStates(StatesGroup):
@@ -1902,10 +1907,10 @@ async def build_vip_settings_text() -> str:
 def vip_settings_keyboard() -> InlineKeyboardMarkup:
     categories = load_vip_categories()
     rows = []
-    # هر ردیف یک دکمه با نام دسته‌بندی که به منوی مدیریت آن می‌رود
     for cat in categories:
         rows.append([
             InlineKeyboardButton(text=f"📁 {cat['name']}", callback_data=f"vipset:manage:{cat['id']}", style="primary"),
+            InlineKeyboardButton(text="🗑", callback_data=f"vipset:delete:{cat['id']}", style="danger"),
         ])
     rows.append([InlineKeyboardButton(text="➕ افزودنِ دسته‌بندیِ جدید", callback_data="vipset:add", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
@@ -2119,24 +2124,11 @@ async def cb_vipset_delete(callback: CallbackQuery):
     if not cat:
         await callback.answer("این دسته‌بندی دیگر موجود نیست.", show_alert=True)
         return
-    await callback.message.edit_text(
-        f"⚠️ آیا از حذفِ دسته‌بندیِ «{html_escape(cat['name'])}» مطمئنید؟",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data=f"vipset:delete_confirm:{cat_id}", style="danger")],
-            [InlineKeyboardButton(text="❌ انصراف", callback_data="admin:vip_settings", style="primary")],
-        ]),
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("vipset:delete_confirm:"))
-async def cb_vipset_delete_confirm(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer()
-        return
-    cat_id = callback.data.split(":", 2)[2]
+    
+    # حذف مستقیم
     categories = [c for c in load_vip_categories() if c["id"] != cat_id]
     await save_vip_categories(categories)
-    await callback.answer("✅ حذف شد.")
+    await callback.answer("✅ دسته‌بندی حذف شد.")
     await callback.message.edit_text(await build_vip_settings_text(), reply_markup=vip_settings_keyboard())
 
 # ---------- تنظیمات قیمت‌های جهانی ----------
@@ -2269,11 +2261,10 @@ async def handle_vipglob_discount(message: Message, state: FSMContext):
     await message.answer(f"✅ تخفیف به {to_persian_num(discount)}% تنظیم شد.", reply_markup=admin_back_keyboard())
 
 # ==============================================================
-#  سایر بخش‌های ادمین (حضور و غیاب، ارسال پیام، حذف کاربر، و ...)
-#  از کد قبلی بدون تغییر
+#  سایر بخش‌های ادمین (حضور و غیاب، ارسال پیام، حذف کاربر، ...)
+#  از کد قبلی بدون تغییر - با اضافه کردن انیمیشن در حضور و غیاب
 # ==============================================================
 
-# ---------- حضور و غیاب ----------
 def load_attendance_data() -> dict:
     if not ATTENDANCE_FILE.exists():
         return {"active": None}
@@ -2600,6 +2591,17 @@ async def cb_attendance_yes(callback: CallbackQuery):
     time_jalali = format_jalali_datetime(now_utc)
     active["participants"].append({"user_id": user_id, "time": time_jalali})
     await save_attendance_data(data)
+    
+    # ارسال پیام با افکت (انیمیشن) به کاربر
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text="✅ حضور شما با موفقیت ثبت شد! 🎉",
+            message_effect_id=MESSAGE_EFFECT_PARTY_POPPER
+        )
+    except Exception as e:
+        logger.warning("ارسال پیام با افکت به کاربر %s ممکن نشد: %s", user_id, e)
+    
     await callback.answer("✅ حضور شما ثبت شد.", show_alert=False)
 
 async def restore_attendance_tasks():
@@ -3296,6 +3298,11 @@ async def handle_admin_reply_via_native_reply(message: Message):
 
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
+    # جلوگیری از فوروارد شدن پیام به ربات
+    if message.forward_from or message.forward_from_chat:
+        await message.answer("❌ ارسال پیام‌های فورواردی به ربات مجاز نیست. لطفاً پیام خود را مستقیماً تایپ کنید.")
+        return
+
     if is_admin(message.from_user.id):
         return
 
