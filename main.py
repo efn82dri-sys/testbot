@@ -10,7 +10,6 @@ import asyncio
 import json
 import logging
 import os
-import random
 import uuid
 from datetime import datetime, timedelta
 from html import escape as html_escape
@@ -127,60 +126,29 @@ MAX_INTERESTS = 3
 GROUP_NAME = "رواق"
 SIGNATURE = f"\n\n— <i>تیمِ {GROUP_NAME}</i> 🏛"
 
-GROUP_RULES_URL = os.environ.get("GROUP_RULES_URL", "").strip()
-RULES_FALLBACK_TEXT = (
-    "📜 <b>قوانین و حریمِ خصوصیِ رواق</b>\n\n"
-    "▪️ احترام متقابل و پرهیز از تبلیغِ خارج از رواق، اصلِ اولِ این فضاست.\n"
-    "▪️ فایل‌ها و محتوای رواق فقط برای استفادهٔ شخصی و آموزشی است.\n"
-    "▪️ اطلاعاتی که هنگامِ ثبت‌نام می‌دهید (نام، شناسهٔ عددی، پاسخ‌های فرم) "
-    "فقط برای مدیریتِ عضویت و ارتباط با شما نگه‌داری می‌شود و در اختیارِ "
-    "شخصِ ثالثی قرار نمی‌گیرد.\n"
-    "▪️ هر زمان بخواهید می‌توانید با «📞 ارتباط با ادمین» درخواستِ حذفِ "
-    "اطلاعاتِ خود را ثبت کنید."
+# ---------- متنِ قوانینِ گروه (ارسال هنگامِ درخواستِ عضویت) ----------
+GROUP_RULES_TEXT = (
+    "🌟 <b>سلام به همگی 👋🏻</b>\n\n"
+    "<blockquote>همون‌طور که میدونید، هدف ما از VIP کردن این فضا این بود که یه پاتوق زنده، "
+    "پرانرژی و خلاق برای معماری واقعی داشته باشیم، نه یه فضای بی‌روح که فقط فایل‌هاش رو دانلود "
+    "بشن و با کسی حرف نزنه! 🥲\n\n"
+    "برای اینکه اتمسفر گرم و پویای گروهمون حفظ بشه، یه قانون ثابت داریم:\n\n"
+    "📌 <b>سنجش فعالیت توسط ربات:</b>\n"
+    "ربات به‌طور هوشمند تعامل بچه‌ها رو ثبت می‌کنه. اگه توی هفته (۷ روز) هیچ فعالیتی (مثل گپ زدن، "
+    "نظر دادن روی بحث‌ها یا تعامل) نداشته باشید، ربات به‌مرور حساسیت پیدا کرده و اکانت رو بدون "
+    "هشدار خودکار از گروه حذف می‌کنه.\n\n"
+    "دوست داریم جاتون همیشه اینجا امن و برقرار باشه؛ پس حضورتون رو از کاملِ گرمتون دریغ نکنید و "
+    "در بحث‌ها و آیدیتاتون همراهمون باشید. ❤️</blockquote>"
 )
-
-# ---------- ریت‌لیمیت تستِ ضدربات ----------
-CAPTCHA_MAX_WRONG = 5
-CAPTCHA_LOCK_MINUTES = 5
-_captcha_wrong_count: dict[int, int] = {}
-_captcha_locked_until: dict[int, datetime] = {}
-
-# ---------- یادآوریِ عدم‌فعالیت وسطِ فرم ----------
-FORM_REMINDER_MINUTES = 10
-_form_reminder_tasks: dict[int, asyncio.Task] = {}
-
-def _cancel_form_reminder(user_id: int) -> None:
-    task = _form_reminder_tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
-
-def _schedule_form_reminder(user_id: int) -> None:
-    _cancel_form_reminder(user_id)
-
-    async def _reminder():
-        await asyncio.sleep(FORM_REMINDER_MINUTES * 60)
-        if user_id not in _pending_form:
-            return
-        try:
-            await bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "⏳ <b>تکمیل فرم</b>\n\n"
-                    "فرم پذیرش نیمه‌کاره باقی مانده است.\n"
-                    "هر زمان آماده بودید، روی یکی از دکمه‌های بالا کلیک کنید تا ادامه دهید.\n"
-                    "در صورت بروز مشکل، از گزینهٔ «📞 ارتباط با ادمین» کمک بگیرید."
-                ),
-            )
-        except Exception as e:
-            logger.warning("ارسالِ یادآوریِ فرم به کاربر %s ممکن نشد: %s", user_id, e)
-
-    _form_reminder_tasks[user_id] = asyncio.create_task(_reminder())
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 storage = MemoryStorage()
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(
+    token=BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML, protect_content=True),
+)
 dp = Dispatcher(storage=storage)
 
 _write_lock = asyncio.Lock()
@@ -744,8 +712,9 @@ def topics_panel_keyboard() -> InlineKeyboardMarkup:
 
 # ---------- پنل کاربری ----------
 _USER_MENU_STYLES = {
+    "profile": "success",
     "vip": "success",
-    "join": "success",
+    "join": "primary",
     "topics": "primary",
     "contact_admin": "primary",
     "my_status": "primary",
@@ -757,23 +726,34 @@ _USER_MENU_STYLES = {
 def user_panel_keyboard() -> InlineKeyboardMarkup:
     config = load_menu_config()
     items = config["menu_items"]
-    filtered_keys = ["vip", "join", "topics", "contact_admin", "my_status", "faq", "social"]
+    # چیدمانِ ثابتِ پنلِ کاربری — دقیقاً به همین ترتیب و در همین ردیف‌های دوتایی:
+    # پروفایل من | گروه VIP
+    # راهنمای تاپیک‌ها | دعوت از دوستان
+    # وضعیت عضویت من | ارتباط با ادمین
+    # سوالات متداول | شبکه‌های اجتماعی
+    # بستن پنل
+    rows_keys = [
+        ("profile", "vip"),
+        ("topics", "join"),
+        ("my_status", "contact_admin"),
+        ("faq", "social"),
+    ]
+    labels = {
+        "profile": "👤 پروفایل من",
+        **{k: v["label"] for k, v in items.items()},
+    }
     buttons = []
-    for i in range(0, len(filtered_keys), 2):
-        row = []
-        key1 = filtered_keys[i]
-        row.append(InlineKeyboardButton(
-            text=items[key1]["label"], callback_data=f"menu:{key1}",
-            style=_USER_MENU_STYLES.get(key1, "primary"),
-        ))
-        if i+1 < len(filtered_keys):
-            key2 = filtered_keys[i+1]
-            row.append(InlineKeyboardButton(
-                text=items[key2]["label"], callback_data=f"menu:{key2}",
+    for key1, key2 in rows_keys:
+        buttons.append([
+            InlineKeyboardButton(
+                text=labels[key1], callback_data=f"menu:{key1}",
+                style=_USER_MENU_STYLES.get(key1, "primary"),
+            ),
+            InlineKeyboardButton(
+                text=labels[key2], callback_data=f"menu:{key2}",
                 style=_USER_MENU_STYLES.get(key2, "primary"),
-            ))
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="📜 قوانین و حریم خصوصی", callback_data="menu:rules", style="primary")])
+            ),
+        ])
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close", style="danger")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -841,27 +821,24 @@ async def save_bot_state(state: dict) -> None:
     async with _write_lock:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
-# ---------- تابع زمینه‌ساز قبل از فرم ----------
-async def send_reengagement_intro(user, context: str = "default") -> None:
-    if context == "pending":
-        text = (
-            "🟢 <b>ربات فعال شد</b>\n\n"
-            "فرایند عضویت از مرحله‌ی تکمیل‌شده ادامه می‌یابد.\n"
-            "لطفاً فرم پذیرش را تکمیل کنید."
+# ---------- ارسالِ متنِ قوانین همراه با دکمهٔ پذیرش ----------
+async def send_rules_message(user) -> None:
+    try:
+        await bot.send_message(
+            chat_id=user.id,
+            text=GROUP_RULES_TEXT,
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="✅ قوانین را قبول دارم و عضو می‌شوم",
+                        callback_data="rules_accept",
+                        style="success",
+                    )
+                ]]
+            ),
         )
-    elif context == "rejoin":
-        text = (
-            "👋 <b>خوش آمدید</b>\n\n"
-            "تایید ضدربات قبلاً انجام شده است.\n"
-            "اکنون فرم پذیرش برای شما ارسال می‌شود."
-        )
-    else:
-        text = (
-            "👋 <b>خوش آمدید</b>\n\n"
-            "پس از تکمیل مراحل اولیه، فرم پذیرش در اختیار شما قرار می‌گیرد."
-        )
-    await bot.send_message(chat_id=user.id, text=sign(text))
-    await asyncio.sleep(1.2)
+    except Exception as e:
+        logger.warning("ارسالِ پیامِ قوانین به کاربر %s ممکن نشد: %s", user.id, e)
 
 async def process_pending_requests():
     state = load_bot_state()
@@ -872,12 +849,12 @@ async def process_pending_requests():
     for user_id in pending:
         try:
             user = await bot.get_chat(user_id)
-            if is_verified(user_id):
-                await send_reengagement_intro(user, context="pending")
-                await start_membership_form(user)
-            else:
-                await send_welcome_intro(user)
-                await send_captcha_challenge(user)
+            await bot.send_message(
+                chat_id=user.id,
+                text=sign("🟢 <b>ربات فعال شد</b>\n\nدرخواستِ عضویتِ شما اکنون در حالِ پردازش است."),
+            )
+            await asyncio.sleep(1)
+            await send_rules_message(user)
             logger.info("پیام به کاربر %s ارسال شد", user_id)
         except Exception as e:
             logger.warning("پردازش درخواست معلق برای %s ناموفق: %s", user_id, e)
@@ -892,417 +869,70 @@ async def send_with_action(chat_id: int, action: str = "typing", delay: float = 
     if delay > 0:
         await asyncio.sleep(delay)
 
+# ---------- باز کردنِ پنل‌ها (برای استارتِ معمولی و لینکِ مستقیم) ----------
+async def open_user_panel(chat_id: int) -> None:
+    await bot.send_message(
+        chat_id=chat_id,
+        text="🏛 <b>به رواق خوش آمدید</b>\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=user_panel_keyboard(),
+    )
+
+async def open_vip_panel(chat_id: int) -> None:
+    if VIP_GROUP_CHAT_ID is None:
+        await bot.send_message(chat_id=chat_id, text="🌟 گروه VIP هنوز راه‌اندازی نشده است.")
+        return
+    caption, keyboard, image_id = await render_vip_page(0)
+    if image_id:
+        await bot.send_photo(
+            chat_id=chat_id, photo=image_id, caption=caption,
+            show_caption_above_media=True, reply_markup=keyboard,
+        )
+    else:
+        await bot.send_message(chat_id=chat_id, text=caption, reply_markup=keyboard)
+
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
-async def handle_start(message: Message):
+async def handle_start(message: Message, command: CommandObject):
     user_id = message.from_user.id
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
-    if is_form_completed(user_id) or await is_user_member(user_id):
-        await message.answer(
-            "🏛 <b>به رواق خوش آمدید</b>\n\n"
-            "از پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
-            reply_markup=user_panel_keyboard()
-        )
-    else:
-        member_count_line = ""
-        try:
-            member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-            member_count_str = to_persian_num(member_count)
-            member_count_line = f"هم‌اکنون <b>{member_count_str}</b> معمار و مهندس در اینجا حضور دارند.\n\n"
-        except Exception:
-            pass
-        await message.answer(
-            sign(
-                f"{greet_user(message.from_user)}، به {GROUP_NAME} خوش آمدید.\n\n"
-                "اینجا انبارِ تخصصیِ فایل‌های معماری و عمران است.\n"
-                f"{member_count_line}"
-                "برای عضویت، کافی‌ست درخواستِ پیوستن به گروه را ثبت کنید.\n"
-                "مسیرِ بعدی برای شما گشوده خواهد شد."
-            ),
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="📝 ثبت درخواست عضویت", url=GROUP_INVITE_LINK)],
-                    [InlineKeyboardButton(text="📜 قوانین و حریم خصوصی", callback_data="menu:rules")],
-                ]
-            )
-        )
+    is_member = await is_user_member(user_id)
 
-# ==============================================================
-#  تست ضدِ ربات
-# ==============================================================
-_pending_captcha: dict[int, int] = {}
+    if is_member:
+        # لینکِ مستقیمِ استارت به دکمه‌ی گروهِ VIP: t.me/<bot_username>?start=vip
+        if (command.args or "").strip().lower() == "vip":
+            await open_vip_panel(message.chat.id)
+        else:
+            await open_user_panel(message.chat.id)
+        return
 
-def captcha_keyboard(correct: int, wrong: int) -> InlineKeyboardMarkup:
-    options = [correct, wrong]
-    random.shuffle(options)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text=str(v), callback_data=f"captcha:{v}", style="primary")
-            for v in options
-        ]]
-    )
-
-async def send_welcome_intro(user) -> None:
-    stats_line = ""
+    member_count_line = ""
     try:
         member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-        stats_line = f"👥 همین الان <b>{to_persian_num(member_count)}</b> نفر در رواق حضور دارند.\n\n"
+        member_count_str = to_persian_num(member_count)
+        member_count_line = f"هم‌اکنون <b>{member_count_str}</b> معمار و مهندس در اینجا حضور دارند.\n\n"
     except Exception:
         pass
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                f"🏛 <b>{GROUP_NAME}</b>، درگاهِ تخصصیِ فایل‌های معماری و عمران.\n\n"
-                f"{stats_line}"
-                "درخواست عضویت شما ثبت شد.\n"
-                "برای ورود، دو مرحله ساده باقی مانده است:\n"
-                "۱. تایید عدم ربات‌بودن\n"
-                "۲. تکمیل فرم پذیرش"
-            ),
+    await message.answer(
+        sign(
+            f"{greet_user(message.from_user)}، به {GROUP_NAME} خوش آمدید.\n\n"
+            "اینجا انبارِ تخصصیِ فایل‌های معماری و عمران است.\n"
+            f"{member_count_line}"
+            "برای عضویت، کافی‌ست درخواستِ پیوستن به گروه را ثبت کنید.\n"
+            "مسیرِ بعدی برای شما گشوده خواهد شد."
+        ),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📝 ثبت درخواست عضویت", url=GROUP_INVITE_LINK, style="success")],
+            ]
         )
-    except Exception as e:
-        logger.warning("ارسالِ پیامِ خوش‌آمدِ اول به کاربر %s ممکن نشد: %s", user.id, e)
-
-def _is_captcha_locked(user_id: int) -> tuple[bool, int]:
-    locked_until = _captcha_locked_until.get(user_id)
-    if not locked_until:
-        return False, 0
-    remaining = (locked_until - datetime.utcnow()).total_seconds()
-    if remaining <= 0:
-        _captcha_locked_until.pop(user_id, None)
-        _captcha_wrong_count.pop(user_id, None)
-        return False, 0
-    return True, int(remaining // 60) + 1
-
-async def send_captcha_challenge(user) -> None:
-    locked, minutes_left = _is_captcha_locked(user.id)
-    if locked:
-        try:
-            await bot.send_message(
-                chat_id=user.id,
-                text=(
-                    f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{to_persian_num(minutes_left)}</b> دقیقهٔ دیگه قفل شده.\n\n"
-                    "لطفاً کمی صبر کنید و دوباره تلاش کنید."
-                ),
-            )
-        except Exception as e:
-            logger.warning("ارسال پیام قفلِ ضدربات به کاربر %s ممکن نشد: %s", user.id, e)
-        return
-
-    a, b = random.randint(2, 89), random.randint(2, 89)
-    while b == a:
-        b = random.randint(2, 89)
-    correct, wrong = max(a, b), min(a, b)
-    _pending_captcha[user.id] = correct
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                "🤖 <b>تایید عدم ربات‌بودن</b>\n\n"
-                "برای اطمینان از اینکه شما یک انسان هستید، لطفاً پاسخ دهید:\n\n"
-                f"❓ کدام عدد بزرگ‌تر است؟"
-            ),
-            reply_markup=captcha_keyboard(correct, wrong),
-        )
-    except Exception as e:
-        logger.warning("ارسال تستِ ضدربات به کاربر %s ممکن نشد: %s", user.id, e)
-
-@dp.callback_query(F.data.startswith("captcha:"))
-async def cb_captcha_answer(callback: CallbackQuery):
-    user = callback.from_user
-
-    locked, minutes_left = _is_captcha_locked(user.id)
-    if locked:
-        await callback.answer(
-            f"⏳ فعلاً قفله. {to_persian_num(minutes_left)} دقیقهٔ دیگه دوباره تلاش کن.", show_alert=True
-        )
-        return
-
-    try:
-        chosen = int(callback.data.split(":", 1)[1])
-    except ValueError:
-        await callback.answer()
-        return
-
-    correct = _pending_captcha.get(user.id)
-    if correct is None:
-        await callback.answer("این چالش منقضی شده. لطفاً دوباره درخواستِ عضویت بده.", show_alert=True)
-        return
-
-    if chosen == correct:
-        _pending_captcha.pop(user.id, None)
-        _captcha_wrong_count.pop(user.id, None)
-        await mark_verified(user.id)
-        try:
-            await callback.message.edit_text(
-                "✅ <b>تایید شد</b>\n\n"
-                "شما یک انسان واقعی هستید.\n"
-                "این تست صرفاً برای جلوگیری از ورود ربات‌های اسپم انجام شد و اطلاعاتی ذخیره نمی‌شود."
-            )
-        except Exception:
-            pass
-        await callback.answer("تایید شد ✅")
-        await start_membership_form(user)
-    else:
-        _pending_captcha.pop(user.id, None)
-        wrong_count = _captcha_wrong_count.get(user.id, 0) + 1
-        _captcha_wrong_count[user.id] = wrong_count
-
-        if wrong_count >= CAPTCHA_MAX_WRONG:
-            _captcha_locked_until[user.id] = datetime.utcnow() + timedelta(minutes=CAPTCHA_LOCK_MINUTES)
-            await callback.answer(
-                f"❌ چندبار پیاپی جوابِ اشتباه دادی؛ برای {to_persian_num(CAPTCHA_LOCK_MINUTES)} دقیقه قفل شد.",
-                show_alert=True,
-            )
-            try:
-                await callback.message.edit_text(
-                    f"⏳ به‌خاطرِ چند پاسخِ اشتباهِ پیاپی، تستِ ضدربات برای "
-                    f"<b>{to_persian_num(CAPTCHA_LOCK_MINUTES)}</b> دقیقه قفل شد.\n\n"
-                    "بعداً دوباره تلاش کنید."
-                )
-            except Exception:
-                pass
-            return
-
-        await callback.answer("❌ جواب درست نبود، یک چالشِ تازه برایت می‌فرستم.", show_alert=True)
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await send_captcha_challenge(user)
+    )
 
 # ==============================================================
-#  فرمِ پذیرش
+#  درخواستِ عضویت و پذیرشِ قوانین
 # ==============================================================
-_pending_form: dict[int, dict] = {}
 
-def education_keyboard() -> InlineKeyboardMarkup:
-    buttons = []
-    for i in range(0, len(EDUCATION_OPTIONS), 2):
-        row = [InlineKeyboardButton(text=EDUCATION_OPTIONS[i][1], callback_data=f"form_edu:{EDUCATION_OPTIONS[i][0]}", style="primary")]
-        if i + 1 < len(EDUCATION_OPTIONS):
-            row.append(InlineKeyboardButton(text=EDUCATION_OPTIONS[i+1][1], callback_data=f"form_edu:{EDUCATION_OPTIONS[i+1][0]}", style="primary"))
-        buttons.append(row)
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def referral_keyboard() -> InlineKeyboardMarkup:
-    buttons = []
-    items = list(REFERRAL_LABELS.items())
-    for i in range(0, len(items), 2):
-        row = [InlineKeyboardButton(text=items[i][1], callback_data=f"form_ref:{items[i][0]}", style="primary")]
-        if i + 1 < len(items):
-            row.append(InlineKeyboardButton(text=items[i+1][1], callback_data=f"form_ref:{items[i+1][0]}", style="primary"))
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="form_back:edu", style="danger")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def interests_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
-    buttons = []
-    for i in range(0, len(INTERESTS), 2):
-        row = []
-        for item in INTERESTS[i:i + 2]:
-            is_sel = item in selected
-            row.append(InlineKeyboardButton(
-                text=f"✅ {item}" if is_sel else item,
-                callback_data=f"form_int:{item}",
-                style="success" if is_sel else "primary",
-            ))
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton(
-        text=f"🏁 ثبتِ نهایی ({to_persian_num(len(selected))}/{to_persian_num(MAX_INTERESTS)})",
-        callback_data="form_int_done",
-        style="success" if selected else "primary",
-    )])
-    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="form_back:ref", style="danger")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-async def start_membership_form(user) -> None:
-    _pending_form[user.id] = {}
-    try:
-        await bot.send_message(
-            chat_id=user.id,
-            text=(
-                "🌿 <b>تکمیل فرم عضویت</b>\n\n"
-                "تنها سه سوال کوتاه باقی مانده است.\n"
-                "لطفاً پاسخ‌ها را با استفاده از دکمه‌ها انتخاب کنید.\n\n"
-                f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟"
-            ),
-            reply_markup=education_keyboard(),
-        )
-        _schedule_form_reminder(user.id)
-    except Exception as e:
-        logger.warning("ارسالِ فرمِ پذیرش به کاربر %s ممکن نشد: %s", user.id, e)
-
-@dp.callback_query(F.data.startswith("form_edu:"))
-async def cb_form_education(callback: CallbackQuery):
-    user = callback.from_user
-    value = callback.data.split(":", 1)[1]
-    label = dict(EDUCATION_OPTIONS).get(value, value)
-    _pending_form[user.id] = {"education": value, "education_label": label}
-    await callback.message.edit_text(
-        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
-        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
-        reply_markup=referral_keyboard(),
-    )
-    _schedule_form_reminder(user.id)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("form_ref:"))
-async def cb_form_referral(callback: CallbackQuery):
-    user = callback.from_user
-    value = callback.data.split(":", 1)[1]
-    data = _pending_form.setdefault(user.id, {})
-    data["referral"] = value
-    data["interests"] = set()
-    label = REFERRAL_LABELS.get(value, value)
-    await callback.message.edit_text(
-        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
-        f"{progress_bar(3)}  سوال ۳ از ۳ — کدام بخش از رواق برای شما جذاب‌تر است؟\n"
-        f"(حداکثر {to_persian_num(MAX_INTERESTS)} مورد)",
-        reply_markup=interests_keyboard([]),
-    )
-    _schedule_form_reminder(user.id)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("form_int:"))
-async def cb_form_interest_toggle(callback: CallbackQuery):
-    user = callback.from_user
-    item = callback.data.split(":", 1)[1]
-    data = _pending_form.setdefault(user.id, {})
-    selected: set = data.setdefault("interests", set())
-    if item in selected:
-        selected.discard(item)
-    elif len(selected) >= MAX_INTERESTS:
-        await callback.answer(f"حداکثر {to_persian_num(MAX_INTERESTS)} مورد را می‌توانید انتخاب کنید.", show_alert=True)
-        return
-    else:
-        selected.add(item)
-    await callback.message.edit_reply_markup(reply_markup=interests_keyboard(list(selected)))
-    await callback.answer()
-
-@dp.callback_query(F.data == "form_back:edu")
-async def cb_form_back_to_education(callback: CallbackQuery):
-    user = callback.from_user
-    _pending_form[user.id] = {}
-    await callback.message.edit_text(
-        f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟",
-        reply_markup=education_keyboard(),
-    )
-    _schedule_form_reminder(user.id)
-    await callback.answer()
-
-@dp.callback_query(F.data == "form_back:ref")
-async def cb_form_back_to_referral(callback: CallbackQuery):
-    user = callback.from_user
-    data = _pending_form.setdefault(user.id, {})
-    data.pop("referral", None)
-    data.pop("interests", None)
-    await callback.message.edit_text(
-        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
-        reply_markup=referral_keyboard(),
-    )
-    _schedule_form_reminder(user.id)
-    await callback.answer()
-
-# ---------- ساخت کارت عضویت ----------
-def build_membership_card(user, data, member_count, jalali_now) -> str:
-    display_name = html_escape(user.full_name or user.first_name or "کاربر")
-    rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}" if member_count else ""
-    interests_text = '، '.join(data.get('interests', []))
-
-    card = (
-        "✅ <b>کارتِ عضویتِ رواق</b>\n\n"
-        f"👤 {display_name}\n"
-        f"{rank_line}\n"
-        f"🎓 {data['education_label']}\n"
-        f"⭐️ {interests_text}\n"
-        f"🗓 {jalali_now}\n\n"
-        "از این لحظه، شما یکی از ساکنانِ این رواق هستید.\n"
-        "کتابخانه‌ی فایل‌ها، پلان‌ها و پروژه‌ها به روی شما گشوده شد.\n"
-        "امیدواریم این فضا، مرجعِ همیشگیِ مسیرِ حرفه‌ای‌تان باشد."
-    )
-    return sign(card)
-
-@dp.callback_query(F.data == "form_int_done")
-async def cb_form_submit(callback: CallbackQuery):
-    user = callback.from_user
-    data = _pending_form.get(user.id)
-    if not data or not data.get("education") or not data.get("referral"):
-        await callback.answer("انگار مسیر قطع شده. لطفاً دوباره درخواستِ عضویت بده.", show_alert=True)
-        return
-    selected = list(data.get("interests") or [])
-    if not selected:
-        await callback.answer("حداقل یک مورد را انتخاب کنید.", show_alert=True)
-        return
-
-    await callback.answer("⏳ در حال ثبت...")
-    try:
-        await callback.message.edit_text("⏳ در حال ثبت اطلاعات...")
-    except Exception:
-        pass
-
-    record = {
-        "user_id": user.id,
-        "username": user.username,
-        "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
-        "submitted_at": datetime.utcnow().isoformat(),
-        "education": data["education"],
-        "education_label": data["education_label"],
-        "referral": data["referral"],
-        "interests": selected,
-    }
-
-    async with _write_lock:
-        with open(DATA_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    _user_cache[str(user.id)] = record
-    _pending_form.pop(user.id, None)
-    _cancel_form_reminder(user.id)
-    logger.info("فرم کاربر %s ذخیره شد.", user.id)
-
-    approved = False
-    try:
-        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
-        approved = True
-    except Exception as e:
-        logger.warning("تایید عضویت کاربر %s ممکن نشد: %s", user.id, e)
-
-    if approved:
-        await increment_stat("form_completed_and_joined")
-
-    if approved:
-        rank_line = ""
-        member_count = None
-        try:
-            member_count = await bot.get_chat_member_count(GROUP_CHAT_ID)
-            rank_line = f"شماره‌ی عضویت: {to_persian_num(member_count)}"
-        except Exception:
-            pass
-        jalali_now = format_jalali_datetime(datetime.utcnow())
-
-        membership_card = build_membership_card(user, data, member_count, jalali_now)
-
-        await bot.send_message(
-            chat_id=user.id,
-            text=membership_card,
-            reply_markup=user_panel_keyboard(),
-        )
-        _schedule_vip_intro(user.id)
-    else:
-        await bot.send_message(
-            chat_id=user.id,
-            text=sign(
-                "اطلاعات شما ثبت شد، اما تایید عضویت با کمی تاخیر مواجه شد.\n"
-                "لطفاً شکیبا باشید یا از طریق گروه با ادمین تماس بگیرید."
-            ),
-        )
-
-# ---------- درخواست عضویت ----------
 @dp.chat_join_request()
 async def handle_join_request(join_request: ChatJoinRequest):
     if join_request.chat.id != GROUP_CHAT_ID:
@@ -1332,13 +962,236 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await save_bot_state(state)
         return
 
-    if is_verified(user.id):
-        await send_reengagement_intro(user, context="rejoin")
-        await start_membership_form(user)
+    await send_rules_message(user)
+
+@dp.callback_query(F.data == "rules_accept")
+async def cb_rules_accept(callback: CallbackQuery):
+    user = callback.from_user
+
+    approved = False
+    try:
+        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
+        approved = True
+    except Exception as e:
+        logger.warning("تاییدِ عضویتِ کاربر %s ممکن نشد: %s", user.id, e)
+
+    if approved:
+        await mark_verified(user.id)
+        await increment_stat("form_completed_and_joined")
+        try:
+            await callback.message.edit_text(
+                "✅ <b>خوش آمدید!</b>\n\nقوانین پذیرفته شد و عضویتِ شما در رواق تایید شد."
+            )
+        except Exception:
+            pass
+        await callback.answer("عضویت تایید شد ✅")
+        await bot.send_message(
+            chat_id=user.id,
+            text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
+            reply_markup=user_panel_keyboard(),
+        )
+        _schedule_vip_intro(user.id)
+    else:
+        await callback.answer(
+            "❌ تاییدِ عضویت با مشکلی مواجه شد. کمی صبر کنید یا از طریق «ارتباط با ادمین» پیگیری کنید.",
+            show_alert=True,
+        )
+
+# ==============================================================
+#  پروفایلِ من — ارتقا به کاربرِ طلایی
+# ==============================================================
+_pending_profile: dict[int, dict] = {}
+
+def education_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    for i in range(0, len(EDUCATION_OPTIONS), 2):
+        row = [InlineKeyboardButton(text=EDUCATION_OPTIONS[i][1], callback_data=f"profedu:{EDUCATION_OPTIONS[i][0]}", style="primary")]
+        if i + 1 < len(EDUCATION_OPTIONS):
+            row.append(InlineKeyboardButton(text=EDUCATION_OPTIONS[i+1][1], callback_data=f"profedu:{EDUCATION_OPTIONS[i+1][0]}", style="primary"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def referral_keyboard() -> InlineKeyboardMarkup:
+    buttons = []
+    items = list(REFERRAL_LABELS.items())
+    for i in range(0, len(items), 2):
+        row = [InlineKeyboardButton(text=items[i][1], callback_data=f"profref:{items[i][0]}", style="primary")]
+        if i + 1 < len(items):
+            row.append(InlineKeyboardButton(text=items[i+1][1], callback_data=f"profref:{items[i+1][0]}", style="primary"))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="profback:edu", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def interests_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
+    buttons = []
+    for i in range(0, len(INTERESTS), 2):
+        row = []
+        for item in INTERESTS[i:i + 2]:
+            is_sel = item in selected
+            row.append(InlineKeyboardButton(
+                text=f"✅ {item}" if is_sel else item,
+                callback_data=f"profint:{item}",
+                style="success" if is_sel else "primary",
+            ))
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton(
+        text=f"🏁 ثبتِ نهایی ({to_persian_num(len(selected))}/{to_persian_num(MAX_INTERESTS)})",
+        callback_data="profint_done",
+        style="success" if selected else "primary",
+    )])
+    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به سوالِ قبل", callback_data="profback:ref", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+async def start_profile_form(user, chat_id: int, message_id: int | None = None) -> None:
+    _pending_profile[user.id] = {}
+    text = (
+        "👤 <b>تکمیلِ پروفایل</b>\n\n"
+        "با پاسخ به سه سوالِ کوتاه، پروفایل‌تان تکمیل می‌شود و به «🥇 کاربرِ طلایی» رواق ارتقا پیدا می‌کنید.\n\n"
+        f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟"
+    )
+    keyboard = education_keyboard()
+    if message_id:
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard)
+            return
+        except Exception:
+            pass
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
+
+@dp.callback_query(F.data == "profile:start")
+async def cb_profile_start(callback: CallbackQuery):
+    await start_profile_form(callback.from_user, callback.message.chat.id, callback.message.message_id)
+    await callback.answer()
+
+@dp.callback_query(F.data == "profile:edit")
+async def cb_profile_edit(callback: CallbackQuery):
+    await start_profile_form(callback.from_user, callback.message.chat.id, callback.message.message_id)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("profedu:"))
+async def cb_profile_education(callback: CallbackQuery):
+    user = callback.from_user
+    value = callback.data.split(":", 1)[1]
+    label = dict(EDUCATION_OPTIONS).get(value, value)
+    _pending_profile[user.id] = {"education": value, "education_label": label}
+    await callback.message.edit_text(
+        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
+        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
+        reply_markup=referral_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("profref:"))
+async def cb_profile_referral(callback: CallbackQuery):
+    user = callback.from_user
+    value = callback.data.split(":", 1)[1]
+    data = _pending_profile.setdefault(user.id, {})
+    data["referral"] = value
+    data["interests"] = set()
+    label = REFERRAL_LABELS.get(value, value)
+    await callback.message.edit_text(
+        f"✅ گزینه‌ی <b>{label}</b> ثبت شد.\n\n"
+        f"{progress_bar(3)}  سوال ۳ از ۳ — کدام بخش از رواق برای شما جذاب‌تر است؟\n"
+        f"(حداکثر {to_persian_num(MAX_INTERESTS)} مورد)",
+        reply_markup=interests_keyboard([]),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("profint:"))
+async def cb_profile_interest_toggle(callback: CallbackQuery):
+    user = callback.from_user
+    item = callback.data.split(":", 1)[1]
+    data = _pending_profile.setdefault(user.id, {})
+    selected: set = data.setdefault("interests", set())
+    if item in selected:
+        selected.discard(item)
+    elif len(selected) >= MAX_INTERESTS:
+        await callback.answer(f"حداکثر {to_persian_num(MAX_INTERESTS)} مورد را می‌توانید انتخاب کنید.", show_alert=True)
+        return
+    else:
+        selected.add(item)
+    await callback.message.edit_reply_markup(reply_markup=interests_keyboard(list(selected)))
+    await callback.answer()
+
+@dp.callback_query(F.data == "profback:edu")
+async def cb_profile_back_to_education(callback: CallbackQuery):
+    user = callback.from_user
+    _pending_profile[user.id] = {}
+    await callback.message.edit_text(
+        f"{progress_bar(1)}  سوال ۱ از ۳ — سطح تحصیلی شما؟",
+        reply_markup=education_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "profback:ref")
+async def cb_profile_back_to_referral(callback: CallbackQuery):
+    user = callback.from_user
+    data = _pending_profile.setdefault(user.id, {})
+    data.pop("referral", None)
+    data.pop("interests", None)
+    await callback.message.edit_text(
+        f"{progress_bar(2)}  سوال ۲ از ۳ — چگونه با رواق آشنا شدید؟",
+        reply_markup=referral_keyboard(),
+    )
+    await callback.answer()
+
+# ---------- ساختِ کارتِ پروفایل ----------
+def build_profile_card(user, data: dict, jalali_now: str) -> str:
+    display_name = html_escape(user.full_name or user.first_name or "کاربر")
+    interests_text = '، '.join(data.get('interests', []))
+    card = (
+        "🥇 <b>تبریک! شما کاربرِ طلاییِ رواق شدید</b>\n\n"
+        f"👤 {display_name}\n"
+        f"🎓 {data.get('education_label', '')}\n"
+        f"⭐️ علایق: {interests_text}\n"
+        f"🗓 {jalali_now}\n\n"
+        "هر زمان بخواهید می‌توانید از همین بخش، اطلاعاتِ پروفایل‌تان را دوباره ویرایش کنید."
+    )
+    return sign(card)
+
+def profile_result_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ ویرایشِ مجدد", callback_data="profile:edit", style="primary")],
+        [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
+    ])
+
+@dp.callback_query(F.data == "profint_done")
+async def cb_profile_submit(callback: CallbackQuery):
+    user = callback.from_user
+    data = _pending_profile.get(user.id)
+    if not data or not data.get("education") or not data.get("referral"):
+        await callback.answer("انگار مسیر قطع شده. لطفاً دوباره از «پروفایل من» شروع کنید.", show_alert=True)
+        return
+    selected = list(data.get("interests") or [])
+    if not selected:
+        await callback.answer("حداقل یک مورد را انتخاب کنید.", show_alert=True)
         return
 
-    await send_welcome_intro(user)
-    await send_captcha_challenge(user)
+    await callback.answer("⏳ در حال ثبت...")
+
+    record = {
+        "user_id": user.id,
+        "username": user.username,
+        "full_name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
+        "submitted_at": datetime.utcnow().isoformat(),
+        "education": data["education"],
+        "education_label": data["education_label"],
+        "referral": data["referral"],
+        "interests": selected,
+    }
+
+    async with _write_lock:
+        with open(DATA_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    _user_cache[str(user.id)] = record
+    _pending_profile.pop(user.id, None)
+    logger.info("پروفایلِ کاربر %s ذخیره شد.", user.id)
+
+    jalali_now = format_jalali_datetime(datetime.utcnow())
+    card = build_profile_card(user, record, jalali_now)
+    await callback.message.edit_text(card, reply_markup=profile_result_keyboard())
 
 # ---------- رویداد تغییر وضعیت عضو ----------
 @dp.chat_member()
@@ -2022,13 +1875,67 @@ async def handle_generic_member_message(message: Message):
 class ContactAdminStates(StatesGroup):
     waiting_for_message = State()
 
+async def show_text_panel(callback: CallbackQuery, text: str, keyboard: InlineKeyboardMarkup) -> None:
+    """
+    نمایشِ یک پیامِ متنیِ پنل، چه پیامِ فعلی متنی باشد و چه عکس (مثلاً از داخلِ اسلایدهای VIP).
+    این تابع مانعِ خطای «ادیتِ پیامِ عکس‌دار به‌صورتِ متنی» می‌شود.
+    """
+    msg = callback.message
+    if getattr(msg, "photo", None):
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await bot.send_message(chat_id=msg.chat.id, text=text, reply_markup=keyboard)
+        return
+    try:
+        await msg.edit_text(text, reply_markup=keyboard)
+    except Exception:
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        await bot.send_message(chat_id=msg.chat.id, text=text, reply_markup=keyboard)
+
+async def show_vip_page(callback: CallbackQuery, caption: str, keyboard: InlineKeyboardMarkup, image_id: str | None) -> None:
+    """
+    نمایشِ یک اسلایدِ VIP، مستقل از این‌که پیامِ فعلی متنی باشد یا عکس‌دار.
+    """
+    msg = callback.message
+    has_photo = bool(getattr(msg, "photo", None))
+    try:
+        if image_id and has_photo:
+            await msg.edit_media(
+                media=InputMediaPhoto(media=image_id, caption=caption, show_caption_above_media=True),
+                reply_markup=keyboard,
+            )
+            return
+        if not image_id and not has_photo:
+            await msg.edit_text(caption, reply_markup=keyboard)
+            return
+    except Exception:
+        pass
+    # انتقال بینِ نوعِ پیام (متن↔عکس) — پیامِ قبلی حذف و پیامِ تازه ارسال می‌شود
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+    if image_id:
+        await bot.send_photo(
+            chat_id=msg.chat.id, photo=image_id, caption=caption,
+            show_caption_above_media=True, reply_markup=keyboard,
+        )
+    else:
+        await bot.send_message(chat_id=msg.chat.id, text=caption, reply_markup=keyboard)
+
 @dp.callback_query(F.data == "menu:back")
 async def cb_menu_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
+    await show_text_panel(
+        callback,
         "🏛 <b>به رواق خوش آمدید</b>\n\n"
         "از پنل زیر یکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=user_panel_keyboard()
+        user_panel_keyboard(),
     )
     await callback.answer()
 
@@ -2046,11 +1953,32 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     if key in ["close", "back"]:
         return
 
-    if key == "rules":
-        rules_text = RULES_FALLBACK_TEXT
-        if GROUP_RULES_URL:
-            rules_text += f"\n\n🔗 متنِ کامل: {GROUP_RULES_URL}"
-        await callback.message.edit_text(rules_text, reply_markup=user_panel_keyboard())
+    if key == "profile":
+        user_id = callback.from_user.id
+        record = _user_cache.get(str(user_id))
+        if record:
+            interests_text = '، '.join(record.get('interests', []))
+            text = (
+                "🥇 <b>پروفایلِ من — کاربرِ طلایی</b>\n\n"
+                f"🎓 {record.get('education_label', '')}\n"
+                f"⭐️ علایق: {interests_text}\n\n"
+                "می‌توانید هر زمان اطلاعاتِ خود را ویرایش کنید."
+            )
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✏️ ویرایشِ اطلاعات", callback_data="profile:edit", style="primary")],
+                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
+            ])
+        else:
+            text = (
+                "👤 <b>پروفایلِ من</b>\n\n"
+                "هنوز پروفایلِ شما تکمیل نشده است.\n"
+                "با پاسخ به سه سوالِ کوتاه، به «🥇 کاربرِ طلایی» رواق ارتقا پیدا کنید."
+            )
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🚀 شروعِ تکمیلِ پروفایل", callback_data="profile:start", style="success")],
+                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
+            ])
+        await show_text_panel(callback, text, keyboard)
         await callback.answer()
         return
 
@@ -2065,13 +1993,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             await callback.answer("گروه VIP هنوز راه‌اندازی نشده است.", show_alert=True)
             return
         caption, keyboard, image_id = await render_vip_page(0)
-        if image_id:
-            await callback.message.edit_media(
-                media=InputMediaPhoto(media=image_id, caption=caption, show_caption_above_media=True),
-                reply_markup=keyboard,
-            )
-        else:
-            await callback.message.edit_text(caption, reply_markup=keyboard)
+        await show_vip_page(callback, caption, keyboard, image_id)
         await callback.answer()
         return
 
@@ -3020,33 +2942,36 @@ async def render_vip_page(index: int):
             InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")]]),
             None
         )
-    index = index % len(categories)
+    total = len(categories)
+    index = max(0, min(index, total - 1))
     cat = categories[index]
-    
+
     desc_lines = cat.get('description', '').split('\n')
     desc_text = '\n'.join([html_escape(line) for line in desc_lines])
-    
+
     caption = (
         f"🌟 <b>گروه VIP</b>\n"
-        f"({to_persian_num(index + 1)}/{to_persian_num(len(categories))})\n\n"
+        f"({to_persian_num(index + 1)}/{to_persian_num(total)})\n\n"
         f"📦 <b>{html_escape(cat['name'])}</b>\n\n"
-        f"{desc_text}\n"
+        f"{desc_text}\n\n"
+        "💎 با خریدِ اشتراک، به تمامِ محتوای گروهِ VIP یک‌جا دسترسی پیدا می‌کنید."
     )
-    
+
     rows = []
     nav_row = []
-    if len(categories) > 1:
-        prev_index = (index - 1) % len(categories)
-        next_index = (index + 1) % len(categories)
-        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"vipnav:{prev_index}", style="primary"))
-        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"vipnav:{next_index}", style="primary"))
+    # اسلایدِ اول فقط «بعدی» و اسلایدِ آخر فقط «قبلی» دارد؛ در میانه هر دو دکمه نمایش داده می‌شود.
+    if total > 1:
+        if index > 0:
+            nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"vipnav:{index - 1}", style="primary"))
+        if index < total - 1:
+            nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"vipnav:{index + 1}", style="primary"))
     if nav_row:
         rows.append(nav_row)
-    
+
     rows.append([InlineKeyboardButton(text="💎 خرید اشتراک کامل", callback_data="vip:buy_subscription", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
-    
+
     image_file_id = cat.get("image_file_id")
     return caption, keyboard, image_file_id
 
@@ -3057,13 +2982,7 @@ async def cb_vip_open(callback: CallbackQuery, state: FSMContext):
         await callback.answer("گروه VIP هنوز راه‌اندازی نشده است.", show_alert=True)
         return
     caption, keyboard, image_id = await render_vip_page(0)
-    if image_id:
-        await callback.message.edit_media(
-            media=InputMediaPhoto(media=image_id, caption=caption, show_caption_above_media=True),
-            reply_markup=keyboard,
-        )
-    else:
-        await callback.message.edit_text(caption, reply_markup=keyboard)
+    await show_vip_page(callback, caption, keyboard, image_id)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("vipnav:"))
@@ -3073,13 +2992,7 @@ async def cb_vip_nav(callback: CallbackQuery):
     except ValueError:
         index = 0
     caption, keyboard, image_id = await render_vip_page(index)
-    if image_id:
-        await callback.message.edit_media(
-            media=InputMediaPhoto(media=image_id, caption=caption, show_caption_above_media=True),
-            reply_markup=keyboard,
-        )
-    else:
-        await callback.message.edit_text(caption, reply_markup=keyboard)
+    await show_vip_page(callback, caption, keyboard, image_id)
     await callback.answer()
 
 # ---------- انتخاب مدت اشتراک ----------
@@ -3483,11 +3396,11 @@ async def build_vip_settings_text() -> str:
 def vip_settings_keyboard() -> InlineKeyboardMarkup:
     categories = load_vip_categories()
     rows = []
-    for cat in categories:
-        rows.append([
-            InlineKeyboardButton(text=f"✏️ {cat['name']}", callback_data=f"vipset:edit:{cat['id']}", style="primary"),
-            InlineKeyboardButton(text="🗑", callback_data=f"vipset:delete:{cat['id']}", style="danger"),
-        ])
+    for i in range(0, len(categories), 2):
+        row = [InlineKeyboardButton(text=f"✏️ {categories[i]['name']}", callback_data=f"vipset:edit:{categories[i]['id']}", style="primary")]
+        if i + 1 < len(categories):
+            row.append(InlineKeyboardButton(text=f"✏️ {categories[i+1]['name']}", callback_data=f"vipset:edit:{categories[i+1]['id']}", style="primary"))
+        rows.append(row)
     rows.append([InlineKeyboardButton(text="➕ افزودنِ دسته‌بندیِ جدید", callback_data="vipset:add", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -3499,6 +3412,7 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
             [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}", style="primary")],
             [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}", style="danger")],
+            [InlineKeyboardButton(text="🗑 حذفِ این دسته‌بندی", callback_data=f"vipset:delete:{cat_id}", style="danger")],
             [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")],
         ]
     )
@@ -3931,16 +3845,14 @@ async def global_error_handler(update: Update, exception: Exception):
             error_summary = f"{exception.__class__.__name__}: {str(exception)[:100]}"
 
             context_bits = []
-            if user_id in _pending_captcha:
-                context_bits.append("در حالِ پاسخ‌دادن به تستِ ضدربات")
-            form_data = _pending_form.get(user_id)
-            if form_data is not None:
-                if not form_data.get("education"):
-                    context_bits.append("در فرم — سوال ۱ از ۳ (سطحِ تحصیلی)")
-                elif not form_data.get("referral"):
-                    context_bits.append("در فرم — سوال ۲ از ۳ (نحوه‌ی آشنایی)")
+            profile_data = _pending_profile.get(user_id)
+            if profile_data is not None:
+                if not profile_data.get("education"):
+                    context_bits.append("در پروفایل — سوال ۱ از ۳ (سطحِ تحصیلی)")
+                elif not profile_data.get("referral"):
+                    context_bits.append("در پروفایل — سوال ۲ از ۳ (نحوه‌ی آشنایی)")
                 else:
-                    context_bits.append("در فرم — سوال ۳ از ۳ (علایق)")
+                    context_bits.append("در پروفایل — سوال ۳ از ۳ (علایق)")
             try:
                 fsm_context = FSMContext(storage=storage, key=StorageKey(bot_id=bot.id, chat_id=chat_id or user_id, user_id=user_id))
                 current_fsm_state = await fsm_context.get_state()
