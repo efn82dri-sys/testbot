@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import uuid
+import zipfile
 from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
@@ -156,6 +157,74 @@ try:
     NOTIFY_CHAT_ID_INT = int(NOTIFY_CHAT_ID) if NOTIFY_CHAT_ID else None
 except ValueError:
     NOTIFY_CHAT_ID_INT = None
+
+# ---------- تنظیمات بکاپ (چون فایل‌سیستم Render ناپایدار است) ----------
+BACKUP_CHAT_ID_RAW = os.environ.get("BACKUP_CHAT_ID", "").strip()
+try:
+    BACKUP_CHAT_ID: int | None = int(BACKUP_CHAT_ID_RAW) if BACKUP_CHAT_ID_RAW else NOTIFY_CHAT_ID_INT
+except ValueError:
+    BACKUP_CHAT_ID = NOTIFY_CHAT_ID_INT
+DATA_DIR = DATA_FILE.parent
+
+# ==============================================================
+#  بکاپِ دستیِ پوشه‌ی data روی تلگرام
+#  (Render فایل‌سیستم ناپایدار دارد؛ هر ری‌استارت/دیپلوی فایل‌های محلی را
+#   پاک می‌کند، پس با دکمه‌ی «📥 گرفتن بکاپ» در پنل ادمین یک نسخه‌ی پشتیبان
+#   در یک پیامِ پین‌شده نگه می‌داریم و در استارتاپ خودکار بازیابی می‌شود)
+# ==============================================================
+
+def _zip_data_dir() -> BytesIO:
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in DATA_DIR.rglob("*"):
+            if file_path.is_file():
+                zf.write(file_path, arcname=str(file_path.relative_to(DATA_DIR)))
+    buf.seek(0)
+    return buf
+
+async def backup_data_dir_to_telegram() -> None:
+    if not BACKUP_CHAT_ID:
+        return
+    if not DATA_DIR.exists() or not any(f.is_file() for f in DATA_DIR.rglob("*")):
+        return
+    try:
+        buf = _zip_data_dir()
+        filename = f"ravaq_backup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
+        message = await bot.send_document(
+            chat_id=BACKUP_CHAT_ID,
+            document=BufferedInputFile(buf.read(), filename=filename),
+            caption=f"🗄 بکاپ خودکار دیتا — {format_jalali_datetime(datetime.utcnow())}",
+            disable_notification=True,
+        )
+        try:
+            await bot.unpin_all_chat_messages(BACKUP_CHAT_ID)
+        except Exception:
+            pass
+        await bot.pin_chat_message(BACKUP_CHAT_ID, message.message_id, disable_notification=True)
+        logger.info("بکاپ خودکار دیتا با موفقیت ارسال و پین شد.")
+    except Exception as e:
+        logger.error(f"ارسال بکاپ خودکار ناموفق بود: {e}")
+
+async def restore_data_dir_from_telegram() -> None:
+    if not BACKUP_CHAT_ID:
+        logger.info("BACKUP_CHAT_ID تنظیم نشده — بازیابیِ خودکار از تلگرام غیرفعال است.")
+        return
+    if DATA_DIR.exists() and any(f.is_file() for f in DATA_DIR.rglob("*")):
+        # داده‌ی محلی از قبل موجود است، چیزی را بازنویسی نمی‌کنیم
+        return
+    try:
+        chat = await bot.get_chat(BACKUP_CHAT_ID)
+        pinned = chat.pinned_message
+        if not pinned or not pinned.document:
+            logger.info("هیچ بکاپِ پین‌شده‌ای در چتِ بکاپ پیدا نشد — با دیتای خالی شروع می‌کنیم.")
+            return
+        file_bytes = await bot.download(pinned.document.file_id)
+        DATA_DIR.mkdir(exist_ok=True)
+        with zipfile.ZipFile(file_bytes) as zf:
+            zf.extractall(DATA_DIR)
+        logger.info("دیتا با موفقیت از بکاپِ تلگرام بازیابی شد.")
+    except Exception as e:
+        logger.error(f"بازیابیِ بکاپ از تلگرام ناموفق بود: {e}")
 
 LEAVE_REASONS: list[tuple[str, str]] = [
     (
@@ -322,7 +391,9 @@ def cache_users():
             except (json.JSONDecodeError, KeyError):
                 continue
 
-cache_users()
+# نکته: cache_users() دیگر اینجا (زمان import) صدا زده نمی‌شود؛
+# چون باید بعد از بازیابیِ احتمالیِ بکاپ از تلگرام در on_startup اجرا شود
+# (وگرنه با فایل‌سیستم خالیِ تازه‌ری‌استارت‌شده کش خالی می‌ماند).
 
 # ==============================================================
 #  توابع کمکی داده‌های VIP
@@ -779,6 +850,9 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="💎 تنظیمات VIP", callback_data="admin:vip_settings", style="success"),
                 InlineKeyboardButton(text="💰 تنظیم قیمت اشتراک", callback_data="admin:vip_global_settings", style="primary"),
+            ],
+            [
+                InlineKeyboardButton(text="📥 گرفتن بکاپ", callback_data="admin:manual_backup", style="success"),
             ],
             [
                 InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
@@ -1434,6 +1508,14 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             await callback.message.answer("هنوز هیچ کاربری شماره‌اش را تأیید نکرده است.")
             return
         await callback.message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
+        return
+
+    if action == "manual_backup":
+        await callback.answer("⏳ در حال گرفتن بکاپ...")
+        await backup_data_dir_to_telegram()
+        await callback.message.answer(
+            f"✅ بکاپ با موفقیت گرفته و پین شد.\n🕐 {format_jalali_datetime(datetime.utcnow())}"
+        )
         return
 
     if action == "broadcast":
@@ -2949,7 +3031,8 @@ async def render_vip_page(index: int):
         f"({to_persian_num(index + 1)}/{to_persian_num(total)})\n\n"
         f"📦 <b>{html_escape(cat['name'])}</b>\n\n"
         f"{desc_text}\n\n"
-        "💎 با خریدِ اشتراک، به تمامِ محتوای گروهِ VIP یک‌جا دسترسی پیدا می‌کنید."
+        "💎 با خریدِ اشتراک، به تمامِ محتوای گروهِ VIP یک‌جا دسترسی پیدا می‌کنید.\n"
+        "⠀"
     )
 
     rows = []
@@ -2963,12 +3046,43 @@ async def render_vip_page(index: int):
     if nav_row:
         rows.append(nav_row)
 
+    if total > 1:
+        rows.append([InlineKeyboardButton(text="📋 فهرست کامل دسته‌بندی‌ها", callback_data="vip:list", style="primary")])
+
     rows.append([InlineKeyboardButton(text="💎 خرید اشتراک کامل", callback_data="vip:buy_subscription", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
     image_file_id = cat.get("image_file_id")
     return caption, keyboard, image_file_id
+
+async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
+    categories = load_vip_categories()
+    intro = (
+        "🎓 <b>گروه VIP رواق</b>\n\n"
+        "یک جهشِ واقعی در مسیرِ معماری و عمران: هر نرم‌افزار با تاپیکِ اختصاصیِ خودش، "
+        "آموزش‌های ویدئوییِ کامل از صفر تا حرفه‌ای، آرشیوِ به‌روزِ پلاگین‌ها و متریال‌های نایاب، "
+        "کتابخانه‌ی ضوابط و بانکِ پروژه، و آموزشِ اصولیِ هوش مصنوعی در معماری — "
+        "هر چیزی که برای پیشرفت لازم دارید، یک‌جا.\n\n"
+        "👇 یکی از دسته‌بندی‌های زیر رو انتخاب کنید:"
+    )
+    rows = []
+    row = []
+    for i, cat in enumerate(categories):
+        row.append(InlineKeyboardButton(text=cat["name"], callback_data=f"vipnav:{i}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
+    return intro, InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data == "vip:list")
+async def cb_vip_list(callback: CallbackQuery):
+    text, keyboard = await render_vip_list_page()
+    await show_text_panel(callback, text, keyboard)
+    await callback.answer()
 
 @dp.callback_query(F.data == "vip:open")
 async def cb_vip_open(callback: CallbackQuery, state: FSMContext):
@@ -3020,11 +3134,9 @@ async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
         
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary"),
-                    InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary"),
-                    InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary"),
-                ],
+                [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
+                [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
+                [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
                 [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
             ]
         )
@@ -3403,16 +3515,25 @@ def vip_settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
-            [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
-            [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}", style="primary")],
-            [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}", style="danger")],
-            [InlineKeyboardButton(text="🗑 حذفِ این دسته‌بندی", callback_data=f"vipset:delete:{cat_id}", style="danger")],
-            [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")],
-        ]
-    )
+    categories = load_vip_categories()
+    index = next((i for i, c in enumerate(categories) if c["id"] == cat_id), None)
+    reorder_row = []
+    if index is not None:
+        if index > 0:
+            reorder_row.append(InlineKeyboardButton(text="⬆️ جابه‌جایی به بالا", callback_data=f"vipset:moveup:{cat_id}", style="primary"))
+        if index < len(categories) - 1:
+            reorder_row.append(InlineKeyboardButton(text="⬇️ جابه‌جایی به پایین", callback_data=f"vipset:movedown:{cat_id}", style="primary"))
+    rows = [
+        [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
+        [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
+        [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}", style="primary")],
+        [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}", style="danger")],
+    ]
+    if reorder_row:
+        rows.append(reorder_row)
+    rows.append([InlineKeyboardButton(text="🗑 حذفِ این دسته‌بندی", callback_data=f"vipset:delete:{cat_id}", style="danger")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 @dp.callback_query(F.data == "vipset:add")
 async def cb_vipset_add(callback: CallbackQuery, state: FSMContext):
@@ -3482,6 +3603,38 @@ async def cb_vipset_edit(callback: CallbackQuery, state: FSMContext):
     )
     await callback.message.edit_text(text, reply_markup=vip_category_edit_keyboard(cat_id))
     await callback.answer()
+
+@dp.callback_query(F.data.startswith("vipset:moveup:"))
+async def cb_vipset_moveup(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    categories = load_vip_categories()
+    index = next((i for i, c in enumerate(categories) if c["id"] == cat_id), None)
+    if index is None or index == 0:
+        await callback.answer("امکانِ جابه‌جایی نیست.", show_alert=True)
+        return
+    categories[index - 1], categories[index] = categories[index], categories[index - 1]
+    await save_vip_categories(categories)
+    await callback.answer("✅ جابه‌جا شد.")
+    await callback.message.edit_reply_markup(reply_markup=vip_category_edit_keyboard(cat_id))
+
+@dp.callback_query(F.data.startswith("vipset:movedown:"))
+async def cb_vipset_movedown(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    cat_id = callback.data.split(":", 2)[2]
+    categories = load_vip_categories()
+    index = next((i for i, c in enumerate(categories) if c["id"] == cat_id), None)
+    if index is None or index == len(categories) - 1:
+        await callback.answer("امکانِ جابه‌جایی نیست.", show_alert=True)
+        return
+    categories[index + 1], categories[index] = categories[index], categories[index + 1]
+    await save_vip_categories(categories)
+    await callback.answer("✅ جابه‌جا شد.")
+    await callback.message.edit_reply_markup(reply_markup=vip_category_edit_keyboard(cat_id))
 
 @dp.callback_query(F.data.startswith("vipset:field:"))
 async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
@@ -3876,6 +4029,9 @@ async def global_error_handler(update: Update, exception: Exception):
 
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
+    await restore_data_dir_from_telegram()
+    cache_users()
+
     await bot.set_webhook(
         WEBHOOK_URL,
         drop_pending_updates=True,
