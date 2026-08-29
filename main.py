@@ -3020,9 +3020,11 @@ async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
         
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
-                [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
-                [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
+                [
+                    InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary"),
+                    InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary"),
+                    InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary"),
+                ],
                 [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
             ]
         )
