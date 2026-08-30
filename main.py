@@ -1011,27 +1011,22 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         toggle_label = "🟢 روشن کردن ربات"
         toggle_style = "success"
 
+    # صفحه‌ی اصلیِ پنل فقط دسته‌بندی‌هاست، نه همه‌ی ۱۲ اکشن با هم؛ هر دسته
+    # زیرمنوی خودش را دارد (همان الگویی که «مدیریت محتوا» و «تنظیمات VIP»
+    # قبلاً داشتند) تا صفحه سبک بماند و اکشن‌های حساس (حذف کاربر، بازیابیِ
+    # بکاپ) از کارهای روتین جدا و در جای خودشان دیده شوند.
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail", style="primary"),
-                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export", style="primary"),
+                InlineKeyboardButton(text="📊 گزارش‌ها", callback_data="admin:cat_reports", style="primary"),
+                InlineKeyboardButton(text="📨 پیام‌رسانی", callback_data="admin:cat_messaging", style="primary"),
             ],
             [
-                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast", style="success"),
-                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg", style="primary"),
+                InlineKeyboardButton(text="👥 کاربران و محتوا", callback_data="admin:cat_users", style="primary"),
+                InlineKeyboardButton(text="💎 VIP", callback_data="admin:cat_vip", style="success"),
             ],
             [
-                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary"),
-                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger"),
-            ],
-            [
-                InlineKeyboardButton(text="💎 تنظیمات VIP", callback_data="admin:vip_settings", style="success"),
-                InlineKeyboardButton(text="💰 تنظیم قیمت اشتراک", callback_data="admin:vip_global_settings", style="primary"),
-            ],
-            [
-                InlineKeyboardButton(text="📥 گرفتن بکاپ", callback_data="admin:manual_backup", style="success"),
-                InlineKeyboardButton(text="🔁 بازیابی از بکاپ", callback_data="admin:restore_backup", style="danger"),
+                InlineKeyboardButton(text="⚙️ بکاپ و سیستم", callback_data="admin:cat_backup", style="primary"),
             ],
             [
                 InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
@@ -1039,6 +1034,61 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="❌ بستن", callback_data="admin:close", style="danger"),
             ],
+        ]
+    )
+
+def admin_reports_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail", style="primary"),
+                InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export", style="primary"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+        ]
+    )
+
+def admin_messaging_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast", style="success"),
+                InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg", style="primary"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+        ]
+    )
+
+def admin_users_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary"),
+                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+        ]
+    )
+
+def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💎 تنظیمات VIP", callback_data="admin:vip_settings", style="success"),
+                InlineKeyboardButton(text="💰 تنظیم قیمت اشتراک", callback_data="admin:vip_global_settings", style="primary"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+        ]
+    )
+
+def admin_backup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📥 گرفتن بکاپ", callback_data="admin:manual_backup", style="success"),
+                InlineKeyboardButton(text="🔁 بازیابی از بکاپ", callback_data="admin:restore_backup", style="danger"),
+            ],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
 
@@ -1665,6 +1715,46 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
+    if action == "cat_reports":
+        await callback.answer()
+        await callback.message.edit_text(
+            "📊 <b>گزارش‌ها</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_reports_keyboard(),
+        )
+        return
+
+    if action == "cat_messaging":
+        await callback.answer()
+        await callback.message.edit_text(
+            "📨 <b>پیام‌رسانی</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_messaging_keyboard(),
+        )
+        return
+
+    if action == "cat_users":
+        await callback.answer()
+        await callback.message.edit_text(
+            "👥 <b>کاربران و محتوا</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_users_keyboard(),
+        )
+        return
+
+    if action == "cat_vip":
+        await callback.answer()
+        await callback.message.edit_text(
+            "💎 <b>مدیریت VIP</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_vip_category_keyboard(),
+        )
+        return
+
+    if action == "cat_backup":
+        await callback.answer()
+        await callback.message.edit_text(
+            "⚙️ <b>بکاپ و سیستم</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_backup_keyboard(),
+        )
+        return
+
     if action == "close":
         await state.clear()
         try:
@@ -1676,7 +1766,10 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "stats_detail":
         await callback.answer()
-        await callback.message.edit_text(await build_stats_detail_text(), reply_markup=admin_back_keyboard())
+        reports_back_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_reports", style="primary")]]
+        )
+        await callback.message.edit_text(await build_stats_detail_text(), reply_markup=reports_back_keyboard)
         return
 
     if action == "export":
@@ -1703,7 +1796,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ بله، بازیابی شود", callback_data="admin:restore_backup_confirm", style="danger")],
-                [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:menu", style="primary")],
+                [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:cat_backup", style="primary")],
             ]
         )
         await callback.message.answer(
