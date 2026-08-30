@@ -1923,7 +1923,7 @@ async def handle_broadcast(message: Message, command: CommandObject):
         )
         return
 
-    user_ids = collect_form_user_ids()
+    user_ids = load_funnel_users()
     if not user_ids:
         await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
         return
@@ -2070,13 +2070,14 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         return
 
     if action == "broadcast":
-        await state.set_state(BroadcastStates.choosing_audience)
+        await state.set_state(BroadcastStates.waiting_for_text)
+        audience_count = len(load_funnel_users())
         await callback.message.edit_text(
-            "📢 <b>ارسال پیام همگانی</b>\n\n"
-            "ابتدا مخاطبان را انتخاب کنید:\n"
-            "— همه‌ی کاربرانی که فرم را تکمیل کرده‌اند\n"
-            "— یا فقط افرادی که علاقه‌ی خاصی دارند (بر اساس تگ‌های ثبت‌شده در فرم)",
-            reply_markup=broadcast_audience_keyboard(),
+            f"📢 <b>ارسال پیام همگانی</b>\n\n"
+            f"این پیام برای همه‌ی کسانی که ربات را استارت زده‌اند ارسال می‌شود ({to_persian_num(audience_count)} نفر).\n\n"
+            "حالا می‌توانید یک پیام متنی، عکس، سند، ویدئو یا هر نوع محتوای دیگری را بفرستید.\n\n"
+            "برای انصراف، دستور /cancel را بفرستید.",
+            reply_markup=admin_back_keyboard(),
         )
         await callback.answer()
         return
@@ -2287,50 +2288,8 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
 # ---------- هندلرهای اختصاصی برای FSM ----------
 class BroadcastStates(StatesGroup):
-    choosing_audience = State()
     waiting_for_text = State()
     confirming = State()
-
-def broadcast_audience_keyboard() -> InlineKeyboardMarkup:
-    buttons = [[InlineKeyboardButton(text="🌐 همه‌ی کسانی که فرم را تکمیل کرده‌اند", callback_data="badv:all", style="success")]]
-    for i in range(0, len(INTERESTS), 2):
-        row = [InlineKeyboardButton(text=f"🏷 {INTERESTS[i]}", callback_data=f"badv:{i}", style="primary")]
-        if i + 1 < len(INTERESTS):
-            row.append(InlineKeyboardButton(text=f"🏷 {INTERESTS[i+1]}", callback_data=f"badv:{i+1}", style="primary"))
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="danger")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-@dp.callback_query(F.data.startswith("badv:"), BroadcastStates.choosing_audience)
-async def cb_broadcast_choose_audience(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer()
-        return
-
-    raw = callback.data.split(":", 1)[1]
-    if raw == "all":
-        await state.update_data(broadcast_audience=None, broadcast_audience_label="همه‌ی کسانی که فرم را تکمیل کرده‌اند")
-        audience_count = len(collect_form_user_ids())
-        label = "🌐 همه‌ی کسانی که فرم را تکمیل کرده‌اند"
-    else:
-        try:
-            idx = int(raw)
-            interest = INTERESTS[idx]
-        except (ValueError, IndexError):
-            await callback.answer()
-            return
-        await state.update_data(broadcast_audience=interest, broadcast_audience_label=interest)
-        audience_count = len(collect_form_user_ids_by_interest(interest))
-        label = f"🏷 {interest}"
-
-    await state.set_state(BroadcastStates.waiting_for_text)
-    await callback.message.edit_text(
-        f"مخاطب انتخاب‌شده: <b>{label}</b> ({to_persian_num(audience_count)} نفر)\n\n"
-        "حالا می‌توانید یک پیام متنی، عکس، سند، ویدئو یا هر نوع محتوای دیگری را بفرستید.\n\n"
-        "برای انصراف، دستور /cancel را بفرستید.",
-        reply_markup=admin_back_keyboard(),
-    )
-    await callback.answer()
 
 @dp.message(BroadcastStates.waiting_for_text)
 async def handle_broadcast_text_input(message: Message, state: FSMContext):
@@ -2359,13 +2318,7 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     else:
         preview_text += "📎 (یک فایل یا رسانه)"
 
-    existing_data = await state.get_data()
-    audience_interest = existing_data.get("broadcast_audience")
-    audience_label = existing_data.get("broadcast_audience_label", "همه‌ی کسانی که فرم را تکمیل کرده‌اند")
-    user_ids = (
-        collect_form_user_ids_by_interest(audience_interest)
-        if audience_interest else collect_form_user_ids()
-    )
+    user_ids = load_funnel_users()
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="✅ ارسال شود", callback_data="admin:broadcast_confirm", style="success")],
@@ -2373,9 +2326,8 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
         ]
     )
     await message.answer(
-        f"مخاطب: <b>{audience_label}</b>\n\n"
         f"{preview_text}\n\n"
-        f"این پیام برای <b>{to_persian_num(len(user_ids))}</b> نفر ارسال می‌شود. مطمئنید؟",
+        f"این پیام برای <b>{to_persian_num(len(user_ids))}</b> نفر (همه‌ی کسانی که ربات را استارت زده‌اند) ارسال می‌شود. مطمئنید؟",
         reply_markup=confirm_keyboard,
     )
 
@@ -2388,7 +2340,6 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     chat_id = data.get("broadcast_chat_id")
     message_id = data.get("broadcast_message_id")
-    audience_interest = data.get("broadcast_audience")
     await state.clear()
 
     if not chat_id or not message_id:
@@ -2400,10 +2351,7 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.answer("⏳ در حال ارسال...")
-    user_ids = (
-        collect_form_user_ids_by_interest(audience_interest)
-        if audience_interest else collect_form_user_ids()
-    )
+    user_ids = load_funnel_users()
     sent, failed = 0, 0
 
     for uid in user_ids:
