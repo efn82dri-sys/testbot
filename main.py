@@ -182,49 +182,138 @@ def _zip_data_dir() -> BytesIO:
     buf.seek(0)
     return buf
 
-async def backup_data_dir_to_telegram() -> None:
+async def _notify_backup_admin(text: str) -> None:
+    """گزارشِ وضعیتِ بکاپ/بازیابی را برای ادمین ارسال می‌کند تا خطاها دیگر بی‌صدا گم نشوند."""
+    if not NOTIFY_CHAT_ID_INT:
+        return
+    try:
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, text=text, disable_notification=True)
+    except Exception as e:
+        logger.error(f"ارسال گزارشِ بکاپ به ادمین ممکن نشد: {e}")
+
+async def backup_data_dir_to_telegram() -> tuple[bool, str]:
+    """بکاپ می‌گیرد و روی تلگرام پین می‌کند. خروجی: (موفقیت, پیامِ توضیحی)."""
     if not BACKUP_CHAT_ID:
-        return
+        msg = "BACKUP_CHAT_ID تنظیم نشده — گرفتنِ بکاپ ممکن نیست."
+        logger.warning(msg)
+        return False, msg
     if not DATA_DIR.exists() or not any(f.is_file() for f in DATA_DIR.rglob("*")):
-        return
+        msg = "پوشه‌ی data خالی است — چیزی برای بکاپ‌گیری وجود ندارد."
+        logger.info(msg)
+        return False, msg
     try:
         buf = _zip_data_dir()
         filename = f"ravaq_backup_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.zip"
         message = await bot.send_document(
             chat_id=BACKUP_CHAT_ID,
             document=BufferedInputFile(buf.read(), filename=filename),
-            caption=f"🗄 بکاپ خودکار دیتا — {format_jalali_datetime(datetime.utcnow())}",
+            caption=f"🗄 بکاپ دیتا — {format_jalali_datetime(datetime.utcnow())}",
             disable_notification=True,
         )
         try:
             await bot.unpin_all_chat_messages(BACKUP_CHAT_ID)
-        except Exception:
-            pass
+        except Exception as e:
+            # اگر آنپین ناموفق باشد، خودِ pin_chat_message در ادامه پیامِ جدید را پین می‌کند؛
+            # فقط لاگ می‌کنیم که بی‌صدا گم نشود.
+            logger.warning(f"آنپین کردنِ بکاپِ قبلی ناموفق بود (ادامه می‌دهیم): {e}")
         await bot.pin_chat_message(BACKUP_CHAT_ID, message.message_id, disable_notification=True)
-        logger.info("بکاپ خودکار دیتا با موفقیت ارسال و پین شد.")
+        logger.info("بکاپ دیتا با موفقیت ارسال و پین شد.")
+        return True, "بکاپ با موفقیت گرفته و پین شد."
     except Exception as e:
-        logger.error(f"ارسال بکاپ خودکار ناموفق بود: {e}")
+        msg = f"ارسال بکاپ ناموفق بود: {e}"
+        logger.error(msg, exc_info=True)
+        return False, msg
 
-async def restore_data_dir_from_telegram() -> None:
+def _clear_data_dir_files() -> None:
+    """همه‌ی فایل‌های محلیِ data را پاک می‌کند تا بازیابی از بکاپ واقعاً «جایگزین» شود،
+    نه اینکه با فایل‌های قدیمی/ناقصِ باقی‌مانده قاطی شود."""
+    if not DATA_DIR.exists():
+        return
+    for file_path in DATA_DIR.rglob("*"):
+        if file_path.is_file():
+            try:
+                file_path.unlink()
+            except Exception as e:
+                logger.warning(f"حذفِ فایلِ محلیِ {file_path} قبل از بازیابی ناموفق بود: {e}")
+
+async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str]:
+    """
+    دیتا را از بکاپِ پین‌شده در تلگرام بازیابی می‌کند.
+    خروجی: (موفقیت, پیامِ توضیحی/دلیلِ شکست) — تا دیگر شکست‌ها بی‌صدا گم نشوند.
+
+    توجه: چون فایل‌سیستمِ Render ناپایدار است، منبعِ حقیقتِ داده همیشه بکاپِ تلگرام است؛
+    پس این تابع در صورتِ پیدا کردنِ بکاپِ معتبر، فایل‌های محلی را کامل جایگزین می‌کند
+    (نه فقط زمانی که پوشه‌ی data خالی باشد).
+    """
     if not BACKUP_CHAT_ID:
-        logger.info("BACKUP_CHAT_ID تنظیم نشده — بازیابیِ خودکار از تلگرام غیرفعال است.")
-        return
-    if DATA_DIR.exists() and any(f.is_file() for f in DATA_DIR.rglob("*")):
-        # داده‌ی محلی از قبل موجود است، چیزی را بازنویسی نمی‌کنیم
-        return
+        msg = "BACKUP_CHAT_ID تنظیم نشده — بازیابیِ خودکار از تلگرام غیرفعال است."
+        logger.info(msg)
+        return False, msg
+
+    has_local_data = DATA_DIR.exists() and any(f.is_file() for f in DATA_DIR.rglob("*"))
+    if has_local_data and not force:
+        logger.info(
+            "دیتای محلی از قبل موجود است؛ برای اطمینان همچنان تلاش می‌کنیم آخرین بکاپِ تلگرام را بخوانیم "
+            "و در صورتِ پیدا شدن، جایگزینِ دیتای محلی می‌کنیم."
+        )
+
     try:
+        logger.info("در حال گرفتنِ اطلاعاتِ چتِ بکاپ (chat_id=%s)...", BACKUP_CHAT_ID)
         chat = await bot.get_chat(BACKUP_CHAT_ID)
-        pinned = chat.pinned_message
-        if not pinned or not pinned.document:
-            logger.info("هیچ بکاپِ پین‌شده‌ای در چتِ بکاپ پیدا نشد — با دیتای خالی شروع می‌کنیم.")
-            return
+    except Exception as e:
+        msg = (
+            f"دسترسی به چتِ بکاپ (chat_id={BACKUP_CHAT_ID}) ناموفق بود: {e}\n"
+            "بررسی کنید که ربات هنوز عضوِ آن چت است و BACKUP_CHAT_ID درست است."
+        )
+        logger.error(msg, exc_info=True)
+        return False, msg
+
+    pinned = chat.pinned_message
+    if not pinned:
+        msg = "هیچ پیامِ پین‌شده‌ای در چتِ بکاپ پیدا نشد."
+        logger.info(msg)
+        return False, msg
+    if not pinned.document:
+        msg = (
+            f"پیامِ پین‌شده در چتِ بکاپ فاقدِ فایل (document) است "
+            f"(message_id={pinned.message_id}) — احتمالاً پیامِ دیگری غیر از بکاپ پین شده."
+        )
+        logger.warning(msg)
+        return False, msg
+
+    try:
+        logger.info(
+            "در حال دانلودِ فایلِ بکاپِ پین‌شده: %s (%s بایت)",
+            pinned.document.file_name, pinned.document.file_size,
+        )
         file_bytes = await bot.download(pinned.document.file_id)
+    except Exception as e:
+        msg = f"دانلودِ فایلِ بکاپ ناموفق بود: {e}"
+        logger.error(msg, exc_info=True)
+        return False, msg
+
+    try:
         DATA_DIR.mkdir(exist_ok=True)
         with zipfile.ZipFile(file_bytes) as zf:
+            bad_file = zf.testzip()
+            if bad_file:
+                raise zipfile.BadZipFile(f"فایلِ خراب در آرشیو: {bad_file}")
+            # ابتدا دیتای محلیِ فعلی را کامل پاک می‌کنیم تا محتوایِ بکاپ واقعاً
+            # جایگزینِ آن شود، نه اینکه با فایل‌های قدیمی قاطی/ادغام شود.
+            _clear_data_dir_files()
             zf.extractall(DATA_DIR)
-        logger.info("دیتا با موفقیت از بکاپِ تلگرام بازیابی شد.")
+        restored_files = [str(p.relative_to(DATA_DIR)) for p in DATA_DIR.rglob("*") if p.is_file()]
+        msg = f"دیتا با موفقیت از بکاپِ تلگرام بازیابی شد ({len(restored_files)} فایل)."
+        logger.info(msg)
+        return True, msg
+    except zipfile.BadZipFile as e:
+        msg = f"فایلِ دانلودشده یک ZIP معتبر نیست: {e}"
+        logger.error(msg, exc_info=True)
+        return False, msg
     except Exception as e:
-        logger.error(f"بازیابیِ بکاپ از تلگرام ناموفق بود: {e}")
+        msg = f"استخراجِ فایلِ بکاپ ناموفق بود: {e}"
+        logger.error(msg, exc_info=True)
+        return False, msg
 
 LEAVE_REASONS: list[tuple[str, str]] = [
     (
@@ -853,6 +942,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📥 گرفتن بکاپ", callback_data="admin:manual_backup", style="success"),
+                InlineKeyboardButton(text="🔁 بازیابی از بکاپ", callback_data="admin:restore_backup", style="danger"),
             ],
             [
                 InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
@@ -1512,9 +1602,35 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "manual_backup":
         await callback.answer("⏳ در حال گرفتن بکاپ...")
-        await backup_data_dir_to_telegram()
+        ok, backup_msg = await backup_data_dir_to_telegram()
+        icon = "✅" if ok else "❌"
         await callback.message.answer(
-            f"✅ بکاپ با موفقیت گرفته و پین شد.\n🕐 {format_jalali_datetime(datetime.utcnow())}"
+            f"{icon} {backup_msg}\n🕐 {format_jalali_datetime(datetime.utcnow())}"
+        )
+        return
+
+    if action == "restore_backup":
+        await callback.answer()
+        confirm_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ بله، بازیابی شود", callback_data="admin:restore_backup_confirm", style="danger")],
+                [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:menu", style="primary")],
+            ]
+        )
+        await callback.message.answer(
+            "⚠️ <b>بازیابیِ دستی از بکاپ</b>\n\n"
+            "این کار تمامِ دیتای محلیِ فعلی را با آخرین بکاپِ پین‌شده در تلگرام جایگزین می‌کند.\n"
+            "مطمئنی؟",
+            reply_markup=confirm_keyboard,
+        )
+        return
+
+    if action == "restore_backup_confirm":
+        await callback.answer("⏳ در حال بازیابی...")
+        ok, restore_msg = await restore_data_dir_from_telegram(force=True)
+        icon = "✅" if ok else "❌"
+        await callback.message.answer(
+            f"{icon} {restore_msg}\n🕐 {format_jalali_datetime(datetime.utcnow())}"
         )
         return
 
@@ -4029,7 +4145,9 @@ async def global_error_handler(update: Update, exception: Exception):
 
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
-    await restore_data_dir_from_telegram()
+    restored_ok, restore_msg = await restore_data_dir_from_telegram()
+    status_icon = "✅" if restored_ok else "⚠️"
+    await _notify_backup_admin(f"{status_icon} بازیابیِ خودکارِ دیتا در استارتاپ:\n{restore_msg}")
     cache_users()
 
     await bot.set_webhook(
