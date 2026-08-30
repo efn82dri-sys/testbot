@@ -25,8 +25,7 @@ from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.base import StorageKey
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.base import BaseStorage, StorageKey
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
@@ -62,6 +61,7 @@ WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
+AUTO_BACKUP_INTERVAL_SECONDS = int(os.environ.get("AUTO_BACKUP_INTERVAL_SECONDS", 15 * 60))
 
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
@@ -71,6 +71,7 @@ FUNNEL_USERS_FILE = Path(__file__).parent / "data" / "funnel_users.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
+FSM_STATE_FILE = Path(__file__).parent / "data" / "fsm_state.json"
 
 # ---------- تنظیمات گروه VIP ----------
 VIP_GROUP_CHAT_ID_RAW = os.environ.get("VIP_GROUP_CHAT_ID", "").strip()
@@ -140,7 +141,95 @@ GROUP_RULES_TEXT = (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-storage = MemoryStorage()
+# ==============================================================
+#  استوریجِ پایدارِ FSM (جایگزینِ MemoryStorage)
+#  MemoryStorage وضعیتِ گفتگو (مثلاً وسطِ پرکردنِ پروفایل یا وسطِ
+#  آپلودِ رسیدِ پرداختِ VIP) را فقط توی RAM نگه می‌داشت؛ با هر
+#  ری‌استارت/دیپلویِ Render این وضعیت کامل از بین می‌رفت و کاربر
+#  وسطِ کار جواب بی‌ربط می‌گرفت یا گیر می‌کرد. اینجا همان وضعیت را
+#  روی دیسک (داخل DATA_DIR) نگه می‌داریم تا:
+#   ۱) با ری‌استارتِ معمولی از بین نرود (نوشتنِ فوری و اتمیک روی هر تغییر)
+#   ۲) داخلِ همان مکانیزمِ بکاپ/بازیابیِ تلگرام هم بیفتد (چون داخلِ
+#      DATA_DIR است) و با بکاپِ دوره‌ای که پایین‌تر اضافه شده، حتی جلوی
+#      ری‌استارت‌های سنگین/دیپلوی هم تا حدِ زیادی محافظت شود.
+# ==============================================================
+
+class JSONFSMStorage(BaseStorage):
+    def __init__(self, path: Path):
+        self._path = path
+        self._data: dict[str, dict] = {}
+        self._lock = asyncio.Lock()
+        self._load()
+
+    def _load(self) -> None:
+        if self._path.exists():
+            try:
+                self._data = json.loads(self._path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"خواندنِ فایلِ وضعیتِ FSM ناموفق بود، با حالتِ خالی شروع می‌کنیم: {e}")
+                self._data = {}
+
+    def _persist(self) -> None:
+        try:
+            self._path.parent.mkdir(exist_ok=True)
+            tmp_path = self._path.with_suffix(".tmp")
+            tmp_path.write_text(json.dumps(self._data, ensure_ascii=False), encoding="utf-8")
+            tmp_path.replace(self._path)  # جایگزینیِ اتمیک، برای جلوگیری از فایلِ نصفه‌نوشته
+        except OSError as e:
+            logger.error(f"ذخیره‌ی وضعیتِ FSM روی دیسک ناموفق بود: {e}")
+
+    @staticmethod
+    def _key_str(key: StorageKey) -> str:
+        parts = [str(key.bot_id), str(key.chat_id), str(key.user_id)]
+        for extra_attr in ("thread_id", "business_connection_id", "destiny"):
+            parts.append(str(getattr(key, extra_attr, None)))
+        return ":".join(parts)
+
+    async def set_state(self, key: StorageKey, state=None) -> None:
+        async with self._lock:
+            state_str = state.state if isinstance(state, State) else state
+            k = self._key_str(key)
+            entry = self._data.get(k, {})
+            if state_str is None:
+                entry.pop("state", None)
+            else:
+                entry["state"] = state_str
+            if entry:
+                self._data[k] = entry
+            else:
+                self._data.pop(k, None)
+            self._persist()
+
+    async def get_state(self, key: StorageKey):
+        return self._data.get(self._key_str(key), {}).get("state")
+
+    async def set_data(self, key: StorageKey, data: dict) -> None:
+        async with self._lock:
+            k = self._key_str(key)
+            entry = self._data.get(k, {})
+            if data:
+                entry["data"] = data
+            else:
+                entry.pop("data", None)
+            if entry:
+                self._data[k] = entry
+            else:
+                self._data.pop(k, None)
+            self._persist()
+
+    async def get_data(self, key: StorageKey) -> dict:
+        return self._data.get(self._key_str(key), {}).get("data", {}) or {}
+
+    async def close(self) -> None:
+        self._persist()
+
+    def reload(self) -> None:
+        """وضعیت را دوباره از دیسک می‌خواند — لازم است بعد از بازیابیِ بکاپ در
+        on_startup صدا زده شود، چون این آبجکت قبل از آن (زمانِ import) ساخته
+        و از دیسک خوانده شده و از تغییراتِ restore بی‌خبر می‌ماند."""
+        self._load()
+
+storage = JSONFSMStorage(FSM_STATE_FILE)
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML, protect_content=True),
@@ -1628,6 +1717,8 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
     if action == "restore_backup_confirm":
         await callback.answer("⏳ در حال بازیابی...")
         ok, restore_msg = await restore_data_dir_from_telegram(force=True)
+        if ok:
+            storage.reload()  # وضعیتِ گفتگوهای درحالِ‌اجرا هم با نسخه‌ی بازیابی‌شده هماهنگ شود
         icon = "✅" if ok else "❌"
         await callback.message.answer(
             f"{icon} {restore_msg}\n🕐 {format_jalali_datetime(datetime.utcnow())}"
@@ -3250,9 +3341,14 @@ async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
         
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary")],
-                [InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary")],
-                [InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary")],
+                [
+                    # تلگرام کیبورد را برای زبان‌های راست‌به‌چپ خودکار آینه نمی‌کند؛
+                    # ترتیبِ آرایه همیشه چپ‌به‌راستِ روی صفحه است. برای اینکه «۳ ماهه»
+                    # سمت راست (نزدیک‌تر به شست) بیفتد، باید آخرین آیتمِ آرایه باشد.
+                    InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary"),
+                    InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary"),
+                    InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary"),
+                ],
                 [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
             ]
         )
@@ -4059,6 +4155,34 @@ async def stop_self_ping(app: web.Application) -> None:
         except asyncio.CancelledError:
             pass
 
+# ---------- بکاپِ دوره‌ایِ خودکار ----------
+# چون FSM (وضعیتِ گفتگو، از جمله وسطِ خریدِ VIP) هم حالا داخلِ DATA_DIR ذخیره
+# می‌شود، این حلقه با فاصله‌ی منظم آخرین نسخه‌ی همه‌چیز (دیتای اصلی + وضعیتِ
+# گفتگوهای در حال انجام) را روی تلگرام پین می‌کند؛ تا اگر Render دقیقاً وسطِ
+# یک فرآیندِ حساس (مثلاً آپلودِ رسیدِ پرداخت) ری‌استارت/دیپلوی شود، بیشترین
+# چیزی که از دست می‌رود، تغییراتِ همان چند دقیقه‌ی آخر باشد، نه همه‌چیز.
+async def auto_backup_loop(app: web.Application) -> None:
+    while True:
+        await asyncio.sleep(AUTO_BACKUP_INTERVAL_SECONDS)
+        try:
+            ok, msg = await backup_data_dir_to_telegram()
+            if not ok:
+                logger.info(f"بکاپِ خودکارِ دوره‌ای انجام نشد: {msg}")
+        except Exception as e:
+            logger.error(f"بکاپِ خودکارِ دوره‌ای با خطا مواجه شد: {e}", exc_info=True)
+
+async def start_auto_backup(app: web.Application) -> None:
+    app["auto_backup_task"] = asyncio.create_task(auto_backup_loop(app))
+
+async def stop_auto_backup(app: web.Application) -> None:
+    task = app.get("auto_backup_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 async def stop_vip_expiry_checker(app: web.Application) -> None:
     task = app.get("vip_expiry_task")
     if task:
@@ -4146,6 +4270,7 @@ async def global_error_handler(update: Update, exception: Exception):
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
     restored_ok, restore_msg = await restore_data_dir_from_telegram()
+    storage.reload()  # چون storage قبل از این restore ساخته و از دیسک خوانده شده بود
     status_icon = "✅" if restored_ok else "⚠️"
     await _notify_backup_admin(f"{status_icon} بازیابیِ خودکارِ دیتا در استارتاپ:\n{restore_msg}")
     cache_users()
@@ -4176,7 +4301,9 @@ def create_app() -> web.Application:
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
     app.on_startup.append(start_self_ping)
+    app.on_startup.append(start_auto_backup)
     app.on_cleanup.append(stop_self_ping)
+    app.on_cleanup.append(stop_auto_backup)
     app.on_cleanup.append(stop_vip_expiry_checker)
     return app
 
