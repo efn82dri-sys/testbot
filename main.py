@@ -609,6 +609,41 @@ async def save_vip_subscriptions(data: dict) -> None:
         VIP_SUBSCRIPTIONS_FILE.parent.mkdir(exist_ok=True)
         VIP_SUBSCRIPTIONS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+def get_user_vip_status(user_id: int, subs: dict | None = None) -> dict:
+    """
+    خلاصه‌ی وضعیتِ VIP یک کاربر را برمی‌گرداند.
+    چون هر تمدید یک رکوردِ جدید به لیستِ اشتراک‌های کاربر اضافه می‌کند، وضعیتِ
+    واقعیِ کاربر باید بر اساسِ «آخرین تاریخِ پایان» در میانِ تمامِ رکوردهای
+    active/renewed محاسبه شود، نه صرفاً یک رکورد؛ این از قطعِ زودهنگامِ
+    دسترسی در صورتِ وجودِ چند رکوردِ هم‌پوشان جلوگیری می‌کند.
+    """
+    subs = subs if subs is not None else load_vip_subscriptions()
+    user_subs = subs.get(str(user_id), [])
+    now = datetime.utcnow()
+
+    latest_end: datetime | None = None
+    for sub in user_subs:
+        if sub.get("status") not in ("active", "renewed"):
+            continue
+        try:
+            end = datetime.fromisoformat(sub["end"])
+        except (KeyError, ValueError):
+            continue
+        if latest_end is None or end > latest_end:
+            latest_end = end
+
+    if latest_end is None:
+        return {"has_subscription": False, "is_active": False, "end": None, "remaining_days": 0}
+
+    remaining_seconds = (latest_end - now).total_seconds()
+    remaining_days = max(0, int(remaining_seconds // 86400) + (1 if remaining_seconds % 86400 > 0 else 0))
+    return {
+        "has_subscription": True,
+        "is_active": remaining_seconds > 0,
+        "end": latest_end,
+        "remaining_days": remaining_days,
+    }
+
 def load_vip_payments() -> dict:
     if not VIP_PAYMENTS_FILE.exists():
         return {}
@@ -2333,26 +2368,50 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
     if key == "profile":
         user_id = callback.from_user.id
         record = _user_cache.get(str(user_id))
+
+        # ---------- بخشِ وضعیتِ اشتراکِ VIP ----------
+        vip_line = ""
+        vip_buttons = []
+        if VIP_GROUP_CHAT_ID is not None:
+            vip_status = get_user_vip_status(user_id)
+            if vip_status["is_active"]:
+                end_jalali = format_jalali_datetime(vip_status["end"])
+                vip_line = (
+                    "\n🌟 <b>اشتراکِ VIP:</b> فعال ✅\n"
+                    f"⏳ {to_persian_num(vip_status['remaining_days'])} روزِ دیگر باقی مانده (تا {end_jalali})\n"
+                )
+                vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
+            elif vip_status["has_subscription"]:
+                vip_line = "\n🌟 <b>اشتراکِ VIP:</b> به پایان رسیده ⌛️\n"
+                vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
+            else:
+                vip_line = "\n🌟 <b>اشتراکِ VIP:</b> ندارید\n"
+                vip_buttons.append([InlineKeyboardButton(text="🌟 مشاهده‌ی گروهِ VIP", callback_data="vip:open", style="success")])
+
         if record:
             interests_text = '، '.join(record.get('interests', []))
             text = (
                 "🥇 <b>پروفایلِ من — کاربرِ طلایی</b>\n\n"
                 f"🎓 {record.get('education_label', '')}\n"
-                f"⭐️ علایق: {interests_text}\n\n"
+                f"⭐️ علایق: {interests_text}\n"
+                f"{vip_line}\n"
                 "می‌توانید هر زمان اطلاعاتِ خود را ویرایش کنید."
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="✏️ ویرایشِ اطلاعات", callback_data="profile:edit", style="primary")],
+                *vip_buttons,
                 [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
             ])
         else:
             text = (
-                "👤 <b>پروفایلِ من</b>\n\n"
+                "👤 <b>پروفایلِ من</b>\n"
+                f"{vip_line}\n"
                 "هنوز پروفایلِ شما تکمیل نشده است.\n"
                 "با پاسخ به سه سوالِ کوتاه، به «🥇 کاربرِ طلایی» رواق ارتقا پیدا کنید."
             )
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🚀 شروعِ تکمیلِ پروفایل", callback_data="profile:start", style="success")],
+                *vip_buttons,
                 [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
             ])
         await show_text_panel(callback, text, keyboard)
@@ -3656,16 +3715,36 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
 
         now = datetime.utcnow()
         days = VIP_MONTHS_TO_DAYS.get(payment["months"], payment["months"] * 30)
-        end = now + timedelta(days=days)
 
         subs = load_vip_subscriptions()
         user_subs = subs.setdefault(str(user_id), [])
+
+        # اگر کاربر یک اشتراکِ «فعالِ» قبلی داشته باشد (تمدیدِ زودهنگام)، مدتِ
+        # جدید را از تاریخِ پایانِ همان اشتراک اضافه می‌کنیم، نه از همین لحظه؛
+        # در غیرِ این صورت چند روزِ باقی‌مانده از خریدِ قبلی کاربر هدر می‌رفت.
+        # هم‌زمان رکوردهای «active» قبلی را به «renewed» تغییر می‌دهیم تا
+        # حلقه‌ی بررسیِ انقضا (که فقط رکوردهای active را پردازش می‌کند) با
+        # چند رکوردِ هم‌پوشان اشتباه نکند و کاربر را زودتر از موعد از گروه حذف نکند.
+        previous_active_end = None
+        for sub in user_subs:
+            if sub.get("status") == "active":
+                try:
+                    sub_end = datetime.fromisoformat(sub["end"])
+                except (KeyError, ValueError):
+                    sub_end = None
+                if sub_end and sub_end > now and (previous_active_end is None or sub_end > previous_active_end):
+                    previous_active_end = sub_end
+                sub["status"] = "renewed"
+
+        start = previous_active_end if previous_active_end else now
+        end = start + timedelta(days=days)
+
         user_subs.append({
             "category_id": "all",
             "category_name": "اشتراک کامل VIP",
             "months": payment["months"],
             "price": payment["price"],
-            "start": now.isoformat(),
+            "start": start.isoformat(),
             "end": end.isoformat(),
             "status": "active",
             "reminded": False,
@@ -3751,6 +3830,23 @@ async def _check_vip_expirations() -> None:
             elif remaining_days <= 0:
                 sub["status"] = "expired"
                 changed = True
+
+                # محافظِ ایمنی: اگر رکوردِ دیگری (مثلاً یک تمدیدِ ثبت‌شده با داده‌های
+                # قدیمی‌تر از این اصلاح) هنوز تا آینده معتبر است، کاربر نباید حذف شود.
+                other_active_end = None
+                for other in user_subs:
+                    if other is sub or other.get("status") not in ("active", "renewed"):
+                        continue
+                    try:
+                        other_end = datetime.fromisoformat(other["end"])
+                    except (KeyError, ValueError):
+                        continue
+                    if other_end > now:
+                        other_active_end = other_end
+                        break
+                if other_active_end is not None:
+                    continue
+
                 if VIP_GROUP_CHAT_ID is not None:
                     try:
                         await bot.ban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=int(user_id_str))
