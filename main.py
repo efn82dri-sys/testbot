@@ -1156,7 +1156,11 @@ async def save_bot_state(state: dict) -> None:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
 # ---------- ارسالِ متنِ قوانین همراه با دکمهٔ پذیرش ----------
-async def send_rules_message(user) -> None:
+async def send_rules_message(user) -> bool:
+    """پیامِ قوانین را برای کاربر می‌فرستد. اگر ربات هرگز از سمتِ این کاربر
+    استارت نشده باشد، تلگرام اجازه‌ی شروعِ گفتگو را به ربات نمی‌دهد و ارسال
+    شکست می‌خورد — این تابع در آن صورت False برمی‌گرداند تا فراخوان بتواند
+    ادمین را مطلع کند (وگرنه درخواستِ عضویت بدونِ هیچ اطلاعی برای همیشه معلق می‌ماند)."""
     try:
         await bot.send_message(
             chat_id=user.id,
@@ -1171,8 +1175,37 @@ async def send_rules_message(user) -> None:
                 ]]
             ),
         )
+        return True
     except Exception as e:
         logger.warning("ارسالِ پیامِ قوانین به کاربر %s ممکن نشد: %s", user.id, e)
+        return False
+
+async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bool:
+    """پس از تاییدِ درخواستِ عضویت (چه با کلیکِ خودِ کاربر، چه دستیِ ادمین)،
+    مراحلِ مشترک را انجام می‌دهد: تاییدِ واقعیِ عضویت در تلگرام، ثبتِ آمار،
+    و تلاش برای خوش‌آمدگویی به کاربر."""
+    try:
+        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
+    except Exception as e:
+        logger.warning("تاییدِ عضویتِ کاربر %s ممکن نشد: %s", user_id, e)
+        return False
+
+    await mark_verified(user_id)
+    await increment_stat("form_completed_and_joined")
+
+    if notify_user:
+        try:
+            user = await bot.get_chat(user_id)
+            await bot.send_message(
+                chat_id=user_id,
+                text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
+                reply_markup=user_panel_keyboard(),
+            )
+        except Exception as e:
+            logger.warning("ارسالِ پیامِ خوش‌آمدگویی به کاربر %s ممکن نشد: %s", user_id, e)
+
+    _schedule_vip_intro(user_id)
+    return True
 
 async def process_pending_requests():
     state = load_bot_state()
@@ -1296,22 +1329,78 @@ async def handle_join_request(join_request: ChatJoinRequest):
             await save_bot_state(state)
         return
 
-    await send_rules_message(user)
+    sent_ok = await send_rules_message(user)
+
+    if not sent_ok and NOTIFY_CHAT_ID_INT:
+        # اگه کاربر تا حالا هیچ‌وقت ربات را استارت نکرده باشه، تلگرام به ربات
+        # اجازه‌ی شروعِ گفتگو رو نمی‌ده و پیامِ قوانین اصلاً ارسال نمی‌شه — یعنی
+        # درخواستِ عضویت بدونِ هیچ اطلاعی به کاربر یا ادمین، معلق می‌مونه.
+        # برای همین اینجا به ادمین خبر می‌دیم تا بتونه دستی تصمیم بگیره.
+        try:
+            username_part = f"@{user.username}" if user.username else "بدونِ‌یوزرنیم"
+            await bot.send_message(
+                chat_id=NOTIFY_CHAT_ID_INT,
+                text=(
+                    "⚠️ <b>پیامِ قوانین برای این کاربر ارسال نشد</b>\n"
+                    "(احتمالاً چون تا حالا ربات را استارت نکرده)\n\n"
+                    f"👤 {html_escape(user.full_name)} ({username_part})\n"
+                    f"🆔 <code>{user.id}</code>\n\n"
+                    "می‌توانید دستی تصمیم بگیرید:"
+                ),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="✅ تاییدِ عضویت", callback_data=f"adminjoin:approve:{user.id}", style="success"),
+                        InlineKeyboardButton(text="❌ ردِ درخواست", callback_data=f"adminjoin:reject:{user.id}", style="danger"),
+                    ],
+                ]),
+            )
+        except Exception as e:
+            logger.error("اطلاع‌رسانیِ شکستِ ارسالِ قوانین به ادمین ممکن نشد: %s", e)
+
+@dp.callback_query(F.data.startswith("adminjoin:approve:"))
+async def cb_adminjoin_approve(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    user_id = int(callback.data.split(":")[2])
+    ok = await _finalize_group_approval(user_id, notify_user=True)
+    if ok:
+        try:
+            await callback.message.edit_text(
+                callback.message.text + f"\n\n✅ توسطِ {html_escape(callback.from_user.full_name)} تایید شد.",
+                reply_markup=None,
+            )
+        except Exception:
+            pass
+        await callback.answer("✅ عضویت تایید شد.")
+    else:
+        await callback.answer("❌ تاییدِ عضویت ناموفق بود (شاید درخواست قبلاً منقضی شده).", show_alert=True)
+
+@dp.callback_query(F.data.startswith("adminjoin:reject:"))
+async def cb_adminjoin_reject(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    user_id = int(callback.data.split(":")[2])
+    try:
+        await bot.decline_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
+    except Exception as e:
+        logger.warning("ردِ درخواستِ عضویتِ کاربر %s ممکن نشد: %s", user_id, e)
+    try:
+        await callback.message.edit_text(
+            callback.message.text + f"\n\n❌ توسطِ {html_escape(callback.from_user.full_name)} رد شد.",
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+    await callback.answer("❌ درخواست رد شد.")
 
 @dp.callback_query(F.data == "rules_accept")
 async def cb_rules_accept(callback: CallbackQuery):
     user = callback.from_user
-
-    approved = False
-    try:
-        await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user.id)
-        approved = True
-    except Exception as e:
-        logger.warning("تاییدِ عضویتِ کاربر %s ممکن نشد: %s", user.id, e)
+    approved = await _finalize_group_approval(user.id, notify_user=False)
 
     if approved:
-        await mark_verified(user.id)
-        await increment_stat("form_completed_and_joined")
         try:
             await callback.message.edit_text(
                 "✅ <b>خوش آمدید!</b>\n\nقوانین پذیرفته شد و عضویتِ شما در رواق تایید شد."
@@ -1324,7 +1413,6 @@ async def cb_rules_accept(callback: CallbackQuery):
             text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
             reply_markup=user_panel_keyboard(),
         )
-        _schedule_vip_intro(user.id)
     else:
         await callback.answer(
             "❌ تاییدِ عضویت با مشکلی مواجه شد. کمی صبر کنید یا از طریق «ارتباط با ادمین» پیگیری کنید.",
