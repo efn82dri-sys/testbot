@@ -62,6 +62,8 @@ WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
 PING_INTERVAL_SECONDS = int(os.environ.get("PING_INTERVAL_SECONDS", 10 * 60))
 AUTO_BACKUP_INTERVAL_SECONDS = int(os.environ.get("AUTO_BACKUP_INTERVAL_SECONDS", 15 * 60))
+JOIN_REMINDER_AFTER_HOURS = int(os.environ.get("JOIN_REMINDER_AFTER_HOURS", 24))
+JOIN_ESCALATE_AFTER_HOURS = int(os.environ.get("JOIN_ESCALATE_AFTER_HOURS", 72))
 
 DATA_FILE = Path(__file__).parent / "data" / "submissions.jsonl"
 DATA_FILE.parent.mkdir(exist_ok=True)
@@ -72,6 +74,7 @@ ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
 FSM_STATE_FILE = Path(__file__).parent / "data" / "fsm_state.json"
+PENDING_JOIN_FILE = Path(__file__).parent / "data" / "pending_join_requests.json"
 
 # ---------- تنظیمات گروه VIP ----------
 VIP_GROUP_CHAT_ID_RAW = os.environ.get("VIP_GROUP_CHAT_ID", "").strip()
@@ -1155,6 +1158,121 @@ async def save_bot_state(state: dict) -> None:
     async with _write_lock:
         BOT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
+# ---------- ردیابیِ درخواست‌های عضویتِ معلق (کسانی که پیامِ قوانین را دیده‌اند
+# ولی دکمه‌ی «قبول دارم» را نزده‌اند) — برای یادآوریِ خودکار و اطلاعِ ادمین
+# در صورتِ ادامه‌ی سکوت، به‌جایِ چک‌کردنِ دستیِ دوره‌ای. ----------
+def load_pending_joins() -> dict:
+    if not PENDING_JOIN_FILE.exists():
+        return {}
+    try:
+        return json.loads(PENDING_JOIN_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+async def save_pending_joins(data: dict) -> None:
+    async with _write_lock:
+        PENDING_JOIN_FILE.parent.mkdir(exist_ok=True)
+        PENDING_JOIN_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+async def _track_pending_join(user) -> None:
+    pending = load_pending_joins()
+    pending[str(user.id)] = {
+        "full_name": user.full_name,
+        "username": user.username,
+        "requested_at": datetime.utcnow().isoformat(),
+        "reminded": False,
+        "escalated": False,
+    }
+    await save_pending_joins(pending)
+
+async def _untrack_pending_join(user_id: int) -> None:
+    pending = load_pending_joins()
+    if str(user_id) in pending:
+        pending.pop(str(user_id))
+        await save_pending_joins(pending)
+
+async def pending_join_checker_loop() -> None:
+    while True:
+        try:
+            await _check_pending_joins()
+        except Exception as e:
+            logger.error("خطا در بررسیِ درخواست‌های عضویتِ معلق: %s", e)
+        await asyncio.sleep(3 * 3600)
+
+async def _check_pending_joins() -> None:
+    """
+    برای کسانی که پیامِ قوانین را دریافت کرده‌اند ولی مدتی طولانی روی «قبول
+    دارم» نزده‌اند: بعد از JOIN_REMINDER_AFTER_HOURS یک یادآوری خودکار
+    می‌فرستیم، و اگر باز هم بعد از JOIN_ESCALATE_AFTER_HOURS اقدامی نکرده
+    باشند، به ادمین اطلاع می‌دهیم تا خودش تصمیم بگیرد — به‌جایِ اینکه ادمین
+    مجبور باشد هرچند وقت یک‌بار به‌صورتِ دستی لیستِ درخواست‌های معلق را چک کند.
+    """
+    pending = load_pending_joins()
+    if not pending:
+        return
+    now = datetime.utcnow()
+    changed = False
+
+    for user_id_str, info in list(pending.items()):
+        try:
+            requested_at = datetime.fromisoformat(info["requested_at"])
+        except (KeyError, ValueError):
+            continue
+        hours_passed = (now - requested_at).total_seconds() / 3600
+        user_id = int(user_id_str)
+
+        if hours_passed >= JOIN_ESCALATE_AFTER_HOURS and not info.get("escalated"):
+            info["escalated"] = True
+            changed = True
+            if NOTIFY_CHAT_ID_INT:
+                try:
+                    username_part = f"@{info['username']}" if info.get("username") else "بدونِ‌یوزرنیم"
+                    await bot.send_message(
+                        chat_id=NOTIFY_CHAT_ID_INT,
+                        text=(
+                            "🕐 <b>درخواستِ عضویتِ معلق</b>\n\n"
+                            f"👤 {html_escape(info.get('full_name', ''))} ({username_part})\n"
+                            f"🆔 <code>{user_id}</code>\n\n"
+                            f"بیش از {to_persian_num(JOIN_ESCALATE_AFTER_HOURS)} ساعت از ارسالِ قوانین "
+                            "می‌گذرد و هنوز «قبول دارم» را نزده. می‌توانید دستی تصمیم بگیرید:"
+                        ),
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [
+                                InlineKeyboardButton(text="✅ تاییدِ عضویت", callback_data=f"adminjoin:approve:{user_id}", style="success"),
+                                InlineKeyboardButton(text="❌ ردِ درخواست", callback_data=f"adminjoin:reject:{user_id}", style="danger"),
+                            ],
+                        ]),
+                    )
+                except Exception as e:
+                    logger.warning("اطلاع‌رسانیِ درخواستِ معلقِ کاربر %s به ادمین ممکن نشد: %s", user_id, e)
+
+        elif hours_passed >= JOIN_REMINDER_AFTER_HOURS and not info.get("reminded"):
+            info["reminded"] = True
+            changed = True
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=sign(
+                        "⏳ <b>یادآوری</b>\n\n"
+                        "هنوز روی دکمه‌ی «قوانین را قبول دارم» نزده‌اید؛ برای تکمیلِ عضویت در رواق، "
+                        "کافی‌ست همان دکمه‌ی زیرِ پیامِ قبلی را بزنید."
+                    ),
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="✅ قوانین را قبول دارم و عضو می‌شوم",
+                                callback_data="rules_accept",
+                                style="success",
+                            )
+                        ]]
+                    ),
+                )
+            except Exception as e:
+                logger.warning("ارسالِ یادآوریِ عضویت به کاربر %s ممکن نشد: %s", user_id, e)
+
+    if changed:
+        await save_pending_joins(pending)
+
 # ---------- ارسالِ متنِ قوانین همراه با دکمهٔ پذیرش ----------
 async def send_rules_message(user) -> bool:
     """پیامِ قوانین را برای کاربر می‌فرستد. اگر ربات هرگز از سمتِ این کاربر
@@ -1192,6 +1310,7 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
 
     await mark_verified(user_id)
     await increment_stat("form_completed_and_joined")
+    await _untrack_pending_join(user_id)
 
     if notify_user:
         try:
@@ -1331,31 +1450,38 @@ async def handle_join_request(join_request: ChatJoinRequest):
 
     sent_ok = await send_rules_message(user)
 
-    if not sent_ok and NOTIFY_CHAT_ID_INT:
+    if not sent_ok:
         # اگه کاربر تا حالا هیچ‌وقت ربات را استارت نکرده باشه، تلگرام به ربات
         # اجازه‌ی شروعِ گفتگو رو نمی‌ده و پیامِ قوانین اصلاً ارسال نمی‌شه — یعنی
         # درخواستِ عضویت بدونِ هیچ اطلاعی به کاربر یا ادمین، معلق می‌مونه.
         # برای همین اینجا به ادمین خبر می‌دیم تا بتونه دستی تصمیم بگیره.
-        try:
-            username_part = f"@{user.username}" if user.username else "بدونِ‌یوزرنیم"
-            await bot.send_message(
-                chat_id=NOTIFY_CHAT_ID_INT,
-                text=(
-                    "⚠️ <b>پیامِ قوانین برای این کاربر ارسال نشد</b>\n"
-                    "(احتمالاً چون تا حالا ربات را استارت نکرده)\n\n"
-                    f"👤 {html_escape(user.full_name)} ({username_part})\n"
-                    f"🆔 <code>{user.id}</code>\n\n"
-                    "می‌توانید دستی تصمیم بگیرید:"
-                ),
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="✅ تاییدِ عضویت", callback_data=f"adminjoin:approve:{user.id}", style="success"),
-                        InlineKeyboardButton(text="❌ ردِ درخواست", callback_data=f"adminjoin:reject:{user.id}", style="danger"),
-                    ],
-                ]),
-            )
-        except Exception as e:
-            logger.error("اطلاع‌رسانیِ شکستِ ارسالِ قوانین به ادمین ممکن نشد: %s", e)
+        if NOTIFY_CHAT_ID_INT:
+            try:
+                username_part = f"@{user.username}" if user.username else "بدونِ‌یوزرنیم"
+                await bot.send_message(
+                    chat_id=NOTIFY_CHAT_ID_INT,
+                    text=(
+                        "⚠️ <b>پیامِ قوانین برای این کاربر ارسال نشد</b>\n"
+                        "(احتمالاً چون تا حالا ربات را استارت نکرده)\n\n"
+                        f"👤 {html_escape(user.full_name)} ({username_part})\n"
+                        f"🆔 <code>{user.id}</code>\n\n"
+                        "می‌توانید دستی تصمیم بگیرید:"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="✅ تاییدِ عضویت", callback_data=f"adminjoin:approve:{user.id}", style="success"),
+                            InlineKeyboardButton(text="❌ ردِ درخواست", callback_data=f"adminjoin:reject:{user.id}", style="danger"),
+                        ],
+                    ]),
+                )
+            except Exception as e:
+                logger.error("اطلاع‌رسانیِ شکستِ ارسالِ قوانین به ادمین ممکن نشد: %s", e)
+        return
+
+    # پیامِ قوانین با موفقیت رسید؛ حالا این درخواست را ردیابی می‌کنیم تا اگر
+    # کاربر مدتی طولانی روی دکمه‌ی «قبول دارم» نزد، خودمان یادآوری بفرستیم و
+    # در صورتِ ادامه‌ی سکوت، به ادمین اطلاع بدیم — به‌جایِ تکیه بر چک‌کردنِ دستی.
+    await _track_pending_join(user)
 
 @dp.callback_query(F.data.startswith("adminjoin:approve:"))
 async def cb_adminjoin_approve(callback: CallbackQuery):
@@ -1386,6 +1512,7 @@ async def cb_adminjoin_reject(callback: CallbackQuery):
         await bot.decline_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
     except Exception as e:
         logger.warning("ردِ درخواستِ عضویتِ کاربر %s ممکن نشد: %s", user_id, e)
+    await _untrack_pending_join(user_id)
     try:
         await callback.message.edit_text(
             callback.message.text + f"\n\n❌ توسطِ {html_escape(callback.from_user.full_name)} رد شد.",
@@ -4908,6 +5035,15 @@ async def stop_vip_expiry_checker(app: web.Application) -> None:
         except asyncio.CancelledError:
             pass
 
+async def stop_pending_join_checker(app: web.Application) -> None:
+    task = app.get("pending_join_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 # ==============================================================
 #  مدیریت خطاهای سراسری
 # ==============================================================
@@ -5006,6 +5142,7 @@ async def on_startup(app: web.Application):
 
     await restore_attendance_tasks()
     app["vip_expiry_task"] = asyncio.create_task(vip_expiry_checker_loop())
+    app["pending_join_task"] = asyncio.create_task(pending_join_checker_loop())
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
 def create_app() -> web.Application:
@@ -5023,6 +5160,7 @@ def create_app() -> web.Application:
     # برای فعال‌سازیِ احتمالیِ دوباره در آینده همچنان در کد باقی مانده‌اند.
     app.on_cleanup.append(stop_self_ping)
     app.on_cleanup.append(stop_vip_expiry_checker)
+    app.on_cleanup.append(stop_pending_join_checker)
     return app
 
 if __name__ == "__main__":
