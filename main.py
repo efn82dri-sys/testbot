@@ -1116,6 +1116,8 @@ def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="💰 تنظیم قیمت اشتراک", callback_data="admin:vip_global_settings", style="primary"),
             ],
             [InlineKeyboardButton(text="📋 مشترکینِ VIP", callback_data="vipadmin:list:0", style="primary")],
+            # >>> اینجا <<< ردیفِ جدید برای پاداشِ دستی
+            [InlineKeyboardButton(text="🎁 اهدای پاداش VIP", callback_data="vipreward:start", style="success")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -4149,7 +4151,13 @@ async def render_vip_subscriber_detail(user_id: int, back_page: int) -> tuple[st
 
     history_lines = []
     for sub in sorted(user_subs, key=lambda s: s.get("start", ""), reverse=True)[:5]:
-        months_label = f"{to_persian_num(sub['months'])} ماهه" if sub.get("months") else "اعطای دستی"
+        # >>> تغییر برای تشخیص پاداش VIP <<<
+        if sub.get("category_id") == "reward":
+            months_label = "🎁 پاداشِ مدیریت"
+        elif sub.get("months"):
+            months_label = f"{to_persian_num(sub['months'])} ماهه"
+        else:
+            months_label = "تمدیدِ دستیِ ادمین"
         try:
             end_h = format_jalali_datetime(datetime.fromisoformat(sub["end"]))
         except (KeyError, ValueError):
@@ -4260,6 +4268,113 @@ async def _grant_or_extend_vip(user_id: int, days: int, granted_by: int) -> tupl
         except Exception as e:
             logger.warning("ارسالِ لینکِ VIP به کاربر %s ممکن نشد: %s", user_id, e)
         return True, f"اعتبار تا {end_jalali} ثبت و لینکِ ورود برای کاربر ارسال شد.", end
+
+async def _grant_vip_reward(
+    user_id: int, days: int, reason: str, granted_by: int
+) -> tuple[bool, str, datetime | None]:
+    """
+    نسخه‌ی مستقلِ اعطای اعتبارِ VIP، برای وقتی که ادمین می‌خواهد به‌عنوانِ
+    «پاداش/تشویق» (نه تمدیدِ خرید، نه تاییدِ فیش) به کاربری دسترسیِ VIP بدهد.
+
+    تفاوت با _grant_or_extend_vip:
+      ۱) رکوردِ اشتراک با category_id="reward" ثبت می‌شود تا در تاریخچه‌ی
+         مشترکین با آیکنِ 🎁 از خرید/تمدیدِ عادی قابلِ تشخیص باشد.
+      ۲) متنِ پیامِ ارسالی به کاربر کاملاً مجزا و با لحنِ «هدیه از طرفِ
+         مدیریت» است، نه «تاییدِ پرداخت» یا «به‌روزرسانیِ اشتراک».
+
+    منطقِ محاسبه‌ی روزها (اگر کاربر از قبل اشتراکِ فعال داشته باشد، از
+    تاریخِ پایانِ همان اضافه می‌شود؛ وگرنه از همین لحظه) دقیقاً مثلِ بقیه‌ی
+    مسیرهای VIP است تا هیچ روزی از قلم نیفتد.
+
+    خروجی: (موفقیت، پیامِ توضیحی برای ادمین، تاریخِ پایانِ جدید).
+    """
+    if VIP_GROUP_CHAT_ID is None:
+        return False, "آیدیِ گروهِ VIP تنظیم نشده است.", None
+
+    now = datetime.utcnow()
+    subs = load_vip_subscriptions()
+    user_subs = subs.setdefault(str(user_id), [])
+
+    previous_active_end = None
+    for sub in user_subs:
+        if sub.get("status") == "active":
+            try:
+                sub_end = datetime.fromisoformat(sub["end"])
+            except (KeyError, ValueError):
+                sub_end = None
+            if sub_end and sub_end > now and (previous_active_end is None or sub_end > previous_active_end):
+                previous_active_end = sub_end
+            sub["status"] = "renewed"
+
+    start = previous_active_end if previous_active_end else now
+    end = start + timedelta(days=days)
+
+    user_subs.append({
+        "category_id": "reward",
+        "category_name": "🎁 پاداشِ مدیریت",
+        "months": None,
+        "price": 0,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "status": "active",
+        "reminded": False,
+        "granted_by": granted_by,
+        "reason": reason or None,
+    })
+    await save_vip_subscriptions(subs)
+
+    reason_line = f"\n\n📝 <i>{html_escape(reason)}</i>" if reason else ""
+    end_jalali = format_jalali_datetime(end)
+    reward_text = sign(
+        "🎁 <b>یک خبرِ خوب برایتان داریم!</b>\n\n"
+        f"به‌پاسِ فعالیتِ خوبِ شما در رواق، تیمِ مدیریت تصمیم گرفت "
+        f"<b>{to_persian_num(days)} روز</b> دسترسیِ رایگانِ VIP را به‌عنوانِ پاداش برایتان فعال کند 🌟"
+        f"{reason_line}\n\n"
+        f"⏳ این دسترسی تا تاریخِ <b>{end_jalali}</b> معتبر است.\n\n"
+        "این هدیه‌ای از طرفِ مدیریتِ رواق است و ربطی به خریدِ اشتراک ندارد؛ "
+        "امیدواریم لذت ببرید 🏛"
+    )
+
+    is_member = False
+    try:
+        member = await bot.get_chat_member(VIP_GROUP_CHAT_ID, user_id)
+        is_member = member.status in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR)
+    except Exception:
+        is_member = False
+
+    if is_member:
+        try:
+            await bot.send_message(chat_id=user_id, text=reward_text)
+        except Exception as e:
+            logger.warning("اطلاع‌رسانیِ پاداشِ VIP به کاربر %s ممکن نشد: %s", user_id, e)
+            return True, f"اعتبار تا {end_jalali} ثبت شد اما ارسالِ پیام به کاربر ناموفق بود: {e}", end
+        return True, f"پاداش ثبت شد؛ کاربر از قبل عضوِ گروهِ VIP بود (اعتبار تا {end_jalali}).", end
+
+    try:
+        invite = await bot.create_chat_invite_link(
+            chat_id=VIP_GROUP_CHAT_ID, member_limit=1, name=f"vip-reward-{user_id}",
+        )
+    except Exception as e:
+        logger.error("ساختِ لینکِ دعوتِ VIP (پاداش) ناموفق بود: %s", e)
+        try:
+            await bot.send_message(chat_id=user_id, text=reward_text)
+        except Exception:
+            pass
+        return True, f"اعتبار تا {end_jalali} ثبت شد اما ساختِ لینکِ دعوت ناموفق بود: {e}", end
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=reward_text + "\n\nبرای ورود به گروهِ VIP از لینکِ زیر استفاده کنید (این لینک فقط یک‌بار قابلِ استفاده است):",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🌟 ورود به گروهِ VIP", url=invite.invite_link)]]
+            ),
+        )
+    except Exception as e:
+        logger.warning("ارسالِ لینکِ VIP (پاداش) به کاربر %s ممکن نشد: %s", user_id, e)
+        return True, f"اعتبار تا {end_jalali} ثبت شد اما ارسالِ پیام به کاربر ناموفق بود: {e}", end
+
+    return True, f"پاداش ثبت و لینکِ ورودِ گروهِ VIP برای کاربر ارسال شد (اعتبار تا {end_jalali}).", end
 
 async def _revoke_vip(user_id: int, revoked_by: int) -> tuple[bool, str]:
     if VIP_GROUP_CHAT_ID is None:
@@ -4917,6 +5032,181 @@ async def handle_vipglob_discount(message: Message, state: FSMContext):
         f"✅ تخفیف به {to_persian_num(discount)}% تنظیم شد.\n\n{await build_vip_global_settings_text()}",
         reply_markup=vip_global_settings_keyboard(),
     )
+
+# ==============================================================
+#  بخش پاداش VIP (مسیر مستقل از خرید/تمدید)
+# ==============================================================
+
+class VipRewardStates(StatesGroup):
+    waiting_user_id = State()
+    waiting_days = State()
+    waiting_reason = State()
+    confirming = State()
+
+@dp.callback_query(F.data == "vipreward:start")
+async def cb_vipreward_start(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(VipRewardStates.waiting_user_id)
+    await callback.message.edit_text(
+        "🎁 <b>اهدای پاداشِ VIP</b>\n\n"
+        "این مسیر کاملاً مستقل از خریدِ اشتراک است؛ پیامی که برای کاربر ارسال می‌شود "
+        "به‌جای «تاییدِ پرداخت»، با لحنِ «هدیه/تشویقِ مدیریت» نوشته می‌شود.\n\n"
+        "آیدیِ عددیِ کاربر را ارسال کنید:\n"
+        "(کاربر باید حداقل یک‌بار ربات را استارت کرده باشد تا شناسایی شود)\n\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:cat_vip", style="primary")]
+        ]),
+    )
+    await callback.answer()
+
+@dp.message(VipRewardStates.waiting_user_id)
+async def handle_vipreward_user_id(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_vip_category_keyboard())
+        return
+
+    text = (message.text or "").strip()
+    if not text.isdigit():
+        await message.answer("❌ لطفاً فقط آیدیِ عددیِ کاربر را ارسال کنید (نه یوزرنیم).")
+        return
+
+    target_user_id = int(text)
+    try:
+        chat = await bot.get_chat(target_user_id)
+        display_name = chat.full_name or (f"@{chat.username}" if chat.username else str(target_user_id))
+    except Exception as e:
+        await message.answer(
+            f"❌ کاربری با این آیدی پیدا نشد یا ربات دسترسی ندارد: {e}\n"
+            "توجه: کاربر باید حداقل یک‌بار ربات را استارت کرده باشد.\n"
+            "لطفاً دوباره آیدی را ارسال کنید یا /cancel بزنید."
+        )
+        return
+
+    await state.update_data(reward_user_id=target_user_id, reward_user_display=display_name)
+    await state.set_state(VipRewardStates.waiting_days)
+    await message.answer(
+        f"👤 کاربر شناسایی شد: <b>{html_escape(display_name)}</b> (<code>{target_user_id}</code>)\n\n"
+        "حالا تعدادِ روزِ پاداش را وارد کنید (فقط عدد).\n"
+        "مثال: برای یک هفته بنویسید 7\n\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(VipRewardStates.waiting_days)
+async def handle_vipreward_days(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_vip_category_keyboard())
+        return
+
+    days, ok = await _parse_price_or_discount(message)  # همین تابعِ کمکیِ موجود، برای پارسِ عددِ فارسی/انگلیسی
+    if not ok or not days or days <= 0:
+        await message.answer("❌ لطفاً یک عددِ صحیحِ مثبت وارد کنید.")
+        return
+
+    await state.update_data(reward_days=days)
+    await state.set_state(VipRewardStates.waiting_reason)
+    await message.answer(
+        "📝 در صورتِ تمایل، یک دلیل/توضیحِ کوتاه برای این پاداش بنویسید "
+        "(مثلاً «به‌خاطرِ معرفیِ رواق در استوری»).\n"
+        "این متن داخلِ پیامی که برای کاربر فرستاده می‌شود نمایش داده خواهد شد.\n\n"
+        "اگر نمی‌خواهید دلیلی نوشته شود، فقط علامتِ «-» را ارسال کنید.\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(VipRewardStates.waiting_reason)
+async def handle_vipreward_reason(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_vip_category_keyboard())
+        return
+
+    reason = (message.text or "").strip()
+    if reason == "-":
+        reason = ""
+
+    await state.update_data(reward_reason=reason)
+    data = await state.get_data()
+    await state.set_state(VipRewardStates.confirming)
+
+    reason_line = f"\n📝 دلیل: {html_escape(reason)}" if reason else ""
+    summary = (
+        "🎁 <b>تاییدِ نهاییِ پاداشِ VIP</b>\n\n"
+        f"👤 کاربر: <b>{html_escape(data['reward_user_display'])}</b>\n"
+        f"🆔 <code>{data['reward_user_id']}</code>\n"
+        f"🗓 مدت: <b>{to_persian_num(data['reward_days'])} روز</b>"
+        f"{reason_line}\n\n"
+        "با تاییدِ زیر، این اعتبار برای کاربر فعال و پیامِ تشویقی برایش ارسال می‌شود."
+    )
+    await message.answer(
+        summary,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ تایید و ارسال", callback_data="vipreward:confirm", style="success")],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="vipreward:cancel", style="danger")],
+        ]),
+    )
+
+@dp.callback_query(F.data == "vipreward:cancel")
+async def cb_vipreward_cancel(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    await callback.message.edit_text("عملیاتِ پاداش لغو شد.", reply_markup=admin_vip_category_keyboard())
+    await callback.answer()
+
+@dp.callback_query(F.data == "vipreward:confirm")
+async def cb_vipreward_confirm(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    data = await state.get_data()
+    await state.clear()
+
+    target_user_id = data.get("reward_user_id")
+    days = data.get("reward_days")
+    reason = data.get("reward_reason", "")
+    display_name = data.get("reward_user_display", str(target_user_id))
+    if not target_user_id or not days:
+        await callback.message.edit_text("خطا: اطلاعاتِ پاداش ناقص است. دوباره تلاش کنید.")
+        await callback.answer()
+        return
+
+    await callback.answer("⏳ در حال ثبت...")
+    ok, result_msg, _end_dt = await _grant_vip_reward(
+        target_user_id, days, reason=reason, granted_by=callback.from_user.id
+    )
+    icon = "✅" if ok else "❌"
+    await callback.message.edit_text(
+        f"{icon} {result_msg}",
+        reply_markup=admin_vip_category_keyboard(),
+    )
+
+    if NOTIFY_CHAT_ID_INT:
+        try:
+            reason_line = f"\n📝 دلیل: {html_escape(reason)}" if reason else ""
+            await bot.send_message(
+                chat_id=NOTIFY_CHAT_ID_INT,
+                text=(
+                    "🎁 <b>پاداشِ VIP ثبت شد</b>\n\n"
+                    f"👤 {html_escape(display_name)} (<code>{target_user_id}</code>)\n"
+                    f"🗓 مدت: {to_persian_num(days)} روز\n"
+                    f"👮 توسطِ: {html_escape(callback.from_user.full_name)}"
+                    f"{reason_line}"
+                ),
+                disable_notification=True,
+            )
+        except Exception as e:
+            logger.warning("اطلاع‌رسانیِ پاداشِ VIP به ادمین ممکن نشد: %s", e)
 
 # ---------- مسیر سلامت و پینگ خودکار ----------
 async def handle_health(request: web.Request) -> web.Response:
