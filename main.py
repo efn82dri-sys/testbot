@@ -572,6 +572,56 @@ def cache_users():
             except (json.JSONDecodeError, KeyError):
                 continue
 
+def find_user_id_by_username(username: str) -> int | None:
+    """
+    جستجوی آیدیِ عددیِ کاربر بر اساسِ یوزرنیم، فقط از رویِ کشِ محلی
+    (کاربرانی که فرمِ عضویت را پر کرده‌اند). این روش قبل از تلاش برایِ
+    گرفتنِ اطلاعات از تلگرام امتحان می‌شود چون Bot API معمولاً نمی‌تواند
+    صرفاً با یوزرنیم، کاربرِ عادی (نه سوپرگروه/کانال) را پیدا کند مگر
+    اینکه ربات اخیراً با آن کاربر در تماس بوده باشد.
+    """
+    username_normalized = username.lstrip("@").lower()
+    if not username_normalized:
+        return None
+    for record in _user_cache.values():
+        cached_username = record.get("username")
+        if cached_username and cached_username.lower() == username_normalized:
+            return record.get("user_id")
+    return None
+
+async def resolve_user_id(identifier: str) -> tuple[int | None, str | None]:
+    """
+    شناسه‌ی واردشده توسطِ ادمین (آیدیِ عددی یا @username) را به
+    آیدیِ عددیِ کاربر تبدیل می‌کند.
+    خروجی: (user_id یا None، پیامِ خطا یا None)
+    """
+    identifier = identifier.strip()
+    if identifier.isdigit():
+        return int(identifier), None
+
+    username = identifier.lstrip("@")
+    if not username:
+        return None, "شناسه‌ی وارد شده معتبر نیست."
+
+    # ۱) اول از کشِ محلی جستجو می‌کنیم (مستقل از محدودیت‌هایِ تلگرام)
+    cached_id = find_user_id_by_username(username)
+    if cached_id is not None:
+        return cached_id, None
+
+    # ۲) اگر در کش نبود، تلاش برایِ گرفتنِ اطلاعات مستقیماً از تلگرام
+    try:
+        chat = await bot.get_chat(f"@{username}")
+        return chat.id, None
+    except Exception as e:
+        return None, (
+            f"❌ کاربر @{username} پیدا نشد.\n"
+            f"جزئیاتِ خطا: {e}\n\n"
+            "توجه: تلگرام معمولاً فقط زمانی می‌تواند یوزرنیمِ یک کاربرِ عادی را پیدا "
+            "کند که اخیراً پیامی برایِ ربات فرستاده باشد. اگر کاربر فرمِ عضویت را پر "
+            "کرده، بهتر است آیدیِ عددیِ او را از بخشِ «لیستِ کاربران» پیدا کرده و همان "
+            "را وارد کنید."
+        )
+
 # نکته: cache_users() دیگر اینجا (زمان import) صدا زده نمی‌شود؛
 # چون باید بعد از بازیابیِ احتمالیِ بکاپ از تلگرام در on_startup اجرا شود
 # (وگرنه با فایل‌سیستم خالیِ تازه‌ری‌استارت‌شده کش خالی می‌ماند).
@@ -1950,7 +2000,19 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
     return sent, failed
 
 # ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
-@dp.callback_query(F.data.startswith("admin:"))
+# این callbackها هندلرِ اختصاصیِ خودشان را دارند (وابسته به یک استیتِ FSM
+# خاص هستند) و نباید توسطِ هندلرِ عمومیِ زیر (که هر چیزِ شروع‌شونده با
+# "admin:" را می‌قاپد) گرفته شوند؛ وگرنه چون این هندلرِ عمومی زودتر از
+# هندلرهایِ اختصاصی ثبت شده، آن‌ها هیچ‌وقت اجرا نمی‌شوند و کاربر پیامِ
+# «❌ گزینه نامعتبر» می‌بیند (باگِ اصلیِ «تایید حذف کاربر»).
+_ADMIN_STATE_SPECIFIC_CALLBACKS = {
+    "admin:delete_confirm",
+    "admin:delete_cancel",
+    "admin:broadcast_confirm",
+    "admin:broadcast_cancel",
+}
+
+@dp.callback_query(F.data.startswith("admin:") & ~F.data.in_(_ADMIN_STATE_SPECIFIC_CALLBACKS))
 async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
@@ -2928,21 +2990,10 @@ async def delete_user_identifier(message: Message, state: FSMContext):
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
 
-    user_id = None
-    if identifier.isdigit():
-        user_id = int(identifier)
-    else:
-        username = identifier.lstrip('@')
-        try:
-            chat = await bot.get_chat(f"@{username}")
-            user_id = chat.id
-        except Exception as e:
-            await message.answer(
-                f"❌ کاربر @{username} پیدا نشد. خطا: {e}\n"
-                "توجه: کاربر باید حداقل یک‌بار ربات را استارت کرده باشد یا در گروه عضو باشد.\n"
-                "لطفاً دوباره آیدی عددی یا یوزرنیم صحیح را وارد کنید."
-            )
-            return
+    user_id, resolve_error = await resolve_user_id(identifier)
+    if user_id is None:
+        await message.answer(f"{resolve_error}\nلطفاً دوباره آیدی عددی یا یوزرنیمِ صحیح را وارد کنید.")
+        return
 
     try:
         user = await bot.get_chat(user_id)
@@ -3040,6 +3091,15 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
 
+@dp.callback_query(F.data == "admin:delete_cancel", DeleteUserStates.confirming)
+async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer()
+        return
+    await state.clear()
+    await callback.answer()
+    await callback.message.edit_text("حذفِ کاربر لغو شد.", reply_markup=admin_back_keyboard())
+
 # ==============================================================
 #  بخش ارسال مستقیم به کاربر
 # ==============================================================
@@ -3063,17 +3123,10 @@ async def admin_sendmsg_identifier(message: Message, state: FSMContext):
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
 
-    user_id = None
-    if identifier.isdigit():
-        user_id = int(identifier)
-    else:
-        username = identifier.lstrip('@')
-        try:
-            chat = await bot.get_chat(f"@{username}")
-            user_id = chat.id
-        except Exception as e:
-            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}\nلطفاً دوباره وارد کنید.")
-            return
+    user_id, resolve_error = await resolve_user_id(identifier)
+    if user_id is None:
+        await message.answer(f"{resolve_error}\nلطفاً دوباره وارد کنید.")
+        return
 
     try:
         user = await bot.get_chat(user_id)
