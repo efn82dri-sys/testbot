@@ -2496,11 +2496,11 @@ async def handle_generic_member_message(message: Message):
         "به‌زودی پاسخ دریافت خواهید کرد 🙏"
     )
 
-# ---------- هندلر پیام‌های تاپیک کافه معماری (برای آنبوردینگ) ----------
-@dp.message(F.chat.id == GROUP_CHAT_ID, F.message_thread_id == CAFE_TOPIC_THREAD_ID)
-async def handle_cafe_topic_message(message: Message):
-    if message.from_user and not message.from_user.is_bot:
-        await _mark_onboarding_step(message.from_user.id, "cafe")
+# ---------- هندلرِ پیام‌های تاپیکِ کافه معماری ----------
+# نکته: دیگر الزامی به معرفیِ کاربر در این تاپیک برای تیک‌خوردنِ مرحله‌ی
+# آنبوردینگ نیست (این مرحله حالا با یک کلیکِ ساده + تاخیر کوتاه تکمیل می‌شود؛
+# به تابعِ cb_onboarding_cafe در بخشِ آنبوردینگ نگاه کنید). این هندلر فقط
+# برای رصدِ عمومیِ پیام‌های این تاپیک (در صورتِ نیازِ آینده) نگه داشته شده.
 
 # ==============================================================
 #  بخش پنل کاربری
@@ -5413,30 +5413,24 @@ async def save_onboarding(data: dict) -> None:
         ONBOARDING_FILE.parent.mkdir(exist_ok=True)
         ONBOARDING_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def _onboarding_text(progress: dict, all_done: bool = False) -> str:
-    if all_done:
-        return (
-            "🧭 <b>مسیرِ شروع در رواق</b>\n\n"
-            "✅ تکمیلِ پروفایل و گرفتنِ نشانِ «کاربرِ طلایی»\n"
-            "✅ معرفیِ خودت در «کافه معماری»\n"
-            "✅ سری‌زدن به «گروهِ VIP»\n\n"
-            "🎉 <b>تمومِ مسیرِ اولیه رو رفتی! خوش اومدی به رواقِ واقعی.</b>"
-        )
-    def mark(done: bool) -> str:
-        return "✅" if done else "⬜️"
+def _onboarding_text() -> str:
     return (
         "🧭 <b>مسیرِ شروع در رواق</b>\n\n"
-        f"{mark(progress.get('profile', False))} تکمیلِ پروفایل و گرفتنِ نشانِ «کاربرِ طلایی»\n"
-        f"{mark(progress.get('cafe', False))} معرفیِ خودت در «کافه معماری»\n"
-        f"{mark(progress.get('vip', False))} سری‌زدن به «گروهِ VIP»\n\n"
-        "هر مرحله رو که انجام بدی، اینجا خودکار ✅ می‌شه 👇"
+        "با هر مرحله که انجام بدی، دکمه‌اش سبز می‌شه ✅\n"
+        "بعد از تکمیلِ هر سه مرحله، یه پیامِ تبریک برات می‌فرستیم 🎉"
     )
 
-def _onboarding_keyboard() -> InlineKeyboardMarkup:
+def _onboarding_keyboard(progress: dict) -> InlineKeyboardMarkup:
+    def step_button(label: str, callback_data: str, done: bool) -> InlineKeyboardButton:
+        return InlineKeyboardButton(
+            text=label,
+            callback_data=callback_data,
+            style="success" if done else "primary",
+        )
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 تکمیلِ پروفایل", callback_data="profile:start")],
-        [InlineKeyboardButton(text="☕️ رفتن به کافه معماری", url=TOPICS["☕️ کافه معماری"])],
-        [InlineKeyboardButton(text="🌟 مشاهده‌ی گروهِ VIP", callback_data="vip:open")],
+        [step_button("🚀 تکمیلِ پروفایل", "profile:start", progress.get("profile", False))],
+        [step_button("☕️ رفتن به کافه معماری", "onboarding:cafe", progress.get("cafe", False))],
+        [step_button("🌟 مشاهده‌ی گروهِ VIP", "vip:open", progress.get("vip", False))],
     ])
 
 async def start_onboarding(user_id: int, chat_id: int) -> None:
@@ -5447,8 +5441,8 @@ async def start_onboarding(user_id: int, chat_id: int) -> None:
     try:
         sent = await bot.send_message(
             chat_id=chat_id,
-            text=_onboarding_text(progress),
-            reply_markup=_onboarding_keyboard(),
+            text=_onboarding_text(),
+            reply_markup=_onboarding_keyboard(progress),
         )
     except Exception as e:
         logger.warning("ارسالِ چک‌لیستِ آنبوردینگ به کاربر %s ممکن نشد: %s", user_id, e)
@@ -5466,20 +5460,19 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
 
     progress = {k: entry.get(k, False) for k in ("profile", "cafe", "vip")}
     all_done = all(progress.values())
-    text = _onboarding_text(progress, all_done=all_done)
-    keyboard = None if all_done else _onboarding_keyboard()
+    keyboard = _onboarding_keyboard(progress)
 
     # نکته: کاربر ممکن است گزینه‌ها را به هر ترتیبی بزند (مثلاً اول VIP، بعد پروفایل).
     # پیامِ اصلیِ چک‌لیست گاهی توسطِ همان جریان‌ها (مثلاً بازشدنِ صفحه‌ی VIP که عکس دارد)
-    # حذف یا به چیزِ دیگری تبدیل می‌شود، و در آن حالت edit_message_text شکست می‌خورد.
-    # برای این‌که روند صرف‌نظر از ترتیبِ انتخاب هیچ‌وقت «گم» نشود، در صورتِ شکستِ ادیت،
-    # چک‌لیستِ به‌روزشده را به‌عنوانِ پیامِ تازه می‌فرستیم و مرجعِ پیام را آپدیت می‌کنیم.
+    # حذف یا به چیزِ دیگری تبدیل می‌شود، و در آن حالت ادیت شکست می‌خورد. برای این‌که
+    # روند صرف‌نظر از ترتیبِ انتخاب هیچ‌وقت «گم» نشود، در صورتِ شکستِ ادیتِ دکمه‌ها،
+    # چک‌لیست را به‌عنوانِ پیامِ تازه می‌فرستیم و مرجعِ پیام را آپدیت می‌کنیم.
+    # چون فقط رنگِ دکمه‌ها عوض می‌شود (نه متن)، همیشه edit_message_reply_markup کافی‌ست.
     updated = False
     try:
-        await bot.edit_message_text(
+        await bot.edit_message_reply_markup(
             chat_id=entry["chat_id"],
             message_id=entry["message_id"],
-            text=text,
             reply_markup=keyboard,
         )
         updated = True
@@ -5488,7 +5481,7 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
 
     if not updated:
         try:
-            sent = await bot.send_message(chat_id=entry["chat_id"], text=text, reply_markup=keyboard)
+            sent = await bot.send_message(chat_id=entry["chat_id"], text=_onboarding_text(), reply_markup=keyboard)
             entry["message_id"] = sent.message_id
             await save_onboarding(data)
         except Exception as e:
@@ -5503,6 +5496,23 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
             )
         except Exception:
             pass
+
+# ---------- مرحله‌ی «کافه معماری» — بدونِ الزام به معرفی، فقط یک سرزدنِ کوتاه ----------
+CAFE_SEEN_DELAY_SECONDS = 5
+
+@dp.callback_query(F.data == "onboarding:cafe")
+async def cb_onboarding_cafe(callback: CallbackQuery):
+    # کاربر را به تاپیکِ کافه هدایت می‌کنیم (بدونِ نیاز به ارسالِ پیام در آنجا)
+    # و بعدِ چند ثانیه، به‌صورتِ خودکار مرحله را تیک می‌زنیم.
+    await callback.answer(url=TOPICS["☕️ کافه معماری"])
+    asyncio.create_task(_delayed_mark_cafe_step(callback.from_user.id))
+
+async def _delayed_mark_cafe_step(user_id: int, delay: float = CAFE_SEEN_DELAY_SECONDS) -> None:
+    await asyncio.sleep(delay)
+    try:
+        await _mark_onboarding_step(user_id, "cafe")
+    except Exception as e:
+        logger.error("خطا در تیک‌زدنِ خودکارِ مرحله‌ی کافه برای کاربر %s: %s", user_id, e)
 
 # ==============================================================
 #  مسیر سلامت و پینگ خودکار
