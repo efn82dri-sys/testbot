@@ -5497,22 +5497,11 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
         except Exception:
             pass
 
-# ---------- مرحله‌ی «کافه معماری» — بدونِ الزام به معرفی، فقط یک سرزدنِ کوتاه ----------
-CAFE_SEEN_DELAY_SECONDS = 5
-
+# ---------- مرحله‌ی «کافه معماری» — فقط با یک ضربه، بدونِ لینک، تیک می‌خوره ----------
 @dp.callback_query(F.data == "onboarding:cafe")
 async def cb_onboarding_cafe(callback: CallbackQuery):
-    # کاربر را به تاپیکِ کافه هدایت می‌کنیم (بدونِ نیاز به ارسالِ پیام در آنجا)
-    # و بعدِ چند ثانیه، به‌صورتِ خودکار مرحله را تیک می‌زنیم.
-    await callback.answer(url=TOPICS["☕️ کافه معماری"])
-    asyncio.create_task(_delayed_mark_cafe_step(callback.from_user.id))
-
-async def _delayed_mark_cafe_step(user_id: int, delay: float = CAFE_SEEN_DELAY_SECONDS) -> None:
-    await asyncio.sleep(delay)
-    try:
-        await _mark_onboarding_step(user_id, "cafe")
-    except Exception as e:
-        logger.error("خطا در تیک‌زدنِ خودکارِ مرحله‌ی کافه برای کاربر %s: %s", user_id, e)
+    await _mark_onboarding_step(callback.from_user.id, "cafe")
+    await callback.answer()
 
 # ==============================================================
 #  مسیر سلامت و پینگ خودکار
