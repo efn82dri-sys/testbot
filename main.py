@@ -4339,15 +4339,24 @@ async def _grant_vip_reward(
 
     reason_line = f"\n\n📝 <i>{html_escape(reason)}</i>" if reason else ""
     end_jalali = format_jalali_datetime(end)
-    reward_text = sign(
-        "🎁 <b>یک خبرِ خوب برایتان داریم!</b>\n\n"
-        f"به‌پاسِ فعالیتِ خوبِ شما در رواق، تیمِ مدیریت تصمیم گرفت "
-        f"<b>{to_persian_num(days)} روز</b> دسترسیِ رایگانِ VIP را به‌عنوانِ پاداش برایتان فعال کند 🌟"
-        f"{reason_line}\n\n"
-        f"⏳ این دسترسی تا تاریخِ <b>{end_jalali}</b> معتبر است.\n\n"
-        "این هدیه‌ای از طرفِ مدیریتِ رواق است و ربطی به خریدِ اشتراک ندارد؛ "
-        "امیدواریم لذت ببرید 🏛"
-    )
+    if category_id == "referral":
+        # پیامِ اختصاصیِ پاداشِ ریفرال — تا با پیامِ عمومیِ «هدیه‌ی مدیریت» قاطی/تکراری نشود
+        reward_text = sign(
+            "🎁 <b>یه دوستت با لینکِ تو به رواق پیوست!</b>\n\n"
+            f"به‌همین‌مناسبت <b>{to_persian_num(days)} روز</b> اعتبارِ VIP بهت اضافه شد 🌟\n\n"
+            f"⏳ این دسترسی تا تاریخِ <b>{end_jalali}</b> معتبر است.\n\n"
+            "مرسی که رواق رو معرفی می‌کنی 🙏"
+        )
+    else:
+        reward_text = sign(
+            "🎁 <b>یک خبرِ خوب برایتان داریم!</b>\n\n"
+            f"به‌پاسِ فعالیتِ خوبِ شما در رواق، تیمِ مدیریت تصمیم گرفت "
+            f"<b>{to_persian_num(days)} روز</b> دسترسیِ رایگانِ VIP را به‌عنوانِ پاداش برایتان فعال کند 🌟"
+            f"{reason_line}\n\n"
+            f"⏳ این دسترسی تا تاریخِ <b>{end_jalali}</b> معتبر است.\n\n"
+            "این هدیه‌ای از طرفِ مدیریتِ رواق است و ربطی به خریدِ اشتراک ندارد؛ "
+            "امیدواریم لذت ببرید 🏛"
+        )
 
     is_member = False
     try:
@@ -5263,26 +5272,18 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
     entry["credited"] = True
     await save_referrals(data)
 
-    ok, _, _ = await _grant_vip_reward(
+    # توجه: _grant_vip_reward خودش پیامِ اطلاع‌رسانی (و در صورتِ نیاز لینکِ دعوتِ گروهِ VIP)
+    # را برای معرف ارسال می‌کند؛ اینجا نباید دوباره پیام جداگانه فرستاده شود، وگرنه
+    # کاربر دو پیامِ متفاوت برای یک پاداش دریافت می‌کند.
+    ok, result_msg, _end_dt = await _grant_vip_reward(
         referrer_id,
         REFERRAL_REWARD_DAYS,
         reason=f"معرفیِ عضوِ جدید (آیدی {new_user_id})",
         granted_by=0,
         category_id="referral",
     )
-    if ok:
-        try:
-            await bot.send_message(
-                chat_id=referrer_id,
-                text=sign(
-                    "🎁 <b>یه دوستت با لینکِ تو به رواق پیوست!</b>\n\n"
-                    f"به‌همین‌مناسبت {to_persian_num(REFERRAL_REWARD_DAYS)} روز اعتبارِ VIP بهت اضافه شد. "
-                    "مرسی که رواق رو معرفی می‌کنی 🙏"
-                ),
-                message_effect_id=MESSAGE_EFFECT_HEART,
-            )
-        except Exception as e:
-            logger.warning("اطلاع‌رسانیِ پاداشِ ریفرال به %s ممکن نشد: %s", referrer_id, e)
+    if not ok:
+        logger.warning("اعطای پاداشِ ریفرال به %s ناموفق بود: %s", referrer_id, result_msg)
 
 # ==============================================================
 #  چک‌لیست آنبوردینگ (شبیه‌سازی‌شده)
