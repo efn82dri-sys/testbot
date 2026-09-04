@@ -2937,16 +2937,19 @@ async def delete_user_identifier(message: Message, state: FSMContext):
             chat = await bot.get_chat(f"@{username}")
             user_id = chat.id
         except Exception as e:
-            await message.answer(f"❌ کاربر @{username} پیدا نشد. خطا: {e}\nلطفاً دوباره وارد کنید.")
+            await message.answer(
+                f"❌ کاربر @{username} پیدا نشد. خطا: {e}\n"
+                "توجه: کاربر باید حداقل یک‌بار ربات را استارت کرده باشد یا در گروه عضو باشد.\n"
+                "لطفاً دوباره آیدی عددی یا یوزرنیم صحیح را وارد کنید."
+            )
             return
-
-    await state.update_data(target_user_id=user_id, target_identifier=identifier)
-    await state.set_state(DeleteUserStates.confirming)
 
     try:
         user = await bot.get_chat(user_id)
         display = user.full_name or str(user_id)
-        await state.update_data(target_display=display)
+        await state.update_data(target_user_id=user_id, target_display=display)
+        await state.set_state(DeleteUserStates.confirming)
+
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="✅ بله، حذف شود", callback_data="admin:delete_confirm", style="danger")],
@@ -2959,7 +2962,7 @@ async def delete_user_identifier(message: Message, state: FSMContext):
             reply_markup=confirm_keyboard
         )
     except Exception as e:
-        await message.answer(f"❌ خطا در دریافت اطلاعات کاربر: {e}")
+        await message.answer(f"❌ خطا در دریافت اطلاعات کاربر: {e}\nلطفاً دوباره تلاش کنید.")
         await state.clear()
 
 @dp.callback_query(F.data == "admin:delete_confirm", DeleteUserStates.confirming)
@@ -2976,16 +2979,30 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
+    # ۱) تلاش برای اخراج از گروه (در صورت عضویت)
     try:
-        await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
+        member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
+        if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+            await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
+    except Exception as e:
+        logger.warning(f"اخراج کاربر {user_id} از گروه ممکن نشد (احتمالاً عضو نیست): {e}")
+
+    # ۲) حذف اطلاعات از فایل‌ها با مدیریت خطا
+    errors = []
+    try:
         async with _write_lock:
             verified = load_verified()
             if str(user_id) in verified:
                 del verified[str(user_id)]
                 VERIFIED_FILE.write_text(json.dumps(verified, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        errors.append(f"خطا در حذف از verified: {e}")
+        logger.error(f"خطا در حذف کاربر {user_id} از verified: {e}")
 
-            if DATA_FILE.exists():
-                new_lines = []
+    try:
+        if DATA_FILE.exists():
+            new_lines = []
+            async with _write_lock:
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
@@ -3001,26 +3018,27 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                     f.write("\n".join(new_lines))
                     if new_lines:
                         f.write("\n")
-
-            if str(user_id) in _user_cache:
-                del _user_cache[str(user_id)]
-
-        await callback.message.edit_text(f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.")
-        await state.clear()
-        await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
     except Exception as e:
-        logger.error(f"خطا در حذف کاربر {user_id}: {e}")
-        await callback.message.edit_text(f"❌ خطا در حذف کاربر: {e}")
-        await state.clear()
+        errors.append(f"خطا در حذف از submissions: {e}")
+        logger.error(f"خطا در حذف کاربر {user_id} از submissions: {e}")
 
-@dp.callback_query(F.data == "admin:delete_cancel", DeleteUserStates.confirming)
-async def cb_delete_cancel(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer()
-        return
+    try:
+        if str(user_id) in _user_cache:
+            del _user_cache[str(user_id)]
+    except Exception as e:
+        errors.append(f"خطا در حذف از کش: {e}")
+        logger.error(f"خطا در حذف کاربر {user_id} از کش: {e}")
+
+    if errors:
+        await callback.message.edit_text(
+            f"⚠️ کاربر <b>{html_escape(display)}</b> تا حدی حذف شد، اما خطاهایی رخ داد:\n" + "\n".join(errors) +
+            "\n\nلطفاً وضعیت را دستی بررسی کنید."
+        )
+    else:
+        await callback.message.edit_text(f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.")
+
     await state.clear()
-    await callback.message.edit_text("عملیات حذف لغو شد.", reply_markup=admin_panel_keyboard())
-    await callback.answer()
+    await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
 
 # ==============================================================
 #  بخش ارسال مستقیم به کاربر
