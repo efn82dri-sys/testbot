@@ -31,7 +31,6 @@ from aiogram.types import (
     CallbackQuery,
     ChatJoinRequest,
     ChatMemberUpdated,
-    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -3844,7 +3843,7 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"💳 {VIP_CARD_NUMBER}",
-                copy_text=CopyTextButton(text=VIP_CARD_NUMBER),
+                copy_text={"text": VIP_CARD_NUMBER},
                 style="primary",
             )],
             [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
