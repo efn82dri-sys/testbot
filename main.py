@@ -5466,15 +5466,33 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
 
     progress = {k: entry.get(k, False) for k in ("profile", "cafe", "vip")}
     all_done = all(progress.values())
+    text = _onboarding_text(progress, all_done=all_done)
+    keyboard = None if all_done else _onboarding_keyboard()
+
+    # نکته: کاربر ممکن است گزینه‌ها را به هر ترتیبی بزند (مثلاً اول VIP، بعد پروفایل).
+    # پیامِ اصلیِ چک‌لیست گاهی توسطِ همان جریان‌ها (مثلاً بازشدنِ صفحه‌ی VIP که عکس دارد)
+    # حذف یا به چیزِ دیگری تبدیل می‌شود، و در آن حالت edit_message_text شکست می‌خورد.
+    # برای این‌که روند صرف‌نظر از ترتیبِ انتخاب هیچ‌وقت «گم» نشود، در صورتِ شکستِ ادیت،
+    # چک‌لیستِ به‌روزشده را به‌عنوانِ پیامِ تازه می‌فرستیم و مرجعِ پیام را آپدیت می‌کنیم.
+    updated = False
     try:
         await bot.edit_message_text(
             chat_id=entry["chat_id"],
             message_id=entry["message_id"],
-            text=_onboarding_text(progress, all_done=all_done),
-            reply_markup=None if all_done else _onboarding_keyboard(),
+            text=text,
+            reply_markup=keyboard,
         )
+        updated = True
     except Exception as e:
-        logger.warning("به‌روزرسانیِ چک‌لیستِ آنبوردینگِ کاربر %s ممکن نشد: %s", user_id, e)
+        logger.warning("ادیتِ چک‌لیستِ آنبوردینگِ کاربر %s ممکن نشد، پیامِ تازه ارسال می‌شود: %s", user_id, e)
+
+    if not updated:
+        try:
+            sent = await bot.send_message(chat_id=entry["chat_id"], text=text, reply_markup=keyboard)
+            entry["message_id"] = sent.message_id
+            await save_onboarding(data)
+        except Exception as e:
+            logger.warning("ارسالِ چک‌لیستِ تازه‌ی آنبوردینگ برای کاربر %s هم ممکن نشد: %s", user_id, e)
 
     if all_done:
         try:
