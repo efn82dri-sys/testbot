@@ -3029,16 +3029,23 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
     # اگر کاربر از قبل عضو نیست یا گروه را ترک کرده (رایج‌ترین دلیلِ
     # حذفِ دستیِ اطلاعاتش)، ban_chat_member ارور می‌دهد ولی نباید
     # جلویِ پاک‌شدنِ داده‌هایش را بگیرد.
+    # سپس بلافاصله unban می‌کنیم (only_if_banned) تا کاربر واقعاً «هیچ‌وقت
+    # عضو نبوده» به‌حساب بیاید و بتواند دوباره درخواستِ عضویت بدهد —
+    # وگرنه ban بدون تاریخِ انقضا برای همیشه می‌ماند و امکانِ تستِ دوباره
+    # (مثلاً تستِ ریفرال) را از او می‌گیرد.
     try:
         await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
+        await bot.unban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id, only_if_banned=True)
     except Exception as e:
-        logger.warning(f"اخراج کاربر {user_id} از گروه ممکن نشد (احتمالاً عضو نیست): {e}")
+        logger.warning(f"اخراج/آزادسازیِ کاربر {user_id} از گروه ممکن نشد (احتمالاً عضو نیست): {e}")
 
     try:
         async with _write_lock:
+            uid_str = str(user_id)
+
             verified = load_verified()
-            if str(user_id) in verified:
-                del verified[str(user_id)]
+            if uid_str in verified:
+                del verified[uid_str]
                 VERIFIED_FILE.write_text(json.dumps(verified, ensure_ascii=False), encoding="utf-8")
 
             if DATA_FILE.exists():
@@ -3059,10 +3066,83 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                     if new_lines:
                         f.write("\n")
 
-            if str(user_id) in _user_cache:
-                del _user_cache[str(user_id)]
+            if uid_str in _user_cache:
+                del _user_cache[uid_str]
 
-        await callback.message.edit_text(f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.")
+            # ۲) رد کردنِ ثبتِ ورود به قیف (funnel_users.json) — تا آمارِ ورودیِ
+            # قیف هم مثلِ یک کاربرِ کاملاً تازه دوباره برایش ثبت شود.
+            if FUNNEL_USERS_FILE.exists():
+                try:
+                    funnel_users = set(json.loads(FUNNEL_USERS_FILE.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
+                    funnel_users = set()
+                if user_id in funnel_users:
+                    funnel_users.discard(user_id)
+                    FUNNEL_USERS_FILE.write_text(json.dumps(list(funnel_users)), encoding="utf-8")
+
+            # ۳) پاکِ‌کردنِ رکوردِ ریفرالِ خودِ این کاربر (به‌عنوانِ «معرفی‌شده»)
+            # تا اگر دوباره با لینکِ دعوت وارد شود، به‌عنوانِ ریفرالِ جدید
+            # ردیابی و پاداش‌دهی شود.
+            if REFERRALS_FILE.exists():
+                try:
+                    referrals_data = json.loads(REFERRALS_FILE.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    referrals_data = {}
+                if uid_str in referrals_data:
+                    del referrals_data[uid_str]
+                    REFERRALS_FILE.write_text(
+                        json.dumps(referrals_data, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+
+            # ۴) حذفِ ردِ درخواستِ عضویتِ معلق (در صورتِ وجود)
+            if PENDING_JOIN_FILE.exists():
+                try:
+                    pending_joins = json.loads(PENDING_JOIN_FILE.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    pending_joins = {}
+                if uid_str in pending_joins:
+                    del pending_joins[uid_str]
+                    PENDING_JOIN_FILE.write_text(
+                        json.dumps(pending_joins, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+
+            # ۵) حذف از صفِ pending_requests در وضعیتِ کلیِ ربات
+            if BOT_STATE_FILE.exists():
+                try:
+                    bot_state = json.loads(BOT_STATE_FILE.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    bot_state = None
+                if bot_state and user_id in bot_state.get("pending_requests", []):
+                    bot_state["pending_requests"] = [
+                        uid for uid in bot_state["pending_requests"] if uid != user_id
+                    ]
+                    BOT_STATE_FILE.write_text(json.dumps(bot_state, ensure_ascii=False), encoding="utf-8")
+
+            # ۶) حذفِ چک‌لیستِ آنبوردینگِ قبلی
+            if ONBOARDING_FILE.exists():
+                try:
+                    onboarding_data = json.loads(ONBOARDING_FILE.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    onboarding_data = {}
+                if uid_str in onboarding_data:
+                    del onboarding_data[uid_str]
+                    ONBOARDING_FILE.write_text(
+                        json.dumps(onboarding_data, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+
+            # ۷) پاک‌سازیِ وضعیتِ FSM (چت خصوصی → chat_id == user_id)
+            fsm_prefix = f"{bot.id}:{uid_str}:{uid_str}:"
+            fsm_keys_to_drop = [k for k in storage._data.keys() if k.startswith(fsm_prefix)]
+            for k in fsm_keys_to_drop:
+                del storage._data[k]
+            if fsm_keys_to_drop:
+                storage._persist()
+
+        await callback.message.edit_text(
+            f"✅ کاربر <b>{html_escape(display)}</b> با موفقیت حذف شد.\n"
+            "همه‌ی ردپاهای او (عضویت، فرم، آنبوردینگ، ریفرال، وضعیتِ ربات) پاک شد؛ "
+            "الان دقیقاً مثلِ کسی‌ست که تا حالا /start نزده."
+        )
         await state.clear()
         await callback.message.answer("🛠 پنل مدیریت", reply_markup=admin_panel_keyboard())
     except Exception as e:
