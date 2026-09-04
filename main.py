@@ -1911,6 +1911,7 @@ async def handle_leave_poll_answer(poll_answer: PollAnswer):
 @dp.message(Command("admin"))
 async def handle_admin_panel(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
+        await message.answer("⛔ این آیتم فقط برای ادمینِ ربات فعال است.")
         return
     await state.clear()
     await send_with_action(message.chat.id, "typing", 0.5)
@@ -5517,8 +5518,8 @@ async def on_startup(app: web.Application):
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="🏛 شروع / بازکردنِ پنل"),
-            BotCommand(command="panel", description="📋 بازکردنِ پنلِ کاربری"),
             BotCommand(command="vip", description="🌟 مشاهده‌ی گروهِ VIP"),
+            BotCommand(command="admin", description="⚙️ پنلِ مدیریت (فقط ادمین)"),
         ],
         scope=BotCommandScopeAllPrivateChats(),
     )
