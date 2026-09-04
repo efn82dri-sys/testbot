@@ -1313,7 +1313,12 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
     await _untrack_pending_join(user_id)
 
     # پاداش ریفرال (اگر کاربر با لینک دعوت آمده باشد)
-    await _credit_referral_if_pending(user_id)
+    # داخلِ try/except تا اگر اعطای پاداشِ ریفرال با خطا مواجه شد، خوش‌آمدگویی و
+    # چک‌لیستِ آنبوردینگِ خودِ عضوِ تازه‌وارد (که هیچ ربطی به این خطا ندارد) بی‌دلیل حذف نشود.
+    try:
+        await _credit_referral_if_pending(user_id)
+    except Exception as e:
+        logger.error("خطا در بررسی/اعطای پاداشِ ریفرالِ کاربر %s: %s", user_id, e)
 
     if notify_user:
         try:
@@ -5270,21 +5275,46 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
     if not entry or entry.get("credited"):
         return
     referrer_id = entry["referrer_id"]
-    entry["credited"] = True
-    await save_referrals(data)
 
     # توجه: _grant_vip_reward خودش پیامِ اطلاع‌رسانی (و در صورتِ نیاز لینکِ دعوتِ گروهِ VIP)
     # را برای معرف ارسال می‌کند؛ اینجا نباید دوباره پیام جداگانه فرستاده شود، وگرنه
     # کاربر دو پیامِ متفاوت برای یک پاداش دریافت می‌کند.
-    ok, result_msg, _end_dt = await _grant_vip_reward(
-        referrer_id,
-        REFERRAL_REWARD_DAYS,
-        reason=f"معرفیِ عضوِ جدید (آیدی {new_user_id})",
-        granted_by=0,
-        category_id="referral",
-    )
+    try:
+        ok, result_msg, _end_dt = await _grant_vip_reward(
+            referrer_id,
+            REFERRAL_REWARD_DAYS,
+            reason=f"معرفیِ عضوِ جدید (آیدی {new_user_id})",
+            granted_by=0,
+            category_id="referral",
+        )
+    except Exception as e:
+        ok, result_msg = False, str(e)
+
     if not ok:
+        # مهم: اگر اعطای پاداش ناموفق بود، credited را True نمی‌کنیم — تا این رکورد
+        # به‌عنوانِ «پاداشِ ناموفق/معلق» باقی بماند و بی‌سروصدا برای همیشه گم نشود.
+        # قبلاً این پرچم قبل از فراخوانیِ _grant_vip_reward ست می‌شد که باعث می‌شد
+        # در صورتِ هر خطایی (مثلاً تنظیم‌نبودنِ VIP_GROUP_CHAT_ID)، معرف هیچ‌وقت
+        # پاداشش را نگیرد و هیچ‌کس هم متوجه نمی‌شد.
         logger.warning("اعطای پاداشِ ریفرال به %s ناموفق بود: %s", referrer_id, result_msg)
+        if NOTIFY_CHAT_ID_INT:
+            try:
+                await bot.send_message(
+                    chat_id=NOTIFY_CHAT_ID_INT,
+                    text=(
+                        "⚠️ <b>اعطای پاداشِ ریفرال ناموفق بود</b>\n\n"
+                        f"👤 معرف: <code>{referrer_id}</code>\n"
+                        f"🆕 عضوِ جدید: <code>{new_user_id}</code>\n"
+                        f"❌ خطا: <code>{html_escape(str(result_msg)[:200])}</code>\n\n"
+                        "می‌توانید از «🎁 اهدای پاداش VIP» در پنلِ ادمین به‌صورتِ دستی برایِ معرف ثبت کنید."
+                    ),
+                )
+            except Exception as notify_err:
+                logger.error("اطلاع‌رسانیِ شکستِ پاداشِ ریفرال به ادمین ممکن نشد: %s", notify_err)
+        return
+
+    entry["credited"] = True
+    await save_referrals(data)
 
 # ==============================================================
 #  چک‌لیست آنبوردینگ (شبیه‌سازی‌شده)
