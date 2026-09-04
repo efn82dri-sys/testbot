@@ -31,6 +31,7 @@ from aiogram.types import (
     CallbackQuery,
     ChatJoinRequest,
     ChatMemberUpdated,
+    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -3834,14 +3835,20 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
         f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
         f"{price_line}\n\n"
         f"لطفاً مبلغ فوق را به شماره‌کارتِ زیر واریز کنید:\n\n"
-        f"<code>{VIP_CARD_NUMBER}</code>\n"
-        f"به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
-        "(روی شماره‌کارت بزنید تا کپی شود)\n\n"
+        f"👤 به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
+        "(برای کپی‌کردنِ شماره‌کارت، روی دکمه‌ی زیر بزنید)\n\n"
         "📸 پس از واریز، عکسِ فیش یا رسیدِ پرداخت را همین‌جا ارسال کنید.\n"
         "پس از تاییدِ ادمین، لینکِ ورود به گروهِ VIP برایتان ارسال می‌شود."
     )
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"💳 {VIP_CARD_NUMBER}",
+                copy_text=CopyTextButton(text=VIP_CARD_NUMBER),
+                style="primary",
+            )],
+            [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
+        ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
