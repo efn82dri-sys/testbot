@@ -3980,6 +3980,18 @@ async def render_vip_page(index: int):
     image_file_id = cat.get("image_file_id")
     return caption, keyboard, image_file_id
 
+def _vip_group_sections(categories: list[dict]) -> list[dict]:
+    """کتگوری‌ها رو بر اساسِ section_header به بخش‌های پشتِ‌سرِهم می‌شکنه.
+    هر بخش یعنی: {"header": متن یا None, "start": ایندکسِ شروع, "end": ایندکسِ پایان (اکسکلوسیو)}"""
+    sections = []
+    for i, cat in enumerate(categories):
+        header = cat.get("section_header")
+        if header or not sections:
+            sections.append({"header": header, "start": i, "end": i + 1})
+        else:
+            sections[-1]["end"] = i + 1
+    return sections
+
 async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
     categories = load_vip_categories()
     intro = (
@@ -3992,25 +4004,61 @@ async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
     )
     rows = []
     row = []
-    for i, cat in enumerate(categories):
-        section_header = cat.get("section_header")
-        if section_header:
+    for section in _vip_group_sections(categories):
+        if section["header"]:
             if row:
                 rows.append(row)
                 row = []
-            rows.append([InlineKeyboardButton(text=f"•••• {section_header} ••••", callback_data="noop")])
-        row.append(InlineKeyboardButton(text=cat["name"], callback_data=f"vipnav:{i}"))
-        if len(row) == 2:
-            rows.append(row)
-            row = []
+            count = section["end"] - section["start"]
+            group_start_id = categories[section["start"]]["id"]
+            rows.append([InlineKeyboardButton(
+                text=f"{section['header']} ({to_persian_num(count)} مورد)",
+                callback_data=f"vipgroup:{group_start_id}",
+            )])
+            continue
+        for i in range(section["start"], section["end"]):
+            row.append(InlineKeyboardButton(text=categories[i]["name"], callback_data=f"vipnav:{i}"))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
     if row:
         rows.append(row)
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
     return intro, InlineKeyboardMarkup(inline_keyboard=rows)
 
+async def render_vip_group_page(group_start_id: str) -> tuple[str, InlineKeyboardMarkup] | None:
+    categories = load_vip_categories()
+    sections = _vip_group_sections(categories)
+    section = next((s for s in sections if s["header"] and categories[s["start"]]["id"] == group_start_id), None)
+    if section is None:
+        return None
+    text = f"⟪ {section['header']} ⟫\n\n👇 یکی از موارد زیر رو انتخاب کنید:"
+    rows = []
+    row = []
+    for i in range(section["start"], section["end"]):
+        row.append(InlineKeyboardButton(text=categories[i]["name"], callback_data=f"vipnav:{i}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به گروه‌ها", callback_data="vip:list", style="danger")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
 @dp.callback_query(F.data == "vip:list")
 async def cb_vip_list(callback: CallbackQuery):
     text, keyboard = await render_vip_list_page()
+    await show_text_panel(callback, text, keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("vipgroup:"))
+async def cb_vip_group(callback: CallbackQuery):
+    group_start_id = callback.data.split(":", 1)[1]
+    result = await render_vip_group_page(group_start_id)
+    if result is None:
+        await callback.answer("این گروه دیگر موجود نیست.", show_alert=True)
+        return
+    text, keyboard = result
     await show_text_panel(callback, text, keyboard)
     await callback.answer()
 
