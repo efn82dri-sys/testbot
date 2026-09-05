@@ -3956,6 +3956,15 @@ async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
     rows = []
     row = []
     for i, cat in enumerate(categories):
+        # بررسی وجود سرتیتر گروهی
+        if cat.get("section_header"):
+            # ردیفِ جاریِ دوستونی را ببند (flush)
+            if row:
+                rows.append(row)
+                row = []
+            # اضافه کردن ردیفِ سرتیترِ تمام‌عرض
+            rows.append([InlineKeyboardButton(text=cat["section_header"], callback_data="noop", style="primary")])
+        
         row.append(InlineKeyboardButton(text=cat["name"], callback_data=f"vipnav:{i}"))
         if len(row) == 2:
             rows.append(row)
@@ -4919,6 +4928,7 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
         [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
+        [InlineKeyboardButton(text="🏷 تنظیمِ سرتیترِ گروه", callback_data=f"vipset:field:{cat_id}:section_header", style="primary")],
         [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}", style="primary")],
         [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}", style="danger")],
     ]
@@ -4927,6 +4937,10 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(text="🗑 حذفِ این دسته‌بندی", callback_data=f"vipset:delete:{cat_id}", style="danger")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:vip_settings", style="danger")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data == "noop")
+async def cb_noop(callback: CallbackQuery):
+    await callback.answer()
 
 @dp.callback_query(F.data == "vipset:add")
 async def cb_vipset_add(callback: CallbackQuery, state: FSMContext):
@@ -5057,6 +5071,7 @@ async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
     prompts = {
         "name": "نامِ جدید را ارسال کنید:",
         "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
+        "section_header": "متنِ سرتیتری که باید دقیقاً قبل از این دسته‌بندی نشون داده بشه رو بفرست.\nبرایِ حذفِ سرتیترِ فعلی، کلمه‌ی «حذف» رو بفرست.",
     }
     await callback.message.edit_text(
         prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
@@ -5100,6 +5115,11 @@ async def handle_vipset_edit_value(message: Message, state: FSMContext):
         cat["name"] = message.text.strip()
     elif field == "description":
         cat["description"] = message.text.strip()
+    elif field == "section_header":
+        if message.text.strip().lower() == "حذف":
+            cat.pop("section_header", None)
+        else:
+            cat["section_header"] = message.text.strip()
 
     await save_vip_categories(categories)
     await state.clear()
