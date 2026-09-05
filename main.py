@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 
 import jdatetime
 import pytz
@@ -920,7 +921,6 @@ def migrate_menu_config(config: dict) -> dict:
         "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
         "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
         "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
-        "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
         "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
         "faq": {"label": "❓ سوالات متداول", "response": "سوالات پرتکرار:\n{faq_list}"},
         "social": {"label": "🌐 شبکه‌های اجتماعی", "response": "ما را دنبال کنید:\nاینستاگرام: {instagram}\nکانال: {channel}"},
@@ -960,7 +960,6 @@ def load_menu_config() -> dict:
                 "join": {"label": "👥 دعوت از دوستان", "response": "🔗 لینک دعوت گروه:\n{invite_link}"},
                 "topics": {"label": "📚 راهنمای تاپیک‌ها", "response": "لطفاً یکی از تاپیک‌های زیر را انتخاب کنید:"},
                 "contact_admin": {"label": "📞 ارتباط با ادمین", "response": "پیام خود را تایپ کنید تا برای ادمین ارسال شود."},
-                "my_status": {"label": "📊 وضعیت عضویت من", "response": "وضعیت شما: {status}"},
                 "announcements": {"label": "📢 اطلاعیه‌های جدید", "response": "آخرین اطلاعیه‌ها:\n{announcements}"},
                 "faq": {"label": "❓ سوالات متداول", "response": "سوالات پرتکرار:\n{faq_list}"},
                 "social": {"label": "🌐 شبکه‌های اجتماعی", "response": "ما را دنبال کنید:\nاینستاگرام: {instagram}\nکانال: {channel}"},
@@ -1028,7 +1027,6 @@ _USER_MENU_STYLES = {
     "join": "primary",
     "topics": "primary",
     "contact_admin": "primary",
-    "my_status": "primary",
     "announcements": "primary",
     "faq": "primary",
     "social": "primary",
@@ -1037,27 +1035,26 @@ _USER_MENU_STYLES = {
 def user_panel_keyboard() -> InlineKeyboardMarkup:
     config = load_menu_config()
     items = config["menu_items"]
+    # نکته: «📊 وضعیتِ عضویتِ من» به‌عنوانِ دکمه‌ی جدا حذف شد؛ محتوایش (وضعیتِ عضویت،
+    # تاریخِ عضویت) حالا بخشی از داشبوردِ «👤 پروفایلِ من» است (به build_profile_dashboard نگاه کنید).
     rows_keys = [
         ("profile", "vip"),
         ("topics", "join"),
-        ("my_status", "contact_admin"),
-        ("faq", "social"),
+        ("contact_admin", "faq"),
+        ("social",),
     ]
     labels = {
         "profile": "👤 پروفایل من",
         **{k: v["label"] for k, v in items.items()},
     }
     buttons = []
-    for key1, key2 in rows_keys:
+    for row_keys in rows_keys:
         buttons.append([
             InlineKeyboardButton(
-                text=labels[key1], callback_data=f"menu:{key1}",
-                style=_USER_MENU_STYLES.get(key1, "primary"),
-            ),
-            InlineKeyboardButton(
-                text=labels[key2], callback_data=f"menu:{key2}",
-                style=_USER_MENU_STYLES.get(key2, "primary"),
-            ),
+                text=labels[key], callback_data=f"menu:{key}",
+                style=_USER_MENU_STYLES.get(key, "primary"),
+            )
+            for key in row_keys
         ])
     buttons.append([InlineKeyboardButton(text="❌ بستن پنل", callback_data="menu:close", style="danger")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -1121,13 +1118,18 @@ def admin_users_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary"),
-                InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger"),
+                InlineKeyboardButton(text="🔍 پروفایلِ کاربر", callback_data="admin:lookup_user", style="primary"),
             ],
+            [InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
 
 def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
+    pending_count = len(pending_referral_reward_entries())
+    pending_label = "⚠️ پاداش‌هایِ رفرالِ معلق"
+    if pending_count:
+        pending_label += f" ({to_persian_num(pending_count)})"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1136,6 +1138,7 @@ def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="📋 مشترکینِ VIP", callback_data="vipadmin:list:0", style="primary")],
             [InlineKeyboardButton(text="🎁 اهدای پاداش VIP", callback_data="vipreward:start", style="success")],
+            [InlineKeyboardButton(text=pending_label, callback_data="refpending:list:0", style="danger" if pending_count else "primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -1562,6 +1565,17 @@ async def cb_rules_accept(callback: CallbackQuery):
             )
         except Exception:
             pass
+        # یه ری‌اکشنِ کوچیک رویِ همین پیام، برای حسِ زنده‌بودنِ ربات در لحظه‌ی تاییدِ عضویت.
+        # به‌صورتِ dict پاس داده می‌شود (نه از طریقِ کلاسِ ReactionTypeEmoji) تا مستقل از
+        # نسخه‌ی نصب‌شده‌ی aiogram کار کند — همان الگویی که برایِ copy_text استفاده کردیم.
+        try:
+            await bot.set_message_reaction(
+                chat_id=user.id,
+                message_id=callback.message.message_id,
+                reaction=[{"type": "emoji", "emoji": "🎉"}],
+            )
+        except Exception as e:
+            logger.warning("افزودنِ ری‌اکشن به پیامِ قوانینِ کاربر %s ممکن نشد: %s", user.id, e)
         await callback.answer("عضویت تایید شد ✅")
         await bot.send_message(
             chat_id=user.id,
@@ -1715,25 +1729,81 @@ async def cb_profile_back_to_referral(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ---------- ساختِ کارتِ پروفایل ----------
-def build_profile_card(user, data: dict, jalali_now: str) -> str:
-    display_name = html_escape(user.full_name or user.first_name or "کاربر")
-    interests_text = '، '.join(data.get('interests', []))
-    card = (
-        "🥇 <b>تبریک! شما کاربرِ طلاییِ رواق شدید</b>\n\n"
-        f"👤 {display_name}\n"
-        f"🎓 {data.get('education_label', '')}\n"
-        f"⭐️ علایق: {interests_text}\n"
-        f"🗓 {jalali_now}\n\n"
-        "هر زمان بخواهید می‌توانید از همین بخش، اطلاعاتِ پروفایل‌تان را دوباره ویرایش کنید."
-    )
-    return sign(card)
+# ---------- ساختِ داشبوردِ پروفایل (پروفایل + وضعیتِ عضویت + VIP + رفرال + آنبوردینگ) ----------
+async def build_profile_dashboard(user) -> tuple[str, InlineKeyboardMarkup]:
+    user_id = user.id
+    record = _user_cache.get(str(user_id))
 
-def profile_result_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ ویرایشِ مجدد", callback_data="profile:edit", style="primary")],
+    # وضعیتِ عضویت + تاریخِ عضویت (این بخش قبلاً «📊 وضعیتِ عضویتِ من» جدا بود)
+    is_member = await is_user_member(user_id)
+    joined_at_raw = load_verified().get(str(user_id))
+    joined_line = ""
+    if joined_at_raw:
+        try:
+            joined_line = f"🗓 عضو از: {format_jalali_datetime(datetime.fromisoformat(joined_at_raw))}\n"
+        except ValueError:
+            pass
+    membership_line = (
+        f"👤 وضعیتِ عضویت: {'✅ عضوِ گروه هستید' if is_member else '❌ عضوِ گروه نیستید'}\n"
+        f"{joined_line}"
+    )
+
+    # وضعیتِ اشتراکِ VIP
+    vip_line = ""
+    vip_buttons = []
+    if VIP_GROUP_CHAT_ID is not None:
+        vip_status = get_user_vip_status(user_id)
+        if vip_status["is_active"]:
+            end_jalali = format_jalali_datetime(vip_status["end"])
+            vip_line = (
+                f"🌟 اشتراکِ VIP: فعال ✅ — {to_persian_num(vip_status['remaining_days'])} روزِ دیگر "
+                f"(تا {end_jalali})\n"
+            )
+            vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
+        elif vip_status["has_subscription"]:
+            vip_line = "🌟 اشتراکِ VIP: به پایان رسیده ⌛️\n"
+            vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
+        else:
+            vip_line = "🌟 اشتراکِ VIP: ندارید\n"
+            vip_buttons.append([InlineKeyboardButton(text="🌟 مشاهده‌ی گروهِ VIP", callback_data="vip:open", style="success")])
+
+    # تعدادِ رفرال‌ها
+    ref_counts = count_referrals(user_id)
+    referral_line = (
+        f"🔗 دعوت‌های موفق: {to_persian_num(ref_counts['total'])} نفر "
+        f"({to_persian_num(ref_counts['credited'])} پاداش‌گرفته)\n"
+    )
+
+    # پیشرفتِ مسیرِ آنبوردینگ
+    onboarding_entry = load_onboarding().get(str(user_id))
+    onboarding_line = ""
+    if onboarding_entry:
+        done = sum(1 for k in ("profile", "cafe", "vip") if onboarding_entry.get(k))
+        onboarding_line = f"🧭 پیشرفتِ مسیرِ شروع: {to_persian_num(done)} از {to_persian_num(3)} مرحله\n"
+
+    if record:
+        interests_text = '، '.join(record.get('interests', []))
+        header = "🥇 <b>پروفایلِ من — کاربرِ طلایی</b>\n\n"
+        body = f"🎓 {record.get('education_label', '')}\n⭐️ علایق: {interests_text}\n\n"
+        profile_button = InlineKeyboardButton(text="✏️ ویرایشِ اطلاعات", callback_data="profile:edit", style="primary")
+    else:
+        header = "👤 <b>پروفایلِ من</b>\n\n"
+        body = (
+            "هنوز پروفایلِ شما تکمیل نشده است.\n"
+            "با پاسخ به سه سوالِ کوتاه، به «🥇 کاربرِ طلایی» رواق ارتقا پیدا کنید.\n\n"
+        )
+        profile_button = InlineKeyboardButton(text="🚀 شروعِ تکمیلِ پروفایل", callback_data="profile:start", style="success")
+
+    text = sign(
+        header + membership_line + "\n" + body + vip_line + "\n" + referral_line + onboarding_line
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [profile_button],
+        *vip_buttons,
+        [InlineKeyboardButton(text="👥 دعوت از دوستان", callback_data="menu:join", style="primary")],
         [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
     ])
+    return text, keyboard
 
 @dp.callback_query(F.data == "profint_done")
 async def cb_profile_submit(callback: CallbackQuery):
@@ -1768,12 +1838,15 @@ async def cb_profile_submit(callback: CallbackQuery):
     _pending_profile.pop(user.id, None)
     logger.info("پروفایلِ کاربر %s ذخیره شد.", user.id)
 
-    jalali_now = format_jalali_datetime(datetime.utcnow())
-    card = build_profile_card(user, record, jalali_now)
-    await callback.message.edit_text(card, reply_markup=profile_result_keyboard())
+    dashboard_text, dashboard_keyboard = await build_profile_dashboard(user)
+    await callback.message.edit_text(dashboard_text, reply_markup=dashboard_keyboard)
 
-    # مرحله آنبوردینگ: تکمیل پروفایل
-    await _mark_onboarding_step(user.id, "profile")
+    # مرحله آنبوردینگ: تکمیل پروفایل.
+    # نکته: اگر همین پیام دقیقاً پیامِ چک‌لیستِ آنبوردینگ باشد (یعنی کاربر از داخلِ
+    # خودِ چک‌لیست وارد پروفایل شده)، نباید دکمه‌های داشبوردِ پروفایل که همین الان
+    # نشان دادیم با دکمه‌های چک‌لیست جایگزین شوند؛ avoid_message_id دقیقاً همین
+    # تداخل را می‌گیرد و به‌جایش چک‌لیست را (در صورتِ نیاز) به‌عنوانِ پیامِ جدا آپدیت می‌کند.
+    await _mark_onboarding_step(user.id, "profile", avoid_message_id=callback.message.message_id)
 
     # افکت LIKE
     try:
@@ -2151,22 +2224,55 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
+    if action == "lookup_user":
+        await state.set_state(AdminLookupStates.waiting_for_identifier)
+        await callback.message.edit_text(
+            "🔍 <b>پروفایلِ کاربر</b>\n\n"
+            "شناسهٔ کاربر را وارد کنید (آیدی عددی یا @username):\n"
+            "مثال: 123456789  یا  @Ali_Arch\n"
+            "(برای لغو، /cancel بفرستید)",
+            reply_markup=admin_back_keyboard()
+        )
+        await callback.answer()
+        return
+
     if action == "toggle_bot":
         state_data = load_bot_state()
-        new_enabled = not state_data.get("enabled", True)
-        state_data["enabled"] = new_enabled
+        currently_enabled = state_data.get("enabled", True)
+
+        if currently_enabled:
+            # خاموش‌کردنِ ربات مخرب است (تا وقتی دوباره روشن نشود، هیچ پیام/درخواستی
+            # پاسخ داده نمی‌شود)، پس قبل از اجرا یک تاییدِ دوم می‌گیریم — دقیقاً
+            # همان الگویی که برایِ «بازیابی از بکاپ» پیاده شده.
+            await callback.answer()
+            confirm_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ بله، خاموش شود", callback_data="admin:toggle_bot_confirm", style="danger")],
+                    [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:menu", style="primary")],
+                ]
+            )
+            await callback.message.answer(
+                "⚠️ <b>خاموش‌کردنِ ربات</b>\n\n"
+                "با این کار، ربات تا روشن‌شدنِ دوباره به هیچ پیام یا درخواستِ عضویتی پاسخ نمی‌دهد.\n"
+                "مطمئنی؟",
+                reply_markup=confirm_keyboard,
+            )
+            return
+
+        # روشن‌کردن، برخلافِ خاموش‌کردن، بی‌خطر و بلافاصله بازگشت‌پذیر است؛ نیازی به تاییدِ دوم ندارد.
+        state_data["enabled"] = True
         await save_bot_state(state_data)
+        await callback.answer("ربات روشن ✅ شد.")
+        await callback.message.edit_text(await build_admin_dashboard_text(), reply_markup=admin_panel_keyboard())
+        asyncio.create_task(process_pending_requests())
+        return
 
-        status_text = "روشن ✅" if new_enabled else "خاموش 🔴"
-        await callback.answer(f"ربات {status_text} شد.")
-
-        await callback.message.edit_text(
-            await build_admin_dashboard_text(),
-            reply_markup=admin_panel_keyboard()
-        )
-
-        if new_enabled:
-            asyncio.create_task(process_pending_requests())
+    if action == "toggle_bot_confirm":
+        state_data = load_bot_state()
+        state_data["enabled"] = False
+        await save_bot_state(state_data)
+        await callback.answer("ربات خاموش 🔴 شد.")
+        await callback.message.answer(await build_admin_dashboard_text(), reply_markup=admin_panel_keyboard())
         return
 
     if action == "menu_edit":
@@ -2584,53 +2690,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         return
 
     if key == "profile":
-        user_id = callback.from_user.id
-        record = _user_cache.get(str(user_id))
-
-        vip_line = ""
-        vip_buttons = []
-        if VIP_GROUP_CHAT_ID is not None:
-            vip_status = get_user_vip_status(user_id)
-            if vip_status["is_active"]:
-                end_jalali = format_jalali_datetime(vip_status["end"])
-                vip_line = (
-                    "\n🌟 <b>اشتراکِ VIP:</b> فعال ✅\n"
-                    f"⏳ {to_persian_num(vip_status['remaining_days'])} روزِ دیگر باقی مانده (تا {end_jalali})\n"
-                )
-                vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
-            elif vip_status["has_subscription"]:
-                vip_line = "\n🌟 <b>اشتراکِ VIP:</b> به پایان رسیده ⌛️\n"
-                vip_buttons.append([InlineKeyboardButton(text="🌟 تمدیدِ اشتراکِ VIP", callback_data="vip:open", style="success")])
-            else:
-                vip_line = "\n🌟 <b>اشتراکِ VIP:</b> ندارید\n"
-                vip_buttons.append([InlineKeyboardButton(text="🌟 مشاهده‌ی گروهِ VIP", callback_data="vip:open", style="success")])
-
-        if record:
-            interests_text = '، '.join(record.get('interests', []))
-            text = (
-                "🥇 <b>پروفایلِ من — کاربرِ طلایی</b>\n\n"
-                f"🎓 {record.get('education_label', '')}\n"
-                f"⭐️ علایق: {interests_text}\n"
-                f"{vip_line}\n"
-                "می‌توانید هر زمان اطلاعاتِ خود را ویرایش کنید."
-            )
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✏️ ویرایشِ اطلاعات", callback_data="profile:edit", style="primary")],
-                *vip_buttons,
-                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
-            ])
-        else:
-            text = (
-                "👤 <b>پروفایلِ من</b>\n"
-                f"{vip_line}\n"
-                "هنوز پروفایلِ شما تکمیل نشده است.\n"
-                "با پاسخ به سه سوالِ کوتاه، به «🥇 کاربرِ طلایی» رواق ارتقا پیدا کنید."
-            )
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🚀 شروعِ تکمیلِ پروفایل", callback_data="profile:start", style="success")],
-                *vip_buttons,
-                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
-            ])
+        text, keyboard = await build_profile_dashboard(callback.from_user)
         await show_text_panel(callback, text, keyboard)
         await callback.answer()
         return
@@ -2648,7 +2708,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         caption, keyboard, image_id = await render_vip_page(0)
         await show_vip_page(callback, caption, keyboard, image_id)
         # ثبت مرحله آنبوردینگ (مشاهده VIP)
-        await _mark_onboarding_step(callback.from_user.id, "vip")
+        await _mark_onboarding_step(callback.from_user.id, "vip", avoid_message_id=callback.message.message_id)
         await callback.answer()
         return
 
@@ -2669,42 +2729,6 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back")]]
             )
-        )
-        await callback.answer()
-        return
-
-    if key == "my_status":
-        user_id = callback.from_user.id
-        await send_with_action(callback.message.chat.id, "typing", 1.0)
-        try:
-            user = await bot.get_chat(user_id)
-            display_name = html_escape(user.full_name or user.first_name or "کاربر")
-        except Exception:
-            display_name = "کاربر"
-
-        is_member = False
-        try:
-            member = await bot.get_chat_member(GROUP_CHAT_ID, user_id)
-            is_member = member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]
-        except Exception as e:
-            logger.warning("گرفتن وضعیت عضویت کاربر %s ممکن نشد: %s", user_id, e)
-            is_member = False
-
-        if is_member:
-            status_text = f"✅ {display_name} عزیز، شما عضو گروه هستید."
-        else:
-            status_text = f"❌ {display_name} عزیز، شما عضو گروه نیستید."
-
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-
-        await bot.send_message(
-            chat_id=callback.message.chat.id,
-            text=status_text,
-            reply_markup=user_panel_keyboard(),
-            message_effect_id=MESSAGE_EFFECT_PARTY_POPPER if is_member else None,
         )
         await callback.answer()
         return
@@ -2771,14 +2795,23 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         # لینک اختصاصی دعوت
         if BOT_USERNAME:
             referral_link = f"https://t.me/{BOT_USERNAME}?start=ref_{callback.from_user.id}"
+            share_text = f"بیا با هم عضوِ {GROUP_NAME} شیم 🏛"
+            share_url = f"https://t.me/share/url?url={quote(referral_link, safe='')}&text={quote(share_text, safe='')}"
             response = (
-                f"🔗 <b>لینکِ اختصاصیِ دعوتِ شما:</b>\n{referral_link}\n\n"
+                "🔗 <b>لینکِ اختصاصیِ دعوتِ شما</b>\n\n"
+                f"<code>{referral_link}</code>\n\n"
                 f"با هر عضوِ جدیدی که از طریقِ این لینک به رواق بپیونده، "
                 f"<b>{to_persian_num(REFERRAL_REWARD_DAYS)} روز</b> اعتبارِ VIP هدیه می‌گیرید 🎁"
             )
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📋 کپیِ لینکِ دعوت", copy_text={"text": referral_link}, style="primary")],
+                [InlineKeyboardButton(text="📤 اشتراک‌گذاری در تلگرام", url=share_url, style="success")],
+                [InlineKeyboardButton(text="🔙 بازگشت به پنل", callback_data="menu:back", style="primary")],
+            ])
         else:
             response = item["response"].format(invite_link=config["settings"]["group_invite_link"])
-        await callback.message.edit_text(response, reply_markup=user_panel_keyboard())
+            keyboard = user_panel_keyboard()
+        await callback.message.edit_text(response, reply_markup=keyboard)
         await callback.answer()
         return
 
@@ -2963,6 +2996,110 @@ async def handle_edit_faq(message: Message, state: FSMContext):
     else:
         await message.answer("✅ فایل ضمیمه شد.", reply_markup=admin_menu_edit_keyboard())
 
+    await state.clear()
+
+# ==============================================================
+#  بخش پروفایلِ کاربر — جست‌وجویِ سریع (ادمین)
+# ==============================================================
+
+class AdminLookupStates(StatesGroup):
+    waiting_for_identifier = State()
+
+@dp.message(AdminLookupStates.waiting_for_identifier)
+async def admin_lookup_identifier(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    identifier = message.text.strip() if message.text else ""
+    if not identifier:
+        await message.answer("لطفاً یک شناسه معتبر وارد کنید.")
+        return
+
+    if identifier.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    user_id, resolve_error = await resolve_user_id(identifier)
+    if user_id is None:
+        await message.answer(f"{resolve_error}\nلطفاً دوباره وارد کنید.")
+        return
+
+    await send_with_action(message.chat.id, "typing", 0.5)
+
+    try:
+        chat = await bot.get_chat(user_id)
+        display = chat.full_name or (f"@{chat.username}" if chat.username else str(user_id))
+        username_line = f"🔖 @{chat.username}\n" if chat.username else ""
+    except Exception:
+        display = str(user_id)
+        username_line = ""
+
+    is_member = await is_user_member(user_id)
+    joined_at_raw = load_verified().get(str(user_id))
+    joined_line = "🗓 تاریخِ عضویت: نامشخص\n"
+    if joined_at_raw:
+        try:
+            joined_line = f"🗓 تاریخِ عضویت: {format_jalali_datetime(datetime.fromisoformat(joined_at_raw))}\n"
+        except ValueError:
+            pass
+
+    vip_line = "🌟 اشتراکِ VIP: —\n"
+    if VIP_GROUP_CHAT_ID is not None:
+        vip_status = get_user_vip_status(user_id)
+        if vip_status["is_active"]:
+            end_jalali = format_jalali_datetime(vip_status["end"])
+            vip_line = (
+                f"🌟 اشتراکِ VIP: فعال ✅ — {to_persian_num(vip_status['remaining_days'])} روزِ دیگر "
+                f"(تا {end_jalali})\n"
+            )
+        elif vip_status["has_subscription"]:
+            vip_line = "🌟 اشتراکِ VIP: به پایان رسیده ⌛️\n"
+        else:
+            vip_line = "🌟 اشتراکِ VIP: ندارد\n"
+
+    ref_counts = count_referrals(user_id)
+    referral_line = f"🔗 دعوت‌های موفق: {to_persian_num(ref_counts['total'])} نفر ({to_persian_num(ref_counts['credited'])} پاداش‌گرفته)\n"
+
+    onboarding_entry = load_onboarding().get(str(user_id))
+    if onboarding_entry:
+        done = sum(1 for k in ("profile", "cafe", "vip") if onboarding_entry.get(k))
+        onboarding_line = f"🧭 پیشرفتِ مسیرِ شروع: {to_persian_num(done)} از {to_persian_num(3)} مرحله\n"
+    else:
+        onboarding_line = "🧭 پیشرفتِ مسیرِ شروع: هنوز شروع نکرده\n"
+
+    record = _user_cache.get(str(user_id))
+    if record:
+        interests_text = '، '.join(record.get('interests', []))
+        submitted_line = "📝 فرمِ عضویت: تکمیل‌شده\n"
+        try:
+            submitted_line += (
+                f"🕐 تاریخِ ثبتِ فرم: {format_jalali_datetime(datetime.fromisoformat(record['submitted_at']))}\n"
+            )
+        except (KeyError, ValueError):
+            pass
+        submitted_line += f"🎓 تحصیلات: {record.get('education_label', '')}\n⭐️ علایق: {interests_text}\n"
+    else:
+        submitted_line = "📝 فرمِ عضویت: تکمیل نشده\n"
+
+    text = (
+        f"🔍 <b>پروفایلِ کاربر</b>\n\n"
+        f"👤 {html_escape(display)} (<code>{user_id}</code>)\n"
+        f"{username_line}"
+        f"{'✅ عضوِ گروه است' if is_member else '❌ عضوِ گروه نیست'}\n"
+        f"{joined_line}"
+        f"{vip_line}"
+        f"{referral_line}"
+        f"{onboarding_line}"
+        f"{submitted_line}"
+    )
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 بررسیِ کاربرِ دیگر", callback_data="admin:lookup_user", style="primary")],
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+        ]),
+    )
     await state.clear()
 
 # ==============================================================
@@ -3751,7 +3888,7 @@ async def cb_vip_open(callback: CallbackQuery, state: FSMContext):
     caption, keyboard, image_id = await render_vip_page(0)
     await show_vip_page(callback, caption, keyboard, image_id)
     # ثبت مرحله آنبوردینگ
-    await _mark_onboarding_step(callback.from_user.id, "vip")
+    await _mark_onboarding_step(callback.from_user.id, "vip", avoid_message_id=callback.message.message_id)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("vipnav:"))
@@ -5387,7 +5524,13 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
         # قبلاً این پرچم قبل از فراخوانیِ _grant_vip_reward ست می‌شد که باعث می‌شد
         # در صورتِ هر خطایی (مثلاً تنظیم‌نبودنِ VIP_GROUP_CHAT_ID)، معرف هیچ‌وقت
         # پاداشش را نگیرد و هیچ‌کس هم متوجه نمی‌شد.
+        # همچنین جزئیاتِ خطا را روی خودِ رکورد ذخیره می‌کنیم تا در «🎁 پاداش‌هایِ
+        # رفرالِ معلق» (پنلِ ادمین) هم قابلِ پیگیریِ دائمی باشد، نه فقط توی چتِ نوتیفیکیشن.
         logger.warning("اعطای پاداشِ ریفرال به %s ناموفق بود: %s", referrer_id, result_msg)
+        entry["last_error"] = str(result_msg)[:300]
+        entry["failed_at"] = datetime.utcnow().isoformat()
+        entry.pop("resolved", None)
+        await save_referrals(data)
         if NOTIFY_CHAT_ID_INT:
             try:
                 await bot.send_message(
@@ -5397,7 +5540,8 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
                         f"👤 معرف: <code>{referrer_id}</code>\n"
                         f"🆕 عضوِ جدید: <code>{new_user_id}</code>\n"
                         f"❌ خطا: <code>{html_escape(str(result_msg)[:200])}</code>\n\n"
-                        "می‌توانید از «🎁 اهدای پاداش VIP» در پنلِ ادمین به‌صورتِ دستی برایِ معرف ثبت کنید."
+                        "می‌توانید از «🎁 اهدای پاداش VIP» در پنلِ ادمین به‌صورتِ دستی برایِ معرف ثبت کنید، "
+                        "یا از «💎 VIP ← 🎁 پاداش‌هایِ رفرالِ معلق» این مورد را دنبال و تسویه کنید."
                     ),
                 )
             except Exception as notify_err:
@@ -5405,7 +5549,131 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
         return
 
     entry["credited"] = True
+    entry.pop("last_error", None)
+    entry.pop("failed_at", None)
+    entry.pop("resolved", None)
     await save_referrals(data)
+
+def count_referrals(user_id: int, data: dict | None = None) -> dict:
+    """تعدادِ کل و تعدادِ پاداش‌گرفته‌ی معرفی‌هایِ یک کاربر (به‌عنوانِ معرف)."""
+    data = data if data is not None else load_referrals()
+    total = 0
+    credited = 0
+    for entry in data.values():
+        if entry.get("referrer_id") == user_id:
+            total += 1
+            if entry.get("credited"):
+                credited += 1
+    return {"total": total, "credited": credited}
+
+def pending_referral_reward_entries(data: dict | None = None) -> list[tuple[str, dict]]:
+    """معرفی‌هایی که تلاش برایِ اعطای پاداششان شکست خورده و هنوز دستی تسویه نشده‌اند."""
+    data = data if data is not None else load_referrals()
+    pending = [
+        (new_user_id, entry) for new_user_id, entry in data.items()
+        if entry.get("last_error") and not entry.get("credited") and not entry.get("resolved")
+    ]
+    pending.sort(key=lambda pair: pair[1].get("failed_at", ""), reverse=True)
+    return pending
+
+REFERRAL_PENDING_PAGE_SIZE = 5
+
+async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMarkup]:
+    pending = pending_referral_reward_entries()
+
+    if not pending:
+        text = (
+            "🎁 <b>پاداش‌هایِ رفرالِ معلق</b>\n\n"
+            "✅ در حال حاضر هیچ پاداشِ رفرالِ ناموفق/معلقی وجود ندارد."
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_vip", style="primary")]
+        ])
+        return text, keyboard
+
+    total_pages = max(1, (len(pending) + REFERRAL_PENDING_PAGE_SIZE - 1) // REFERRAL_PENDING_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_items = pending[page * REFERRAL_PENDING_PAGE_SIZE: (page + 1) * REFERRAL_PENDING_PAGE_SIZE]
+
+    lines = [
+        f"⚠️ <b>پاداش‌هایِ رفرالِ معلق</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
+        f"مجموع: {to_persian_num(len(pending))} مورد\n",
+    ]
+    rows = []
+    for new_user_id, entry in page_items:
+        referrer_id = entry.get("referrer_id")
+        referrer_name = await _display_name_for(referrer_id) if referrer_id else "نامشخص"
+        new_user_name = await _display_name_for(int(new_user_id))
+        failed_at = entry.get("failed_at", "")
+        failed_jalali = ""
+        try:
+            failed_jalali = format_jalali_datetime(datetime.fromisoformat(failed_at))
+        except (ValueError, TypeError):
+            pass
+        lines.append(
+            f"👤 معرف: {html_escape(referrer_name)} (<code>{referrer_id}</code>)\n"
+            f"🆕 عضوِ جدید: {html_escape(new_user_name)} (<code>{new_user_id}</code>)\n"
+            f"🕐 {failed_jalali}\n"
+            f"❌ خطا: <code>{html_escape(entry.get('last_error', ''))}</code>\n"
+        )
+        rows.append([InlineKeyboardButton(
+            text=f"✅ تسویه شد — {referrer_name}",
+            callback_data=f"refpending:resolve:{page}:{new_user_id}",
+            style="success",
+        )])
+
+    text = "\n".join(lines)
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"refpending:list:{page - 1}", style="primary"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"refpending:list:{page + 1}", style="primary"))
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_vip", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data.startswith("refpending:list:"))
+async def cb_refpending_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    try:
+        page = int(callback.data.split(":")[2])
+    except (IndexError, ValueError):
+        page = 0
+    text, keyboard = await render_referral_pending_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("refpending:resolve:"))
+async def cb_refpending_resolve(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    parts = callback.data.split(":")
+    try:
+        page = int(parts[2])
+        new_user_id = parts[3]
+    except (IndexError, ValueError):
+        await callback.answer("خطا در پردازش.", show_alert=True)
+        return
+
+    data = load_referrals()
+    entry = data.get(new_user_id)
+    if entry:
+        entry["resolved"] = True
+        entry["resolved_at"] = datetime.utcnow().isoformat()
+        entry["resolved_by"] = callback.from_user.id
+        await save_referrals(data)
+
+    await callback.answer("✅ به‌عنوانِ تسویه‌شده علامت خورد.")
+    text, keyboard = await render_referral_pending_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+
 
 # ==============================================================
 #  چک‌لیست آنبوردینگ (شبیه‌سازی‌شده)
@@ -5461,7 +5729,7 @@ async def start_onboarding(user_id: int, chat_id: int) -> None:
     data[str(user_id)] = {"chat_id": chat_id, "message_id": sent.message_id, **progress}
     await save_onboarding(data)
 
-async def _mark_onboarding_step(user_id: int, field: str) -> None:
+async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: int | None = None) -> None:
     data = load_onboarding()
     entry = data.get(str(user_id))
     if not entry or entry.get(field):
@@ -5474,21 +5742,25 @@ async def _mark_onboarding_step(user_id: int, field: str) -> None:
     keyboard = _onboarding_keyboard(progress)
 
     # نکته: کاربر ممکن است گزینه‌ها را به هر ترتیبی بزند (مثلاً اول VIP، بعد پروفایل).
-    # پیامِ اصلیِ چک‌لیست گاهی توسطِ همان جریان‌ها (مثلاً بازشدنِ صفحه‌ی VIP که عکس دارد)
-    # حذف یا به چیزِ دیگری تبدیل می‌شود، و در آن حالت ادیت شکست می‌خورد. برای این‌که
-    # روند صرف‌نظر از ترتیبِ انتخاب هیچ‌وقت «گم» نشود، در صورتِ شکستِ ادیتِ دکمه‌ها،
-    # چک‌لیست را به‌عنوانِ پیامِ تازه می‌فرستیم و مرجعِ پیام را آپدیت می‌کنیم.
-    # چون فقط رنگِ دکمه‌ها عوض می‌شود (نه متن)، همیشه edit_message_reply_markup کافی‌ست.
+    # پیامِ اصلیِ چک‌لیست گاهی توسطِ همان جریان‌ها (مثلاً بازشدنِ صفحه‌ی VIP که عکس دارد،
+    # یا نمایشِ داشبوردِ پروفایل) حذف یا به چیزِ دیگری تبدیل می‌شود. اگر caller صراحتاً
+    # بگوید همین الان دارد چه پیامی را نشان می‌دهد (avoid_message_id) و آن پیام دقیقاً
+    # همان پیامِ چک‌لیست باشد، نباید رویش ادیت بزنیم — وگرنه دکمه‌های تازه‌نمایش‌داده‌شده
+    # (مثلاً دکمه‌های داشبوردِ پروفایل) با دکمه‌های آنبوردینگ جایگزین می‌شوند.
+    # در هر دو حالت (چه شکستِ ادیت، چه این تداخلِ عمدی)، چک‌لیست را به‌عنوانِ پیامِ
+    # تازه می‌فرستیم تا روند هیچ‌وقت «گم» نشود.
+    same_message_in_use = avoid_message_id is not None and entry.get("message_id") == avoid_message_id
     updated = False
-    try:
-        await bot.edit_message_reply_markup(
-            chat_id=entry["chat_id"],
-            message_id=entry["message_id"],
-            reply_markup=keyboard,
-        )
-        updated = True
-    except Exception as e:
-        logger.warning("ادیتِ چک‌لیستِ آنبوردینگِ کاربر %s ممکن نشد، پیامِ تازه ارسال می‌شود: %s", user_id, e)
+    if not same_message_in_use:
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=entry["chat_id"],
+                message_id=entry["message_id"],
+                reply_markup=keyboard,
+            )
+            updated = True
+        except Exception as e:
+            logger.warning("ادیتِ چک‌لیستِ آنبوردینگِ کاربر %s ممکن نشد، پیامِ تازه ارسال می‌شود: %s", user_id, e)
 
     if not updated:
         try:
