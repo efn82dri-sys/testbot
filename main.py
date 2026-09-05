@@ -706,6 +706,10 @@ async def save_vip_global_settings(settings: dict) -> None:
 def format_toman(amount: int) -> str:
     return f"{to_persian_num(f'{amount:,}')} تومان"
 
+def _format_card_number(number: str) -> str:
+    digits = "".join(ch for ch in number if ch.isdigit())
+    return " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+
 # ---------- توابع آمار ----------
 async def build_stats_text() -> str:
     try:
@@ -3834,6 +3838,7 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
         f"🗓 مدت: <b>{to_persian_num(months)} ماهه</b>\n"
         f"{price_line}\n\n"
         f"لطفاً مبلغ فوق را به شماره‌کارتِ زیر واریز کنید:\n\n"
+        f"<code>{_format_card_number(VIP_CARD_NUMBER)}</code>\n"
         f"👤 به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
         "(برای کپی‌کردنِ شماره‌کارت، روی دکمه‌ی زیر بزنید)\n\n"
         "📸 پس از واریز، عکسِ فیش یا رسیدِ پرداخت را همین‌جا ارسال کنید.\n"
@@ -3842,7 +3847,7 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"💳 {VIP_CARD_NUMBER}",
+                text="📋 کپیِ شماره‌کارت",
                 copy_text={"text": VIP_CARD_NUMBER},
                 style="primary",
             )],
