@@ -83,6 +83,7 @@ BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
 FSM_STATE_FILE = Path(__file__).parent / "data" / "fsm_state.json"
 PENDING_JOIN_FILE = Path(__file__).parent / "data" / "pending_join_requests.json"
+SUPPORT_TOPICS_FILE = Path(__file__).parent / "data" / "support_topics.json"
 
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
@@ -245,7 +246,6 @@ dp = Dispatcher(storage=storage)
 
 _write_lock = asyncio.Lock()
 _pending_leave_polls: dict[str, int] = {}
-_pending_admin_replies: dict[int, int] = {}
 _attendance_tasks: dict[str, asyncio.Task] = {}
 _user_cache: dict[str, dict] = {}
 
@@ -494,13 +494,15 @@ def load_funnel_users() -> set[int]:
     except (json.JSONDecodeError, OSError):
         return set()
 
-async def mark_funnel_entry(user_id: int) -> None:
+async def mark_funnel_entry(user_id: int) -> bool:
+    """کاربر رو به قیفِ ورودی اضافه می‌کنه؛ True برمی‌گردونه اگه این اولین‌باره (تازه اضافه شده)."""
     async with _write_lock:
         users = load_funnel_users()
         if user_id in users:
-            return
+            return False
         users.add(user_id)
         FUNNEL_USERS_FILE.write_text(json.dumps(list(users)), encoding="utf-8")
+        return True
 
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
@@ -1398,7 +1400,9 @@ async def open_vip_panel(chat_id: int) -> None:
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
     user_id = message.from_user.id
-    await mark_funnel_entry(user_id)
+    is_first_start = await mark_funnel_entry(user_id)
+    if is_first_start:
+        await log_key_event(message.from_user, "🚀 برای اولین‌بار ربات رو استارت کرد")
     await send_with_action(message.chat.id, "typing", 0.5)
 
     args = (command.args or "").strip()
@@ -1840,6 +1844,14 @@ async def cb_profile_submit(callback: CallbackQuery):
 
     dashboard_text, dashboard_keyboard = await build_profile_dashboard(user)
     await callback.message.edit_text(dashboard_text, reply_markup=dashboard_keyboard)
+
+    interests_str = "، ".join(selected)
+    await log_key_event(
+        user,
+        f"🥇 پروفایل رو تکمیل کرد — تحصیلات: {html_escape(data['education_label'])}، "
+        f"آشنایی: {html_escape(REFERRAL_LABELS.get(data['referral'], data['referral']))}، "
+        f"علایق: {html_escape(interests_str)}",
+    )
 
     # مرحله آنبوردینگ: تکمیل پروفایل.
     # نکته: اگر همین پیام دقیقاً پیامِ چک‌لیستِ آنبوردینگ باشد (یعنی کاربر از داخلِ
@@ -2544,52 +2556,152 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
 
-# ---------- صندوق پیام اعضا ----------
-async def relay_message_to_admin(user, text: str) -> None:
-    if not NOTIFY_CHAT_ID:
-        return
+# ---------- صندوق پیام اعضا (مبتنی بر Forum Topics) ----------
+# هر عضو یک تاپیکِ اختصاصی توی گروهِ NOTIFY_CHAT_ID داره؛ نگاشتِ
+# {user_id <-> thread_id} به‌صورتِ پایدار توی یک فایلِ JSON نگه داشته می‌شه
+# (نه توی حافظه)، پس با ری‌استارتِ ربات هم گم نمی‌شه.
 
-    display_name = html_escape(user.full_name or user.first_name or "یک عضو")
-    username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
+def load_support_topics() -> dict:
+    if not SUPPORT_TOPICS_FILE.exists():
+        return {"user_to_thread": {}, "thread_to_user": {}}
+    try:
+        data = json.loads(SUPPORT_TOPICS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"user_to_thread": {}, "thread_to_user": {}}
+    data.setdefault("user_to_thread", {})
+    data.setdefault("thread_to_user", {})
+    return data
+
+async def save_support_topics(data: dict) -> None:
+    try:
+        SUPPORT_TOPICS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        logger.error(f"ذخیره‌ی نگاشتِ تاپیک‌هایِ پشتیبانی ناموفق بود: {e}")
+
+async def _forget_support_topic(user_id: int, thread_id: int) -> None:
+    async with _write_lock:
+        data = load_support_topics()
+        if data["user_to_thread"].get(str(user_id)) == thread_id:
+            data["user_to_thread"].pop(str(user_id), None)
+        data["thread_to_user"].pop(str(thread_id), None)
+        await save_support_topics(data)
+
+async def get_or_create_support_topic(user, force_new: bool = False) -> int | None:
+    """آیدیِ تاپیکِ اختصاصیِ این کاربر رو برمی‌گردونه؛ اگه وجود نداشته باشه، می‌سازدش."""
+    if not NOTIFY_CHAT_ID_INT:
+        return None
+
+    async with _write_lock:
+        data = load_support_topics()
+        if not force_new:
+            existing = data["user_to_thread"].get(str(user.id))
+            if existing is not None:
+                return existing
+
+        display_name = user.full_name or user.first_name or f"کاربر {user.id}"
+        username_part = f"@{user.username}" if user.username else str(user.id)
+        topic_name = f"{display_name} ({username_part})"[:128]
+
+        try:
+            topic = await bot.create_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, name=topic_name)
+        except Exception as e:
+            logger.warning("ساختِ تاپیکِ پشتیبانی برای کاربر %s ممکن نشد: %s", user.id, e)
+            return None
+
+        thread_id = topic.message_thread_id
+        data["user_to_thread"][str(user.id)] = thread_id
+        data["thread_to_user"][str(thread_id)] = user.id
+        await save_support_topics(data)
 
     try:
-        sent = await bot.send_message(
-            chat_id=NOTIFY_CHAT_ID,
+        profile_link = f"tg://user?id={user.id}"
+        await bot.send_message(
+            chat_id=NOTIFY_CHAT_ID_INT,
+            message_thread_id=thread_id,
             text=(
-                "📩 پیامِ تازه از یکی از اعضای رواق\n"
-                f"👤 {display_name} ({username_part})\n\n"
-                f"{html_escape(text)}\n\n"
-                "برای پاسخ به همین عضو، فقط روی همین پیام «ریپلای» بزنید؛ "
-                "پاسخ‌تون مستقیم و بدونِ نیاز به دونستنِ آیدی، براش ارسال می‌شه."
+                f"👤 <a href='{profile_link}'>{html_escape(display_name)}</a> ({html_escape(username_part)})\n"
+                f"آیدیِ عددی: <code>{user.id}</code>\n\n"
+                "هر چی همین‌جا (توی همین تاپیک) بنویسید، مستقیم و بدونِ نیاز به ریپلای‌کردن، "
+                "برایِ همین عضو ارسال می‌شه."
             ),
         )
-        _pending_admin_replies[sent.message_id] = user.id
-    except Exception as e:
-        logger.warning("ارسالِ پیامِ عضو به ادمین ممکن نشد: %s", e)
+    except Exception:
+        pass
 
-@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.reply_to_message)
-async def handle_admin_reply_via_native_reply(message: Message):
+    return thread_id
+
+async def relay_message_to_admin(user, text: str) -> None:
+    if not text:
+        return
+    await _send_to_user_topic(user, html_escape(text))
+
+async def _send_to_user_topic(user, text: str) -> None:
+    """متن رو به تاپیکِ پشتیبانیِ همین کاربر می‌فرسته؛ اگه تاپیک وجود نداشته باشه می‌سازدش،
+    و اگه تاپیکِ قبلی دستی حذف/بسته شده باشه، یکی تازه می‌سازه و دوباره تلاش می‌کنه."""
+    if not NOTIFY_CHAT_ID_INT:
+        return
+
+    thread_id = await get_or_create_support_topic(user)
+    if thread_id is None:
+        return
+
+    try:
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, text=text)
+        return
+    except Exception as e:
+        err = str(e).lower()
+        if "thread not found" not in err and "topic" not in err:
+            logger.warning("ارسال به تاپیکِ کاربر %s ممکن نشد: %s", user.id, e)
+            return
+
+    # تاپیکِ قبلی احتمالاً دستی حذف/بسته شده — یکی تازه بساز و دوباره تلاش کن
+    await _forget_support_topic(user.id, thread_id)
+    new_thread_id = await get_or_create_support_topic(user, force_new=True)
+    if new_thread_id is None:
+        return
+    try:
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=new_thread_id, text=text)
+    except Exception as e:
+        logger.warning("ارسال به تاپیکِ تازه‌یِ کاربر %s هم ممکن نشد: %s", user.id, e)
+
+class _SupportTopicUserRef:
+    """یک نمایندهٔ سبک برایِ user وقتی فقط user_id (یا user_id + چند فیلدِ ذخیره‌شده) در دسترسه
+    و شیءِ کاملِ aiogram User موجود نیست — برایِ صداکردنِ get_or_create_support_topic کافیه."""
+    __slots__ = ("id", "full_name", "first_name", "username")
+
+    def __init__(self, id: int, full_name: str | None = None, username: str | None = None):
+        self.id = id
+        self.full_name = full_name
+        self.first_name = full_name
+        self.username = username
+
+async def log_key_event(user, event_html: str) -> None:
+    """یه رویدادِ کلیدی (نه پیامِ متنیِ خودِ کاربر) رو توی تاپیکِ پشتیبانیِ همون کاربر لاگ می‌کنه —
+    مثلِ شروعِ ربات، تکمیلِ پروفایل، مراحلِ آنبوردینگ، یا خرید/تمدیدِ VIP."""
+    await _send_to_user_topic(user, f"📌 <i>{event_html}</i>")
+
+@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.message_thread_id)
+async def handle_admin_reply_via_topic(message: Message):
     if not is_admin(message.from_user.id):
         return
 
-    replied_id = message.reply_to_message.message_id
-    target_user_id = _pending_admin_replies.get(replied_id)
+    data = load_support_topics()
+    target_user_id = data["thread_to_user"].get(str(message.message_thread_id))
     if target_user_id is None:
-        return
+        return  # این تاپیک به صندوقِ پیامِ اعضا مربوط نیست (تاپیکِ دیگه‌ایه)
 
-    reply_text = (message.html_text or message.text or "").strip()
+    reply_text = (message.html_text or message.text or message.caption or "").strip()
     if not reply_text:
         return
 
     try:
-        await bot.send_message(
-            chat_id=target_user_id,
-            text=f"از سوی مدیریتِ رواق:\n\n{reply_text}",
-        )
-        await message.reply("✅ پاسخ شما برای همون عضو ارسال شد.")
+        await bot.send_message(chat_id=target_user_id, text=f"از سوی مدیریتِ رواق:\n\n{reply_text}")
     except Exception as e:
         logger.warning("ارسالِ پاسخِ ادمین به کاربر %s ممکن نشد: %s", target_user_id, e)
-        await message.reply(f"❌ ارسال پاسخ ناموفق بود: {e}")
+        try:
+            await message.reply(f"❌ ارسال پیام به کاربر ناموفق بود: {e}")
+        except Exception:
+            pass
 
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
@@ -3271,7 +3383,22 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                         json.dumps(onboarding_data, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
 
-            # ۷) پاک‌سازیِ وضعیتِ FSM (چت خصوصی → chat_id == user_id)
+            # ۷) حذفِ نگاشتِ تاپیکِ صندوقِ ورودی (خودِ تاپیکِ تلگرام دست‌نخورده می‌ماند)
+            if SUPPORT_TOPICS_FILE.exists():
+                try:
+                    topics_data = json.loads(SUPPORT_TOPICS_FILE.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    topics_data = {}
+                topics_data.setdefault("user_to_thread", {})
+                topics_data.setdefault("thread_to_user", {})
+                old_thread_id = topics_data["user_to_thread"].pop(uid_str, None)
+                if old_thread_id is not None:
+                    topics_data["thread_to_user"].pop(str(old_thread_id), None)
+                    SUPPORT_TOPICS_FILE.write_text(
+                        json.dumps(topics_data, ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
+
+            # ۸) پاک‌سازیِ وضعیتِ FSM (چت خصوصی → chat_id == user_id)
             fsm_prefix = f"{bot.id}:{uid_str}:{uid_str}:"
             fsm_keys_to_drop = [k for k in storage._data.keys() if k.startswith(fsm_prefix)]
             for k in fsm_keys_to_drop:
@@ -4063,6 +4190,11 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         )
     )
 
+    await log_key_event(
+        user,
+        f"🧾 رسیدِ خرید/تمدیدِ VIP رو فرستاد — {to_persian_num(months)} ماهه، {format_toman(price)} (در انتظارِ تاییدِ ادمین)",
+    )
+
     username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
     caption = (
         f"💳 <b>درخواستِ جدیدِ اشتراکِ VIP</b>\n\n"
@@ -4136,6 +4268,11 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         except Exception as e:
             logger.warning("اطلاع‌رسانیِ ردِ پرداخت به کاربر %s ممکن نشد: %s", user_id, e)
 
+        await log_key_event(
+            _SupportTopicUserRef(id=user_id, full_name=payment.get("user_display"), username=payment.get("username")),
+            f"❌ درخواستِ خرید/تمدیدِ VIP ({to_persian_num(payment['months'])} ماهه) رد شد",
+        )
+
         await callback.answer("درخواست رد شد.")
         return
 
@@ -4204,6 +4341,10 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
             pass
 
         end_jalali = format_jalali_datetime(end)
+        await log_key_event(
+            _SupportTopicUserRef(id=user_id, full_name=payment.get("user_display"), username=payment.get("username")),
+            f"✅ اشتراکِ VIP تایید و فعال شد — {to_persian_num(payment['months'])} ماهه، تا {end_jalali}",
+        )
         try:
             await bot.send_message(
                 chat_id=user_id,
@@ -5737,6 +5878,15 @@ async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: i
     entry[field] = True
     await save_onboarding(data)
 
+    # لاگِ رویدادِ کلیدیِ آنبوردینگ توی تاپیکِ کاربر (تکمیلِ پروفایل جدا و با جزئیاتِ
+    # بیشتر توی cb_profile_submit لاگ می‌شه، پس اینجا دوباره تکرارش نمی‌کنیم)
+    onboarding_event_labels = {
+        "cafe": "☕️ وارد تاپیکِ «کافه معماری» شد (مرحله‌ی آنبوردینگ)",
+        "vip": "🌟 صفحه‌ی گروهِ VIP رو مشاهده کرد (مرحله‌ی آنبوردینگ)",
+    }
+    if field in onboarding_event_labels:
+        await log_key_event(_SupportTopicUserRef(id=user_id), onboarding_event_labels[field])
+
     progress = {k: entry.get(k, False) for k in ("profile", "cafe", "vip")}
     all_done = all(progress.values())
     keyboard = _onboarding_keyboard(progress)
@@ -5919,6 +6069,21 @@ async def on_startup(app: web.Application):
     status_icon = "✅" if restored_ok else "⚠️"
     await _notify_backup_admin(f"{status_icon} بازیابیِ خودکارِ دیتا در استارتاپ:\n{restore_msg}")
     cache_users()
+
+    # بررسیِ فعال‌بودنِ Topics روی گروهِ NOTIFY_CHAT_ID (لازمه‌یِ صندوقِ ورودیِ مبتنی بر تاپیک)
+    if NOTIFY_CHAT_ID_INT:
+        try:
+            notify_chat = await bot.get_chat(NOTIFY_CHAT_ID_INT)
+            if not getattr(notify_chat, "is_forum", False):
+                logger.warning("NOTIFY_CHAT_ID فعلاً Topics فعال نداره؛ صندوقِ ورودیِ مبتنی بر تاپیک کار نخواهد کرد.")
+                await _notify_backup_admin(
+                    "⚠️ <b>Topics روی این گروه فعال نیست</b>\n"
+                    "صندوقِ ورودیِ مبتنی بر تاپیک، بدونِ فعال‌بودنِ Topics روی همین گروه کار نمی‌کنه.\n"
+                    "از تنظیماتِ گروه → «Topics» رو روشن کنید و مطمئن بشید ربات دسترسیِ ادمینِ "
+                    "«Manage Topics» رو داره."
+                )
+        except Exception as e:
+            logger.warning("بررسیِ وضعیتِ Topics در NOTIFY_CHAT_ID ممکن نشد: %s", e)
 
     # دریافت یوزرنیم ربات و تنظیم دکمه منو و دستورات
     global BOT_USERNAME
