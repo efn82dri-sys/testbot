@@ -1320,6 +1320,7 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
     await mark_verified(user_id)
     await increment_stat("form_completed_and_joined")
     await _untrack_pending_join(user_id)
+    await log_key_event(_SupportTopicUserRef(id=user_id), "✅ عضویتش در گروهِ رواق نهایی و تایید شد")
 
     # پاداش ریفرال (اگر کاربر با لینک دعوت آمده باشد)
     # داخلِ try/except تا اگر اعطای پاداشِ ریفرال با خطا مواجه شد، خوش‌آمدگویی و
@@ -1469,6 +1470,7 @@ async def handle_join_request(join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
     await mark_funnel_entry(user.id)
+    await log_key_event(user, "📝 درخواستِ عضویت در گروه رو ثبت کرد (از طریقِ لینکِ دعوت)")
 
     state = load_bot_state()
     if not state.get("enabled", True):
