@@ -494,15 +494,13 @@ def load_funnel_users() -> set[int]:
     except (json.JSONDecodeError, OSError):
         return set()
 
-async def mark_funnel_entry(user_id: int) -> bool:
-    """کاربر رو به قیفِ ورودی اضافه می‌کنه؛ True برمی‌گردونه اگه این اولین‌باره (تازه اضافه شده)."""
+async def mark_funnel_entry(user_id: int) -> None:
     async with _write_lock:
         users = load_funnel_users()
         if user_id in users:
-            return False
+            return
         users.add(user_id)
         FUNNEL_USERS_FILE.write_text(json.dumps(list(users)), encoding="utf-8")
-        return True
 
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
@@ -1320,7 +1318,6 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
     await mark_verified(user_id)
     await increment_stat("form_completed_and_joined")
     await _untrack_pending_join(user_id)
-    await log_key_event(_SupportTopicUserRef(id=user_id), "✅ عضویتش در گروهِ رواق نهایی و تایید شد")
 
     # پاداش ریفرال (اگر کاربر با لینک دعوت آمده باشد)
     # داخلِ try/except تا اگر اعطای پاداشِ ریفرال با خطا مواجه شد، خوش‌آمدگویی و
@@ -1401,9 +1398,7 @@ async def open_vip_panel(chat_id: int) -> None:
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
     user_id = message.from_user.id
-    is_first_start = await mark_funnel_entry(user_id)
-    if is_first_start:
-        await log_key_event(message.from_user, "🚀 برای اولین‌بار ربات رو استارت کرد")
+    await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
 
     args = (command.args or "").strip()
@@ -1470,7 +1465,6 @@ async def handle_join_request(join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
     await mark_funnel_entry(user.id)
-    await log_key_event(user, "📝 درخواستِ عضویت در گروه رو ثبت کرد (از طریقِ لینکِ دعوت)")
 
     state = load_bot_state()
     if not state.get("enabled", True):
@@ -1846,14 +1840,6 @@ async def cb_profile_submit(callback: CallbackQuery):
 
     dashboard_text, dashboard_keyboard = await build_profile_dashboard(user)
     await callback.message.edit_text(dashboard_text, reply_markup=dashboard_keyboard)
-
-    interests_str = "، ".join(selected)
-    await log_key_event(
-        user,
-        f"🥇 پروفایل رو تکمیل کرد — تحصیلات: {html_escape(data['education_label'])}، "
-        f"آشنایی: {html_escape(REFERRAL_LABELS.get(data['referral'], data['referral']))}، "
-        f"علایق: {html_escape(interests_str)}",
-    )
 
     # مرحله آنبوردینگ: تکمیل پروفایل.
     # نکته: اگر همین پیام دقیقاً پیامِ چک‌لیستِ آنبوردینگ باشد (یعنی کاربر از داخلِ
@@ -2633,14 +2619,7 @@ async def get_or_create_support_topic(user, force_new: bool = False) -> int | No
     return thread_id
 
 async def relay_message_to_admin(user, text: str) -> None:
-    if not text:
-        return
-    await _send_to_user_topic(user, html_escape(text))
-
-async def _send_to_user_topic(user, text: str) -> None:
-    """متن رو به تاپیکِ پشتیبانیِ همین کاربر می‌فرسته؛ اگه تاپیک وجود نداشته باشه می‌سازدش،
-    و اگه تاپیکِ قبلی دستی حذف/بسته شده باشه، یکی تازه می‌سازه و دوباره تلاش می‌کنه."""
-    if not NOTIFY_CHAT_ID_INT:
+    if not NOTIFY_CHAT_ID_INT or not text:
         return
 
     thread_id = await get_or_create_support_topic(user)
@@ -2648,12 +2627,12 @@ async def _send_to_user_topic(user, text: str) -> None:
         return
 
     try:
-        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, text=text)
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, text=html_escape(text))
         return
     except Exception as e:
         err = str(e).lower()
         if "thread not found" not in err and "topic" not in err:
-            logger.warning("ارسال به تاپیکِ کاربر %s ممکن نشد: %s", user.id, e)
+            logger.warning("ارسالِ پیامِ عضو به ادمین ممکن نشد: %s", e)
             return
 
     # تاپیکِ قبلی احتمالاً دستی حذف/بسته شده — یکی تازه بساز و دوباره تلاش کن
@@ -2662,25 +2641,9 @@ async def _send_to_user_topic(user, text: str) -> None:
     if new_thread_id is None:
         return
     try:
-        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=new_thread_id, text=text)
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=new_thread_id, text=html_escape(text))
     except Exception as e:
-        logger.warning("ارسال به تاپیکِ تازه‌یِ کاربر %s هم ممکن نشد: %s", user.id, e)
-
-class _SupportTopicUserRef:
-    """یک نمایندهٔ سبک برایِ user وقتی فقط user_id (یا user_id + چند فیلدِ ذخیره‌شده) در دسترسه
-    و شیءِ کاملِ aiogram User موجود نیست — برایِ صداکردنِ get_or_create_support_topic کافیه."""
-    __slots__ = ("id", "full_name", "first_name", "username")
-
-    def __init__(self, id: int, full_name: str | None = None, username: str | None = None):
-        self.id = id
-        self.full_name = full_name
-        self.first_name = full_name
-        self.username = username
-
-async def log_key_event(user, event_html: str) -> None:
-    """یه رویدادِ کلیدی (نه پیامِ متنیِ خودِ کاربر) رو توی تاپیکِ پشتیبانیِ همون کاربر لاگ می‌کنه —
-    مثلِ شروعِ ربات، تکمیلِ پروفایل، مراحلِ آنبوردینگ، یا خرید/تمدیدِ VIP."""
-    await _send_to_user_topic(user, f"📌 <i>{event_html}</i>")
+        logger.warning("ارسالِ پیامِ عضو به تاپیکِ تازه هم ممکن نشد: %s", e)
 
 @dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.message_thread_id)
 async def handle_admin_reply_via_topic(message: Message):
@@ -3980,18 +3943,6 @@ async def render_vip_page(index: int):
     image_file_id = cat.get("image_file_id")
     return caption, keyboard, image_file_id
 
-def _vip_group_sections(categories: list[dict]) -> list[dict]:
-    """کتگوری‌ها رو بر اساسِ section_header به بخش‌های پشتِ‌سرِهم می‌شکنه.
-    هر بخش یعنی: {"header": متن یا None, "start": ایندکسِ شروع, "end": ایندکسِ پایان (اکسکلوسیو)}"""
-    sections = []
-    for i, cat in enumerate(categories):
-        header = cat.get("section_header")
-        if header or not sections:
-            sections.append({"header": header, "start": i, "end": i + 1})
-        else:
-            sections[-1]["end"] = i + 1
-    return sections
-
 async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
     categories = load_vip_categories()
     intro = (
@@ -4004,66 +3955,20 @@ async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
     )
     rows = []
     row = []
-    for section in _vip_group_sections(categories):
-        if section["header"]:
-            if row:
-                rows.append(row)
-                row = []
-            count = section["end"] - section["start"]
-            group_start_id = categories[section["start"]]["id"]
-            rows.append([InlineKeyboardButton(
-                text=f"{section['header']} ({to_persian_num(count)} مورد)",
-                callback_data=f"vipgroup:{group_start_id}",
-            )])
-            continue
-        for i in range(section["start"], section["end"]):
-            row.append(InlineKeyboardButton(text=categories[i]["name"], callback_data=f"vipnav:{i}"))
-            if len(row) == 2:
-                rows.append(row)
-                row = []
-    if row:
-        rows.append(row)
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
-    return intro, InlineKeyboardMarkup(inline_keyboard=rows)
-
-async def render_vip_group_page(group_start_id: str) -> tuple[str, InlineKeyboardMarkup] | None:
-    categories = load_vip_categories()
-    sections = _vip_group_sections(categories)
-    section = next((s for s in sections if s["header"] and categories[s["start"]]["id"] == group_start_id), None)
-    if section is None:
-        return None
-    text = f"⟪ {section['header']} ⟫\n\n👇 یکی از موارد زیر رو انتخاب کنید:"
-    rows = []
-    row = []
-    for i in range(section["start"], section["end"]):
-        row.append(InlineKeyboardButton(text=categories[i]["name"], callback_data=f"vipnav:{i}"))
+    for i, cat in enumerate(categories):
+        row.append(InlineKeyboardButton(text=cat["name"], callback_data=f"vipnav:{i}"))
         if len(row) == 2:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت به گروه‌ها", callback_data="vip:list", style="danger")])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
+    return intro, InlineKeyboardMarkup(inline_keyboard=rows)
 
 @dp.callback_query(F.data == "vip:list")
 async def cb_vip_list(callback: CallbackQuery):
     text, keyboard = await render_vip_list_page()
     await show_text_panel(callback, text, keyboard)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("vipgroup:"))
-async def cb_vip_group(callback: CallbackQuery):
-    group_start_id = callback.data.split(":", 1)[1]
-    result = await render_vip_group_page(group_start_id)
-    if result is None:
-        await callback.answer("این گروه دیگر موجود نیست.", show_alert=True)
-        return
-    text, keyboard = result
-    await show_text_panel(callback, text, keyboard)
-    await callback.answer()
-
-@dp.callback_query(F.data == "noop")
-async def cb_noop(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(F.data == "vip:open")
@@ -4250,11 +4155,6 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         )
     )
 
-    await log_key_event(
-        user,
-        f"🧾 رسیدِ خرید/تمدیدِ VIP رو فرستاد — {to_persian_num(months)} ماهه، {format_toman(price)} (در انتظارِ تاییدِ ادمین)",
-    )
-
     username_part = f"@{user.username}" if user.username else f"<code>{user.id}</code>"
     caption = (
         f"💳 <b>درخواستِ جدیدِ اشتراکِ VIP</b>\n\n"
@@ -4328,11 +4228,6 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         except Exception as e:
             logger.warning("اطلاع‌رسانیِ ردِ پرداخت به کاربر %s ممکن نشد: %s", user_id, e)
 
-        await log_key_event(
-            _SupportTopicUserRef(id=user_id, full_name=payment.get("user_display"), username=payment.get("username")),
-            f"❌ درخواستِ خرید/تمدیدِ VIP ({to_persian_num(payment['months'])} ماهه) رد شد",
-        )
-
         await callback.answer("درخواست رد شد.")
         return
 
@@ -4401,10 +4296,6 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
             pass
 
         end_jalali = format_jalali_datetime(end)
-        await log_key_event(
-            _SupportTopicUserRef(id=user_id, full_name=payment.get("user_display"), username=payment.get("username")),
-            f"✅ اشتراکِ VIP تایید و فعال شد — {to_persian_num(payment['months'])} ماهه، تا {end_jalali}",
-        )
         try:
             await bot.send_message(
                 chat_id=user_id,
@@ -5028,7 +4919,6 @@ def vip_category_edit_keyboard(cat_id: str) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="✏️ ویرایشِ نام", callback_data=f"vipset:field:{cat_id}:name", style="primary")],
         [InlineKeyboardButton(text="✏️ ویرایشِ توضیحات", callback_data=f"vipset:field:{cat_id}:description", style="primary")],
-        [InlineKeyboardButton(text="🏷 تنظیمِ سرتیترِ گروه", callback_data=f"vipset:field:{cat_id}:section_header", style="primary")],
         [InlineKeyboardButton(text="🖼 آپلود/تغییر بنر", callback_data=f"vipset:banner:{cat_id}", style="primary")],
         [InlineKeyboardButton(text="🗑 حذف بنر", callback_data=f"vipset:delete_banner:{cat_id}", style="danger")],
     ]
@@ -5167,7 +5057,6 @@ async def cb_vipset_field(callback: CallbackQuery, state: FSMContext):
     prompts = {
         "name": "نامِ جدید را ارسال کنید:",
         "description": "توضیحاتِ جدید را ارسال کنید (می‌توانید چند خط باشد):",
-        "section_header": "متنِ سرتیتری که باید دقیقاً قبل از این دسته‌بندی نشون داده بشه رو بفرست. برایِ حذفِ سرتیترِ فعلی، کلمه‌ی «حذف» رو بفرست.",
     }
     await callback.message.edit_text(
         prompts.get(field, "مقدارِ جدید را ارسال کنید:"),
@@ -5211,12 +5100,6 @@ async def handle_vipset_edit_value(message: Message, state: FSMContext):
         cat["name"] = message.text.strip()
     elif field == "description":
         cat["description"] = message.text.strip()
-    elif field == "section_header":
-        value = message.text.strip()
-        if value == "حذف":
-            cat.pop("section_header", None)
-        else:
-            cat["section_header"] = value
 
     await save_vip_categories(categories)
     await state.clear()
@@ -5945,15 +5828,6 @@ async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: i
         return  # آنبوردینگ شروع نشده یا این مرحله از قبل انجام شده
     entry[field] = True
     await save_onboarding(data)
-
-    # لاگِ رویدادِ کلیدیِ آنبوردینگ توی تاپیکِ کاربر (تکمیلِ پروفایل جدا و با جزئیاتِ
-    # بیشتر توی cb_profile_submit لاگ می‌شه، پس اینجا دوباره تکرارش نمی‌کنیم)
-    onboarding_event_labels = {
-        "cafe": "☕️ وارد تاپیکِ «کافه معماری» شد (مرحله‌ی آنبوردینگ)",
-        "vip": "🌟 صفحه‌ی گروهِ VIP رو مشاهده کرد (مرحله‌ی آنبوردینگ)",
-    }
-    if field in onboarding_event_labels:
-        await log_key_event(_SupportTopicUserRef(id=user_id), onboarding_event_labels[field])
 
     progress = {k: entry.get(k, False) for k in ("profile", "cafe", "vip")}
     all_done = all(progress.values())
