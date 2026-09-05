@@ -3998,7 +3998,7 @@ async def render_vip_list_page() -> tuple[str, InlineKeyboardMarkup]:
             if row:
                 rows.append(row)
                 row = []
-            rows.append([InlineKeyboardButton(text=section_header, callback_data="noop")])
+            rows.append([InlineKeyboardButton(text=f"⟪ {section_header} ⟫", callback_data="noop")])
         row.append(InlineKeyboardButton(text=cat["name"], callback_data=f"vipnav:{i}"))
         if len(row) == 2:
             rows.append(row)
