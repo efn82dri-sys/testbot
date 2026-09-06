@@ -1310,7 +1310,25 @@ async def send_rules_message(user) -> bool:
 
 # ==============================================================
 #  سیستم نوتیف‌های حرفه‌ای: تاپیک‌های اختصاصی + کارت پروفایل زنده
+#  (بدون هیچ پیام جداگانه‌ای — هر رویداد فقط با تغییر اسم تاپیک و
+#   ویرایش همان پیام پین‌شده منعکس می‌شود، دقیقاً مثل یک «پروفایل زنده»)
 # ==============================================================
+
+STATUS_EMOJI = {
+    "new": "🆕",
+    "pending": "⏳",
+    "member": "🟢",
+    "vip": "🌟",
+    "left": "🚪",
+}
+STATUS_LABEL_FA = {
+    "new": "کاربر جدید",
+    "pending": "در انتظار تایید",
+    "member": "عضو گروه",
+    "vip": "عضو VIP",
+    "left": "ترک‌کرده",
+}
+MAX_HISTORY_ITEMS = 12  # فقط این تعداد رویدادِ اخیر داخل کارت نگه داشته می‌شود
 
 def _load_support_topics() -> dict:
     if not SUPPORT_TOPICS_FILE.exists():
@@ -1332,50 +1350,33 @@ def _get_user_meta(user_id: int) -> dict:
     data = _load_support_topics()
     return data["user_meta"].get(str(user_id), {})
 
-async def _set_user_status(user_id: int, status: str) -> None:
-    """
-    وضعیت کاربر را به‌روز می‌کند: new | pending | member | vip | left
-    همچنین نام تاپیک را با ایموجی مناسب تغییر می‌دهد و کارت پین‌شده را بازنویسی می‌کند.
-    """
-    data = _load_support_topics()
-    thread_id = data["user_to_thread"].get(str(user_id))
-    if not thread_id:
-        return
+def _topic_display_name(meta: dict, user_id: int, status: str | None = None) -> str:
+    """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت + نام + یوزرنیم/آیدی."""
+    status = status or meta.get("status", "new")
+    display_name = meta.get("name") or f"کاربر {user_id}"
+    username = meta.get("username")
+    username_part = f"@{username}" if username else str(user_id)
+    emoji = STATUS_EMOJI.get(status, "🆕")
+    return f"{emoji} {display_name} ({username_part})"[:128]
 
-    status_emoji = {
-        "new": "🆕",
-        "pending": "⏳",
-        "member": "🟢",
-        "vip": "🌟",
-        "left": "🚪",
-    }.get(status, "🆕")
+async def _append_history(user_id: int, text: str) -> None:
+    """یک رویداد را به تاریخچه‌ی داخلِ کارتِ پروفایل کاربر اضافه می‌کند (فقط چند موردِ اخیر نگه داشته می‌شود)."""
+    async with _write_lock:
+        data = _load_support_topics()
+        meta = data["user_meta"].setdefault(str(user_id), {})
+        history = meta.get("history", [])
+        time_str = format_jalali_datetime(datetime.utcnow())
+        history.append(f"{time_str} — {text}")
+        meta["history"] = history[-MAX_HISTORY_ITEMS:]
+        await _save_support_topics(data)
 
-    meta = data["user_meta"].setdefault(str(user_id), {})
-    meta["status"] = status
-    await _save_support_topics(data)
-
-    # تغییر نام تاپیک
-    try:
-        old_name = meta.get("name", "کاربر")
-        new_name = f"{status_emoji} {old_name}"
-        await bot.edit_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, name=new_name)
-    except Exception as e:
-        logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
-
-    # بازسازی کارت پروفایل
-    await _update_pinned_card(user_id)
-
-async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> None:
-    """کارت پروفایل کاربر را در بالای تاپیک پین می‌کند/به‌روز می‌کند."""
-    data = _load_support_topics()
-    thread_id = data["user_to_thread"].get(str(user_id))
-    if not thread_id:
-        return
-
-    meta = data["user_meta"].get(str(user_id), {})
+def _build_card_text(user_id: int) -> str:
+    """متنِ کاملِ کارتِ پروفایلِ زنده‌ی کاربر را می‌سازد (این متن هربار جایگزینِ همان پیامِ پین‌شده می‌شود)."""
+    meta = _get_user_meta(user_id)
     status = meta.get("status", "new")
-    display_name = meta.get("name", str(user_id))
-    username = meta.get("username", "")
+    display_name = meta.get("name") or str(user_id)
+    username = meta.get("username")
+
     joined_at_raw = load_verified().get(str(user_id))
     joined_line = ""
     if joined_at_raw:
@@ -1385,7 +1386,6 @@ async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> No
             pass
 
     vip_status = get_user_vip_status(user_id)
-    vip_line = ""
     if vip_status["is_active"]:
         remaining = to_persian_num(vip_status["remaining_days"])
         end = format_jalali_datetime(vip_status["end"])
@@ -1395,30 +1395,92 @@ async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> No
     else:
         vip_line = "🌟 بدون اشتراک VIP"
 
-    status_emoji = {
-        "new": "🆕",
-        "pending": "⏳",
-        "member": "🟢",
-        "vip": "🌟",
-        "left": "🚪",
-    }.get(status, "🆕")
+    status_emoji = STATUS_EMOJI.get(status, "🆕")
+    status_label = STATUS_LABEL_FA.get(status, status)
 
-    card_text = (
+    history = meta.get("history", [])
+    if history:
+        history_lines = "\n".join(f"• {line}" for line in reversed(history))
+        history_block = f"\n\n📋 <b>تاریخچه‌ی اخیر</b>\n{history_lines}"
+    else:
+        history_block = ""
+
+    return (
         f"👤 <b>{html_escape(display_name)}</b>\n"
         f"🆔 <code>{user_id}</code>\n"
-        f"{f'🔖 @{username}' if username else ''}\n"
+        f"{f'🔖 @{username}' + chr(10) if username else ''}"
         f"{joined_line}"
-        f"📌 وضعیت: {status_emoji} {status}\n"
-        f"{vip_line}\n"
-        f"{extra_text if extra_text else ''}"
+        f"📌 وضعیت: {status_emoji} {status_label}\n"
+        f"{vip_line}"
+        f"{history_block}"
     )
 
-    # ارسال/ویرایش پیام پین‌شده
+async def _set_user_status(user_id: int, status: str) -> None:
+    """
+    وضعیت کاربر را به‌روز می‌کند: new | pending | member | vip | left
+    نام تاپیک و کارتِ پین‌شده به‌روز می‌شوند؛ هیچ پیامِ جدیدی ارسال نمی‌شود.
+    """
+    data = _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return
+
+    meta = data["user_meta"].setdefault(str(user_id), {})
+    meta["status"] = status
+    await _save_support_topics(data)
+
     try:
-        # ابتدا همه پیام‌های پین‌شده را آنپین می‌کنیم
-        await bot.unpin_all_chat_messages(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id)
-    except Exception:
-        pass
+        new_name = _topic_display_name(meta, user_id, status)
+        await bot.edit_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, name=new_name)
+    except Exception as e:
+        logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
+
+    await _update_pinned_card(user_id)
+
+async def _update_pinned_card(user_id: int, user=None) -> None:
+    """
+    کارتِ پروفایلِ پین‌شده را در جا ویرایش می‌کند (نه ارسالِ پیامِ تازه).
+    فقط اگر پیامِ پین‌شده دیگر در دسترس نباشد یک پیامِ تازه ساخته و پین می‌شود؛
+    اگر خودِ تاپیک حذف/بسته شده باشد، از نو ساخته می‌شود (با حفظِ وضعیت/تاریخچه‌ی قبلی).
+    """
+    data = _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return
+
+    card_text = _build_card_text(user_id)
+    meta = data["user_meta"].get(str(user_id), {})
+    pinned_id = meta.get("pinned_message_id")
+
+    async def _recreate_topic() -> None:
+        nonlocal user
+        if user is None:
+            try:
+                user = await bot.get_chat(user_id)
+            except Exception as e:
+                logger.warning(f"بازسازیِ تاپیک برای کاربر {user_id} ممکن نشد (دریافتِ کاربر ناموفق): {e}")
+                return
+        await _forget_support_topic(user_id, thread_id, keep_meta=True)
+        await get_or_create_support_topic(user, force_new=True)
+
+    if pinned_id:
+        try:
+            await bot.edit_message_text(
+                chat_id=NOTIFY_CHAT_ID_INT,
+                message_id=pinned_id,
+                text=card_text,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        except Exception as e:
+            err = str(e).lower()
+            if "message is not modified" in err:
+                return
+            if "thread not found" in err or "topic" in err:
+                await _recreate_topic()
+                return
+            # پیامِ پین‌شده احتمالاً پاک شده؛ یکی تازه می‌سازیم
+            logger.info(f"ویرایشِ کارتِ کاربر {user_id} ممکن نشد، پیامِ تازه ساخته می‌شود: {e}")
 
     try:
         sent = await bot.send_message(
@@ -1428,6 +1490,15 @@ async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> No
             parse_mode=ParseMode.HTML,
             disable_notification=True,
         )
+    except Exception as e:
+        err = str(e).lower()
+        if "thread not found" in err or "topic" in err:
+            await _recreate_topic()
+        else:
+            logger.warning(f"ارسالِ کارتِ کاربر {user_id} ممکن نشد: {e}")
+        return
+
+    try:
         await bot.pin_chat_message(
             chat_id=NOTIFY_CHAT_ID_INT,
             message_id=sent.message_id,
@@ -1435,63 +1506,48 @@ async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> No
             disable_notification=True,
         )
     except Exception as e:
-        logger.warning(f"پین کردن کارت برای کاربر {user_id} ممکن نشد: {e}")
+        logger.warning(f"پین کردنِ کارتِ کاربر {user_id} ممکن نشد: {e}")
+
+    async with _write_lock:
+        d = _load_support_topics()
+        d["user_meta"].setdefault(str(user_id), {})["pinned_message_id"] = sent.message_id
+        await _save_support_topics(d)
 
 async def log_activity(user, text: str) -> None:
     """
-    یک خط لاگ با زمان شمسی به تاپیک اختصاصی کاربر ارسال می‌کند.
-    اگر تاپیک حذف شده باشد، دوباره می‌سازد.
+    یک رویداد را ثبت می‌کند: به‌جای ارسالِ پیامِ جداگانه، فقط به تاریخچه‌ی داخلِ
+    کارتِ پروفایلِ پین‌شده اضافه می‌شود و همان پیام ویرایش می‌گردد — یعنی تاپیک
+    شلوغ نمی‌شود و همه‌چیز در همان «پروفایلِ» بالای تاپیک قابل مشاهده است.
     """
     if not NOTIFY_CHAT_ID_INT:
         return
-    # اطمینان از وجود تاپیک
     thread_id = await get_or_create_support_topic(user)
     if not thread_id:
         return
 
-    time_str = format_jalali_datetime(datetime.utcnow())
-    try:
-        await bot.send_message(
-            chat_id=NOTIFY_CHAT_ID_INT,
-            message_thread_id=thread_id,
-            text=f"🕐 {time_str} — {text}",
-            parse_mode=ParseMode.HTML,
-            disable_notification=True,
-        )
-    except Exception as e:
-        err = str(e).lower()
-        if "thread not found" not in err and "topic" not in err:
-            logger.warning(f"ارسال لاگ به تاپیک کاربر {user.id} ممکن نشد: {e}")
-            return
-        # تاپیک حذف شده، یک جدید می‌سازیم و دوباره تلاش
-        await _forget_support_topic(user.id, thread_id)
-        new_thread = await get_or_create_support_topic(user, force_new=True)
-        if new_thread:
-            try:
-                await bot.send_message(
-                    chat_id=NOTIFY_CHAT_ID_INT,
-                    message_thread_id=new_thread,
-                    text=f"🕐 {time_str} — {text}",
-                    parse_mode=ParseMode.HTML,
-                    disable_notification=True,
-                )
-            except Exception as e2:
-                logger.warning(f"ارسال لاگ به تاپیک تازه هم ممکن نشد: {e2}")
+    await _append_history(user.id, text)
+    await _update_pinned_card(user.id, user=user)
 
-async def _forget_support_topic(user_id: int, thread_id: int) -> None:
+async def _forget_support_topic(user_id: int, thread_id: int, keep_meta: bool = False) -> None:
     async with _write_lock:
         data = _load_support_topics()
         if data["user_to_thread"].get(str(user_id)) == thread_id:
             data["user_to_thread"].pop(str(user_id), None)
         data["thread_to_user"].pop(str(thread_id), None)
-        data["user_meta"].pop(str(user_id), None)
+        if keep_meta:
+            meta = data["user_meta"].get(str(user_id))
+            if meta:
+                meta.pop("pinned_message_id", None)
+        else:
+            data["user_meta"].pop(str(user_id), None)
         await _save_support_topics(data)
 
 async def get_or_create_support_topic(user, force_new: bool = False) -> int | None:
-    """آیدی تاپیک اختصاصی کاربر را برمی‌گرداند؛ در صورت نبود، می‌سازد."""
+    """آیدی تاپیک اختصاصی کاربر را برمی‌گرداند؛ در صورت نبود، می‌سازد (با حفظِ وضعیت/تاریخچه‌ی قبلی در صورتِ بازسازی)."""
     if not NOTIFY_CHAT_ID_INT:
         return None
 
+    is_brand_new = False
     async with _write_lock:
         data = _load_support_topics()
         if not force_new:
@@ -1500,8 +1556,10 @@ async def get_or_create_support_topic(user, force_new: bool = False) -> int | No
                 return existing
 
         display_name = user.full_name or user.first_name or f"کاربر {user.id}"
+        meta_existing = data["user_meta"].get(str(user.id), {})
+        pre_status = meta_existing.get("status", "new")
         username_part = f"@{user.username}" if user.username else str(user.id)
-        topic_name = f"🆕 {display_name} ({username_part})"[:128]
+        topic_name = f"{STATUS_EMOJI.get(pre_status, '🆕')} {display_name} ({username_part})"[:128]
 
         try:
             topic = await bot.create_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, name=topic_name)
@@ -1515,11 +1573,17 @@ async def get_or_create_support_topic(user, force_new: bool = False) -> int | No
         meta = data["user_meta"].setdefault(str(user.id), {})
         meta["name"] = display_name
         meta["username"] = user.username
-        meta["status"] = "new"
+        meta.setdefault("status", "new")
+        meta.pop("pinned_message_id", None)
+        is_brand_new = "history" not in meta
+        meta.setdefault("history", [])
         await _save_support_topics(data)
 
-    # ارسال کارت پروفایل
-    await _update_pinned_card(user.id, "🆕 کاربر جدید — منتظر اقدامات بعدی")
+    if is_brand_new:
+        await _append_history(user.id, "🆕 تاپیکِ اختصاصی ساخته شد")
+
+    # ساختن/ویرایشِ کارتِ پروفایل (بدون هیچ پیامِ اضافه‌ای)
+    await _update_pinned_card(user.id, user=user)
 
     return thread_id
 
@@ -2792,8 +2856,8 @@ async def relay_message_to_admin(user, text: str) -> None:
             logger.warning("ارسالِ پیامِ عضو به ادمین ممکن نشد: %s", e)
             return
 
-    # تاپیکِ قبلی احتمالاً دستی حذف/بسته شده — یکی تازه بساز و دوباره تلاش کن
-    await _forget_support_topic(user.id, thread_id)
+    # تاپیکِ قبلی احتمالاً دستی حذف/بسته شده — یکی تازه بساز (با حفظِ وضعیت/تاریخچه) و دوباره تلاش کن
+    await _forget_support_topic(user.id, thread_id, keep_meta=True)
     new_thread_id = await get_or_create_support_topic(user, force_new=True)
     if new_thread_id is None:
         return
