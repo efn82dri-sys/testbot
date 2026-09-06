@@ -84,6 +84,7 @@ MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
 FSM_STATE_FILE = Path(__file__).parent / "data" / "fsm_state.json"
 PENDING_JOIN_FILE = Path(__file__).parent / "data" / "pending_join_requests.json"
 SUPPORT_TOPICS_FILE = Path(__file__).parent / "data" / "support_topics.json"
+QUICK_REPLIES_FILE = Path(__file__).parent / "data" / "quick_replies.json"
 
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
@@ -1069,8 +1070,16 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         toggle_label = "🟢 روشن کردن ربات"
         toggle_style = "success"
 
+    pending_count = len(load_pending_joins())
+    pending_label = "🕐 درخواست‌هایِ عضویتِ معلق"
+    if pending_count:
+        pending_label += f" ({to_persian_num(pending_count)})"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text=pending_label, callback_data="pendingjoin:list:0", style="danger" if pending_count else "primary"),
+            ],
             [
                 InlineKeyboardButton(text="📊 گزارش‌ها", callback_data="admin:cat_reports", style="primary"),
                 InlineKeyboardButton(text="📨 پیام‌رسانی", callback_data="admin:cat_messaging", style="primary"),
@@ -1109,6 +1118,7 @@ def admin_messaging_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📢 پیام همگانی", callback_data="admin:broadcast", style="success"),
                 InlineKeyboardButton(text="📨 ارسال مستقیم", callback_data="admin:sendmsg", style="primary"),
             ],
+            [InlineKeyboardButton(text="💬 پیام‌هایِ آماده", callback_data="admin:quickreplies", style="primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -1211,6 +1221,107 @@ async def _untrack_pending_join(user_id: int) -> None:
     if str(user_id) in pending:
         pending.pop(str(user_id))
         await save_pending_joins(pending)
+
+PENDING_JOIN_PAGE_SIZE = 5
+
+async def render_pending_joins_page(page: int) -> tuple[str, InlineKeyboardMarkup]:
+    pending = load_pending_joins()
+
+    if not pending:
+        text = (
+            "🕐 <b>درخواست‌هایِ عضویتِ معلق</b>\n\n"
+            "✅ در حال حاضر هیچ درخواستِ معلقی وجود ندارد."
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")]
+        ])
+        return text, keyboard
+
+    items = sorted(pending.items(), key=lambda kv: kv[1].get("requested_at", ""))
+    total_pages = max(1, (len(items) + PENDING_JOIN_PAGE_SIZE - 1) // PENDING_JOIN_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_items = items[page * PENDING_JOIN_PAGE_SIZE: (page + 1) * PENDING_JOIN_PAGE_SIZE]
+
+    now = datetime.utcnow()
+    lines = [
+        f"🕐 <b>درخواست‌هایِ عضویتِ معلق</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
+        f"مجموع: {to_persian_num(len(items))} نفر\n",
+    ]
+    rows = []
+    for user_id_str, info in page_items:
+        username_part = f"@{info['username']}" if info.get("username") else "بدونِ‌یوزرنیم"
+        waited_line = ""
+        try:
+            requested_at = datetime.fromisoformat(info["requested_at"])
+            hours = (now - requested_at).total_seconds() / 3600
+            waited_line = f"⏱ {to_persian_num(round(hours, 1))} ساعت پیش\n"
+        except (KeyError, ValueError):
+            pass
+        lines.append(
+            f"👤 {html_escape(info.get('full_name', ''))} ({username_part})\n"
+            f"🆔 <code>{user_id_str}</code>\n"
+            f"{waited_line}"
+        )
+        rows.append([
+            InlineKeyboardButton(text="✅ تایید", callback_data=f"pendingjoin:approve:{page}:{user_id_str}", style="success"),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"pendingjoin:reject:{page}:{user_id_str}", style="danger"),
+        ])
+
+    text = "\n".join(lines)
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"pendingjoin:list:{page - 1}", style="primary"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"pendingjoin:list:{page + 1}", style="primary"))
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data.startswith("pendingjoin:list:"))
+async def cb_pendingjoin_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    try:
+        page = int(callback.data.split(":")[2])
+    except (IndexError, ValueError):
+        page = 0
+    text, keyboard = await render_pending_joins_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("pendingjoin:approve:"))
+async def cb_pendingjoin_approve_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    parts = callback.data.split(":")
+    page = int(parts[2])
+    user_id = int(parts[3])
+    ok = await _finalize_group_approval(user_id, notify_user=True)
+    await callback.answer("✅ عضویت تایید شد." if ok else "❌ ناموفق (شاید قبلاً منقضی شده).", show_alert=not ok)
+    text, keyboard = await render_pending_joins_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+@dp.callback_query(F.data.startswith("pendingjoin:reject:"))
+async def cb_pendingjoin_reject_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    parts = callback.data.split(":")
+    page = int(parts[2])
+    user_id = int(parts[3])
+    try:
+        await bot.decline_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
+    except Exception as e:
+        logger.warning("ردِ درخواستِ عضویتِ کاربر %s ممکن نشد: %s", user_id, e)
+    await _untrack_pending_join(user_id)
+    await callback.answer("❌ درخواست رد شد.")
+    text, keyboard = await render_pending_joins_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
 
 async def pending_join_checker_loop() -> None:
     while True:
@@ -1351,12 +1462,14 @@ def _get_user_meta(user_id: int) -> dict:
     return data["user_meta"].get(str(user_id), {})
 
 def _topic_display_name(meta: dict, user_id: int, status: str | None = None) -> str:
-    """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت + نام + یوزرنیم/آیدی."""
+    """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت (+ ایموجیِ طلایی در صورت داشتنش) + نام + یوزرنیم/آیدی."""
     status = status or meta.get("status", "new")
     display_name = meta.get("name") or f"کاربر {user_id}"
     username = meta.get("username")
     username_part = f"@{username}" if username else str(user_id)
     emoji = STATUS_EMOJI.get(status, "🆕")
+    if meta.get("is_gold"):
+        emoji += "🥇"
     return f"{emoji} {display_name} ({username_part})"[:128]
 
 async def _append_history(user_id: int, text: str) -> None:
@@ -1397,6 +1510,7 @@ def _build_card_text(user_id: int) -> str:
 
     status_emoji = STATUS_EMOJI.get(status, "🆕")
     status_label = STATUS_LABEL_FA.get(status, status)
+    gold_line = "🥇 کاربرِ طلایی: بله\n" if meta.get("is_gold") else ""
 
     history = meta.get("history", [])
     if history:
@@ -1411,6 +1525,7 @@ def _build_card_text(user_id: int) -> str:
         f"{f'🔖 @{username}' + chr(10) if username else ''}"
         f"{joined_line}"
         f"📌 وضعیت: {status_emoji} {status_label}\n"
+        f"{gold_line}"
         f"{vip_line}"
         f"{history_block}"
     )
@@ -1431,6 +1546,28 @@ async def _set_user_status(user_id: int, status: str) -> None:
 
     try:
         new_name = _topic_display_name(meta, user_id, status)
+        await bot.edit_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, name=new_name)
+    except Exception as e:
+        logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
+
+    await _update_pinned_card(user_id)
+
+async def _set_user_gold(user_id: int, is_gold: bool = True) -> None:
+    """نشانِ «کاربرِ طلایی» را جدا از وضعیتِ عضویت/VIP روی تاپیک و کارت اعمال می‌کند
+    (یعنی یک کاربر می‌تونه هم‌زمان مثلاً 🌟 VIP و 🥇 طلایی باشه)."""
+    data = _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return
+
+    meta = data["user_meta"].setdefault(str(user_id), {})
+    if meta.get("is_gold") == is_gold:
+        return
+    meta["is_gold"] = is_gold
+    await _save_support_topics(data)
+
+    try:
+        new_name = _topic_display_name(meta, user_id)
         await bot.edit_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, name=new_name)
     except Exception as e:
         logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
@@ -2143,6 +2280,9 @@ async def cb_profile_submit(callback: CallbackQuery):
 
     # مرحله آنبوردینگ: تکمیل پروفایل.
     await _mark_onboarding_step(user, "profile", avoid_message_id=callback.message.message_id)
+
+    await log_activity(user, "🥇 پروفایل را تکمیل کرد و به «کاربرِ طلایی» ارتقا یافت")
+    await _set_user_gold(user.id, True)
 
     try:
         await bot.send_message(
@@ -2866,7 +3006,10 @@ async def relay_message_to_admin(user, text: str) -> None:
     except Exception as e:
         logger.warning("ارسالِ پیامِ عضو به تاپیکِ تازه هم ممکن نشد: %s", e)
 
-@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.message_thread_id)
+def _message_is_not_command(message: Message) -> bool:
+    return not (message.text and message.text.startswith("/"))
+
+@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.message_thread_id, _message_is_not_command)
 async def handle_admin_reply_via_topic(message: Message):
     if not is_admin(message.from_user.id):
         return
@@ -2888,6 +3031,209 @@ async def handle_admin_reply_via_topic(message: Message):
             await message.reply(f"❌ ارسال پیام به کاربر ناموفق بود: {e}")
         except Exception:
             pass
+
+# ---------- پیام‌های آماده (Quick Replies) — برایِ ارسالِ سریع از داخلِ تاپیکِ خودِ کاربر ----------
+def load_quick_replies() -> dict:
+    if not QUICK_REPLIES_FILE.exists():
+        return {}
+    try:
+        return json.loads(QUICK_REPLIES_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+async def save_quick_replies(data: dict) -> None:
+    async with _write_lock:
+        QUICK_REPLIES_FILE.parent.mkdir(exist_ok=True)
+        QUICK_REPLIES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+class QuickReplyStates(StatesGroup):
+    waiting_for_title = State()
+    waiting_for_text = State()
+
+def render_quickreplies_menu() -> tuple[str, InlineKeyboardMarkup]:
+    presets = load_quick_replies()
+    if presets:
+        text = (
+            "💬 <b>پیام‌هایِ آماده</b>\n\n"
+            "این پیام‌ها رو می‌تونید با فرستادنِ دستورِ /quick داخلِ تاپیکِ اختصاصیِ "
+            "هر کاربر، با یک لمس براش بفرستید.\n\n"
+            f"تعداد: {to_persian_num(len(presets))} مورد"
+        )
+    else:
+        text = (
+            "💬 <b>پیام‌هایِ آماده</b>\n\n"
+            "هنوز هیچ پیامِ آماده‌ای تعریف نشده.\n"
+            "با «➕ افزودن» یکی بسازید تا بتونید داخلِ تاپیکِ هر کاربر با دستورِ /quick "
+            "با یک لمس براش بفرستیدش."
+        )
+    rows = []
+    for preset_id, preset in presets.items():
+        rows.append([
+            InlineKeyboardButton(text=f"✏️ {preset.get('title', preset_id)}", callback_data=f"qr:edit:{preset_id}", style="primary"),
+            InlineKeyboardButton(text="🗑", callback_data=f"qr:delete:{preset_id}", style="danger"),
+        ])
+    rows.append([InlineKeyboardButton(text="➕ افزودنِ پیامِ تازه", callback_data="qr:add", style="success")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_messaging", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data == "admin:quickreplies")
+async def cb_quickreplies_menu(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    text, keyboard = render_quickreplies_menu()
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "qr:add")
+async def cb_quickreply_add(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(QuickReplyStates.waiting_for_title)
+    await state.update_data(edit_id=None)
+    await callback.message.edit_text(
+        "📝 یک عنوانِ کوتاه برایِ این پیامِ آماده بفرستید (فقط برایِ خودتون، روی دکمه دیده می‌شه):\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("qr:edit:"))
+async def cb_quickreply_edit(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    preset_id = callback.data.split(":", 2)[2]
+    presets = load_quick_replies()
+    preset = presets.get(preset_id)
+    if not preset:
+        await callback.answer("این پیام دیگر یافت نشد.", show_alert=True)
+        return
+    await state.set_state(QuickReplyStates.waiting_for_title)
+    await state.update_data(edit_id=preset_id)
+    await callback.message.edit_text(
+        f"📝 عنوانِ تازه برایِ «{html_escape(preset.get('title',''))}» بفرستید:\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("qr:delete:"))
+async def cb_quickreply_delete(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    preset_id = callback.data.split(":", 2)[2]
+    presets = load_quick_replies()
+    presets.pop(preset_id, None)
+    await save_quick_replies(presets)
+    await callback.answer("🗑 حذف شد.")
+    text, keyboard = render_quickreplies_menu()
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+@dp.message(QuickReplyStates.waiting_for_title)
+async def quickreply_title_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    title = (message.text or "").strip()
+    if not title or title.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await state.update_data(title=title)
+    await state.set_state(QuickReplyStates.waiting_for_text)
+    await message.answer(
+        f"✅ عنوان: <b>{html_escape(title)}</b>\n\nحالا متنِ کاملِ پیام رو بفرستید:",
+        reply_markup=admin_back_keyboard(),
+    )
+
+@dp.message(QuickReplyStates.waiting_for_text)
+async def quickreply_text_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    body = (message.html_text or message.text or "").strip()
+    if not body or body.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    data = await state.get_data()
+    title = data.get("title", "")
+    edit_id = data.get("edit_id")
+    presets = load_quick_replies()
+    preset_id = edit_id or str(uuid.uuid4())[:8]
+    presets[preset_id] = {"title": title, "text": body}
+    await save_quick_replies(presets)
+    await state.clear()
+
+    text, keyboard = render_quickreplies_menu()
+    await message.answer(f"✅ پیامِ آماده‌یِ «{html_escape(title)}» ذخیره شد.")
+    await message.answer(text, reply_markup=keyboard)
+
+@dp.message(F.chat.id == NOTIFY_CHAT_ID_INT, F.message_thread_id, Command("quick"))
+async def handle_quick_command_in_topic(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    data = _load_support_topics()
+    target_user_id = data["thread_to_user"].get(str(message.message_thread_id))
+    if target_user_id is None:
+        return
+
+    presets = load_quick_replies()
+    if not presets:
+        await message.reply(
+            "هنوز هیچ پیامِ آماده‌ای تعریف نکردید.\n"
+            "از «⚙️ پنلِ ادمین → 📨 پیام‌رسانی → 💬 پیام‌هایِ آماده» یکی بسازید."
+        )
+        return
+
+    rows = [
+        [InlineKeyboardButton(text=preset.get("title", pid), callback_data=f"qr:send:{pid}", style="primary")]
+        for pid, preset in presets.items()
+    ]
+    await message.answer("💬 کدوم پیامِ آماده رو براش بفرستم؟", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+@dp.callback_query(F.data.startswith("qr:send:"))
+async def cb_quickreply_send(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    if callback.message.message_thread_id is None:
+        await callback.answer("این دکمه فقط داخلِ تاپیکِ یک کاربر کار می‌کنه.", show_alert=True)
+        return
+
+    preset_id = callback.data.split(":", 2)[2]
+    presets = load_quick_replies()
+    preset = presets.get(preset_id)
+    if not preset:
+        await callback.answer("این پیام دیگر یافت نشد.", show_alert=True)
+        return
+
+    data = _load_support_topics()
+    target_user_id = data["thread_to_user"].get(str(callback.message.message_thread_id))
+    if target_user_id is None:
+        await callback.answer("این تاپیک به کاربری متصل نیست.", show_alert=True)
+        return
+
+    try:
+        await bot.send_message(chat_id=target_user_id, text=f"از سوی مدیریتِ رواق:\n\n{preset['text']}")
+    except Exception as e:
+        logger.warning("ارسالِ پیامِ آماده به کاربر %s ممکن نشد: %s", target_user_id, e)
+        await callback.answer(f"❌ ارسال ناموفق بود: {e}", show_alert=True)
+        return
+
+    try:
+        target_user = await bot.get_chat(target_user_id)
+        await log_activity(target_user, f"📨 پیامِ آماده‌یِ «{preset.get('title','')}» براش ارسال شد")
+    except Exception:
+        pass
+
+    await callback.answer("✅ ارسال شد.")
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
