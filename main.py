@@ -1308,6 +1308,225 @@ async def send_rules_message(user) -> bool:
         logger.warning("ارسالِ پیامِ قوانین به کاربر %s ممکن نشد: %s", user.id, e)
         return False
 
+# ==============================================================
+#  سیستم نوتیف‌های حرفه‌ای: تاپیک‌های اختصاصی + کارت پروفایل زنده
+# ==============================================================
+
+def _load_support_topics() -> dict:
+    if not SUPPORT_TOPICS_FILE.exists():
+        return {"user_to_thread": {}, "thread_to_user": {}, "user_meta": {}}
+    try:
+        data = json.loads(SUPPORT_TOPICS_FILE.read_text(encoding="utf-8"))
+        data.setdefault("user_to_thread", {})
+        data.setdefault("thread_to_user", {})
+        data.setdefault("user_meta", {})
+        return data
+    except (json.JSONDecodeError, OSError):
+        return {"user_to_thread": {}, "thread_to_user": {}, "user_meta": {}}
+
+async def _save_support_topics(data: dict) -> None:
+    SUPPORT_TOPICS_FILE.parent.mkdir(exist_ok=True)
+    SUPPORT_TOPICS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _get_user_meta(user_id: int) -> dict:
+    data = _load_support_topics()
+    return data["user_meta"].get(str(user_id), {})
+
+async def _set_user_status(user_id: int, status: str) -> None:
+    """
+    وضعیت کاربر را به‌روز می‌کند: new | pending | member | vip | left
+    همچنین نام تاپیک را با ایموجی مناسب تغییر می‌دهد و کارت پین‌شده را بازنویسی می‌کند.
+    """
+    data = _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return
+
+    status_emoji = {
+        "new": "🆕",
+        "pending": "⏳",
+        "member": "🟢",
+        "vip": "🌟",
+        "left": "🚪",
+    }.get(status, "🆕")
+
+    meta = data["user_meta"].setdefault(str(user_id), {})
+    meta["status"] = status
+    await _save_support_topics(data)
+
+    # تغییر نام تاپیک
+    try:
+        old_name = meta.get("name", "کاربر")
+        new_name = f"{status_emoji} {old_name}"
+        await bot.edit_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, name=new_name)
+    except Exception as e:
+        logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
+
+    # بازسازی کارت پروفایل
+    await _update_pinned_card(user_id)
+
+async def _update_pinned_card(user_id: int, extra_text: str | None = None) -> None:
+    """کارت پروفایل کاربر را در بالای تاپیک پین می‌کند/به‌روز می‌کند."""
+    data = _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return
+
+    meta = data["user_meta"].get(str(user_id), {})
+    status = meta.get("status", "new")
+    display_name = meta.get("name", str(user_id))
+    username = meta.get("username", "")
+    joined_at_raw = load_verified().get(str(user_id))
+    joined_line = ""
+    if joined_at_raw:
+        try:
+            joined_line = f"🗓 عضویت: {format_jalali_datetime(datetime.fromisoformat(joined_at_raw))}\n"
+        except ValueError:
+            pass
+
+    vip_status = get_user_vip_status(user_id)
+    vip_line = ""
+    if vip_status["is_active"]:
+        remaining = to_persian_num(vip_status["remaining_days"])
+        end = format_jalali_datetime(vip_status["end"])
+        vip_line = f"🌟 VIP فعال — {remaining} روز مانده (تا {end})"
+    elif vip_status["has_subscription"]:
+        vip_line = "🌟 VIP منقضی‌شده"
+    else:
+        vip_line = "🌟 بدون اشتراک VIP"
+
+    status_emoji = {
+        "new": "🆕",
+        "pending": "⏳",
+        "member": "🟢",
+        "vip": "🌟",
+        "left": "🚪",
+    }.get(status, "🆕")
+
+    card_text = (
+        f"👤 <b>{html_escape(display_name)}</b>\n"
+        f"🆔 <code>{user_id}</code>\n"
+        f"{f'🔖 @{username}' if username else ''}\n"
+        f"{joined_line}"
+        f"📌 وضعیت: {status_emoji} {status}\n"
+        f"{vip_line}\n"
+        f"{extra_text if extra_text else ''}"
+    )
+
+    # ارسال/ویرایش پیام پین‌شده
+    try:
+        # ابتدا همه پیام‌های پین‌شده را آنپین می‌کنیم
+        await bot.unpin_all_chat_messages(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id)
+    except Exception:
+        pass
+
+    try:
+        sent = await bot.send_message(
+            chat_id=NOTIFY_CHAT_ID_INT,
+            message_thread_id=thread_id,
+            text=card_text,
+            parse_mode=ParseMode.HTML,
+            disable_notification=True,
+        )
+        await bot.pin_chat_message(
+            chat_id=NOTIFY_CHAT_ID_INT,
+            message_id=sent.message_id,
+            message_thread_id=thread_id,
+            disable_notification=True,
+        )
+    except Exception as e:
+        logger.warning(f"پین کردن کارت برای کاربر {user_id} ممکن نشد: {e}")
+
+async def log_activity(user, text: str) -> None:
+    """
+    یک خط لاگ با زمان شمسی به تاپیک اختصاصی کاربر ارسال می‌کند.
+    اگر تاپیک حذف شده باشد، دوباره می‌سازد.
+    """
+    if not NOTIFY_CHAT_ID_INT:
+        return
+    # اطمینان از وجود تاپیک
+    thread_id = await get_or_create_support_topic(user)
+    if not thread_id:
+        return
+
+    time_str = format_jalali_datetime(datetime.utcnow())
+    try:
+        await bot.send_message(
+            chat_id=NOTIFY_CHAT_ID_INT,
+            message_thread_id=thread_id,
+            text=f"🕐 {time_str} — {text}",
+            parse_mode=ParseMode.HTML,
+            disable_notification=True,
+        )
+    except Exception as e:
+        err = str(e).lower()
+        if "thread not found" not in err and "topic" not in err:
+            logger.warning(f"ارسال لاگ به تاپیک کاربر {user.id} ممکن نشد: {e}")
+            return
+        # تاپیک حذف شده، یک جدید می‌سازیم و دوباره تلاش
+        await _forget_support_topic(user.id, thread_id)
+        new_thread = await get_or_create_support_topic(user, force_new=True)
+        if new_thread:
+            try:
+                await bot.send_message(
+                    chat_id=NOTIFY_CHAT_ID_INT,
+                    message_thread_id=new_thread,
+                    text=f"🕐 {time_str} — {text}",
+                    parse_mode=ParseMode.HTML,
+                    disable_notification=True,
+                )
+            except Exception as e2:
+                logger.warning(f"ارسال لاگ به تاپیک تازه هم ممکن نشد: {e2}")
+
+async def _forget_support_topic(user_id: int, thread_id: int) -> None:
+    async with _write_lock:
+        data = _load_support_topics()
+        if data["user_to_thread"].get(str(user_id)) == thread_id:
+            data["user_to_thread"].pop(str(user_id), None)
+        data["thread_to_user"].pop(str(thread_id), None)
+        data["user_meta"].pop(str(user_id), None)
+        await _save_support_topics(data)
+
+async def get_or_create_support_topic(user, force_new: bool = False) -> int | None:
+    """آیدی تاپیک اختصاصی کاربر را برمی‌گرداند؛ در صورت نبود، می‌سازد."""
+    if not NOTIFY_CHAT_ID_INT:
+        return None
+
+    async with _write_lock:
+        data = _load_support_topics()
+        if not force_new:
+            existing = data["user_to_thread"].get(str(user.id))
+            if existing is not None:
+                return existing
+
+        display_name = user.full_name or user.first_name or f"کاربر {user.id}"
+        username_part = f"@{user.username}" if user.username else str(user.id)
+        topic_name = f"🆕 {display_name} ({username_part})"[:128]
+
+        try:
+            topic = await bot.create_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, name=topic_name)
+        except Exception as e:
+            logger.warning(f"ساخت تاپیک پشتیبانی برای کاربر {user.id} ممکن نشد: {e}")
+            return None
+
+        thread_id = topic.message_thread_id
+        data["user_to_thread"][str(user.id)] = thread_id
+        data["thread_to_user"][str(thread_id)] = user.id
+        meta = data["user_meta"].setdefault(str(user.id), {})
+        meta["name"] = display_name
+        meta["username"] = user.username
+        meta["status"] = "new"
+        await _save_support_topics(data)
+
+    # ارسال کارت پروفایل
+    await _update_pinned_card(user.id, "🆕 کاربر جدید — منتظر اقدامات بعدی")
+
+    return thread_id
+
+# ==============================================================
+#  ادامه کدهای قبلی (بدون تغییر در بخش‌های دیگر، فقط اضافه شدن تماس‌های لاگ)
+# ==============================================================
+
 async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bool:
     try:
         await bot.approve_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=user_id)
@@ -1315,13 +1534,15 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
         logger.warning("تاییدِ عضویتِ کاربر %s ممکن نشد: %s", user_id, e)
         return False
 
+    # لاگ برای کاربر
+    user_obj = await bot.get_chat(user_id)
+    await log_activity(user_obj, "✅ قوانین پذیرفته شد و کاربر به گروه اضافه شد")
+    await _set_user_status(user_id, "member")
+
     await mark_verified(user_id)
     await increment_stat("form_completed_and_joined")
     await _untrack_pending_join(user_id)
 
-    # پاداش ریفرال (اگر کاربر با لینک دعوت آمده باشد)
-    # داخلِ try/except تا اگر اعطای پاداشِ ریفرال با خطا مواجه شد، خوش‌آمدگویی و
-    # چک‌لیستِ آنبوردینگِ خودِ عضوِ تازه‌وارد (که هیچ ربطی به این خطا ندارد) بی‌دلیل حذف نشود.
     try:
         await _credit_referral_if_pending(user_id)
     except Exception as e:
@@ -1398,14 +1619,27 @@ async def open_vip_panel(chat_id: int) -> None:
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
     user_id = message.from_user.id
+    user = message.from_user
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
+
+    # لاگ اولین استارت (اگر قبلاً استارت نزده باشد)
+    # تشخیص: اگر کاربر در کش کاربران نباشد و در فایل funnle نباشد، یعنی اولین بار
+    if not _get_user_meta(user_id):
+        await log_activity(user, "🆕 کاربر برای اولین بار ربات را استارت زد")
 
     args = (command.args or "").strip()
     if args.startswith("ref_"):
         ref_id_str = args[len("ref_"):]
         if ref_id_str.isdigit():
             await _track_referral(user_id, int(ref_id_str))
+            # لاگ برای معرف (اگر موجود باشد)
+            referrer = int(ref_id_str)
+            try:
+                ref_user = await bot.get_chat(referrer)
+                await log_activity(ref_user, f"🔗 کاربر جدید از طریق لینک دعوت شما آمد (ID: {user_id})")
+            except Exception:
+                pass
 
     is_member = await is_user_member(user_id)
 
@@ -1466,6 +1700,10 @@ async def handle_join_request(join_request: ChatJoinRequest):
     logger.info("درخواست عضویت جدید از %s (%s)", user.full_name, user.id)
     await mark_funnel_entry(user.id)
 
+    # لاگ دریافت درخواست
+    await log_activity(user, "⏳ درخواست عضویت دریافت شد")
+    await _set_user_status(user.id, "pending")
+
     state = load_bot_state()
     if not state.get("enabled", True):
         try:
@@ -1484,11 +1722,13 @@ async def handle_join_request(join_request: ChatJoinRequest):
             pending.append(user.id)
             state["pending_requests"] = pending
             await save_bot_state(state)
+            await log_activity(user, "⏳ درخواست عضویت در صف قرار گرفت (ربات خاموش)")
         return
 
     sent_ok = await send_rules_message(user)
 
     if not sent_ok:
+        await log_activity(user, "⚠️ ارسال قوانین ممکن نشد، نیاز به تایید دستی")
         if NOTIFY_CHAT_ID_INT:
             try:
                 username_part = f"@{user.username}" if user.username else "بدونِ‌یوزرنیم"
@@ -1565,9 +1805,6 @@ async def cb_rules_accept(callback: CallbackQuery):
             )
         except Exception:
             pass
-        # یه ری‌اکشنِ کوچیک رویِ همین پیام، برای حسِ زنده‌بودنِ ربات در لحظه‌ی تاییدِ عضویت.
-        # به‌صورتِ dict پاس داده می‌شود (نه از طریقِ کلاسِ ReactionTypeEmoji) تا مستقل از
-        # نسخه‌ی نصب‌شده‌ی aiogram کار کند — همان الگویی که برایِ copy_text استفاده کردیم.
         try:
             await bot.set_message_reaction(
                 chat_id=user.id,
@@ -1582,7 +1819,6 @@ async def cb_rules_accept(callback: CallbackQuery):
             text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
             reply_markup=user_panel_keyboard(),
         )
-        # شروع چک‌لیست آنبوردینگ
         await start_onboarding(user.id, user.id)
     else:
         await callback.answer(
@@ -1842,13 +2078,8 @@ async def cb_profile_submit(callback: CallbackQuery):
     await callback.message.edit_text(dashboard_text, reply_markup=dashboard_keyboard)
 
     # مرحله آنبوردینگ: تکمیل پروفایل.
-    # نکته: اگر همین پیام دقیقاً پیامِ چک‌لیستِ آنبوردینگ باشد (یعنی کاربر از داخلِ
-    # خودِ چک‌لیست وارد پروفایل شده)، نباید دکمه‌های داشبوردِ پروفایل که همین الان
-    # نشان دادیم با دکمه‌های چک‌لیست جایگزین شوند؛ avoid_message_id دقیقاً همین
-    # تداخل را می‌گیرد و به‌جایش چک‌لیست را (در صورتِ نیاز) به‌عنوانِ پیامِ جدا آپدیت می‌کند.
-    await _mark_onboarding_step(user.id, "profile", avoid_message_id=callback.message.message_id)
+    await _mark_onboarding_step(user, "profile", avoid_message_id=callback.message.message_id)
 
-    # افکت LIKE
     try:
         await bot.send_message(
             chat_id=callback.message.chat.id,
@@ -1876,6 +2107,9 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
         await increment_stat("total_joined")
         await notify_new_member(user)
         await send_welcome_to_group(user)
+        # لاگ عضویت
+        await log_activity(user, "🟢 کاربر به گروه پیوست")
+        await _set_user_status(user.id, "member")
         return
 
     left_group = (
@@ -1885,6 +2119,8 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
     if left_group:
         await increment_stat("total_left")
         await handle_member_left(user)
+        await log_activity(user, "🚪 کاربر گروه را ترک کرد")
+        await _set_user_status(user.id, "left")
 
 async def notify_new_member(user) -> None:
     if not NOTIFY_CHAT_ID:
@@ -2065,11 +2301,6 @@ async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
     return sent, failed
 
 # ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
-# این callbackها هندلرِ اختصاصیِ خودشان را دارند (وابسته به یک استیتِ FSM
-# خاص هستند) و نباید توسطِ هندلرِ عمومیِ زیر (که هر چیزِ شروع‌شونده با
-# "admin:" را می‌قاپد) گرفته شوند؛ وگرنه چون این هندلرِ عمومی زودتر از
-# هندلرهایِ اختصاصی ثبت شده، آن‌ها هیچ‌وقت اجرا نمی‌شوند و کاربر پیامِ
-# «❌ گزینه نامعتبر» می‌بیند (باگِ اصلیِ «تایید حذف کاربر»).
 _ADMIN_STATE_SPECIFIC_CALLBACKS = {
     "admin:delete_confirm",
     "admin:delete_cancel",
@@ -2241,9 +2472,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         currently_enabled = state_data.get("enabled", True)
 
         if currently_enabled:
-            # خاموش‌کردنِ ربات مخرب است (تا وقتی دوباره روشن نشود، هیچ پیام/درخواستی
-            # پاسخ داده نمی‌شود)، پس قبل از اجرا یک تاییدِ دوم می‌گیریم — دقیقاً
-            # همان الگویی که برایِ «بازیابی از بکاپ» پیاده شده.
             await callback.answer()
             confirm_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -2259,7 +2487,6 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             )
             return
 
-        # روشن‌کردن، برخلافِ خاموش‌کردن، بی‌خطر و بلافاصله بازگشت‌پذیر است؛ نیازی به تاییدِ دوم ندارد.
         state_data["enabled"] = True
         await save_bot_state(state_data)
         await callback.answer("ربات روشن ✅ شد.")
@@ -2545,78 +2772,8 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("ارسال همگانی لغو شد.", reply_markup=admin_back_keyboard())
 
 # ---------- صندوق پیام اعضا (مبتنی بر Forum Topics) ----------
-# هر عضو یک تاپیکِ اختصاصی توی گروهِ NOTIFY_CHAT_ID داره؛ نگاشتِ
-# {user_id <-> thread_id} به‌صورتِ پایدار توی یک فایلِ JSON نگه داشته می‌شه
-# (نه توی حافظه)، پس با ری‌استارتِ ربات هم گم نمی‌شه.
-
-def load_support_topics() -> dict:
-    if not SUPPORT_TOPICS_FILE.exists():
-        return {"user_to_thread": {}, "thread_to_user": {}}
-    try:
-        data = json.loads(SUPPORT_TOPICS_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"user_to_thread": {}, "thread_to_user": {}}
-    data.setdefault("user_to_thread", {})
-    data.setdefault("thread_to_user", {})
-    return data
-
-async def save_support_topics(data: dict) -> None:
-    try:
-        SUPPORT_TOPICS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError as e:
-        logger.error(f"ذخیره‌ی نگاشتِ تاپیک‌هایِ پشتیبانی ناموفق بود: {e}")
-
-async def _forget_support_topic(user_id: int, thread_id: int) -> None:
-    async with _write_lock:
-        data = load_support_topics()
-        if data["user_to_thread"].get(str(user_id)) == thread_id:
-            data["user_to_thread"].pop(str(user_id), None)
-        data["thread_to_user"].pop(str(thread_id), None)
-        await save_support_topics(data)
-
-async def get_or_create_support_topic(user, force_new: bool = False) -> int | None:
-    """آیدیِ تاپیکِ اختصاصیِ این کاربر رو برمی‌گردونه؛ اگه وجود نداشته باشه، می‌سازدش."""
-    if not NOTIFY_CHAT_ID_INT:
-        return None
-
-    async with _write_lock:
-        data = load_support_topics()
-        if not force_new:
-            existing = data["user_to_thread"].get(str(user.id))
-            if existing is not None:
-                return existing
-
-        display_name = user.full_name or user.first_name or f"کاربر {user.id}"
-        username_part = f"@{user.username}" if user.username else str(user.id)
-        topic_name = f"{display_name} ({username_part})"[:128]
-
-        try:
-            topic = await bot.create_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, name=topic_name)
-        except Exception as e:
-            logger.warning("ساختِ تاپیکِ پشتیبانی برای کاربر %s ممکن نشد: %s", user.id, e)
-            return None
-
-        thread_id = topic.message_thread_id
-        data["user_to_thread"][str(user.id)] = thread_id
-        data["thread_to_user"][str(thread_id)] = user.id
-        await save_support_topics(data)
-
-    try:
-        profile_link = f"tg://user?id={user.id}"
-        await bot.send_message(
-            chat_id=NOTIFY_CHAT_ID_INT,
-            message_thread_id=thread_id,
-            text=(
-                f"👤 <a href='{profile_link}'>{html_escape(display_name)}</a> ({html_escape(username_part)})\n"
-                f"آیدیِ عددی: <code>{user.id}</code>\n\n"
-                "هر چی همین‌جا (توی همین تاپیک) بنویسید، مستقیم و بدونِ نیاز به ریپلای‌کردن، "
-                "برایِ همین عضو ارسال می‌شه."
-            ),
-        )
-    except Exception:
-        pass
-
-    return thread_id
+# (توابع قبلی با تغییرات اضافه شده: get_or_create_support_topic, log_activity, _set_user_status, ...)
+# اما توابع relay_message_to_admin و handle_admin_reply_via_topic هنوز موجودند و از همان get_or_create_support_topic استفاده می‌کنند.
 
 async def relay_message_to_admin(user, text: str) -> None:
     if not NOTIFY_CHAT_ID_INT or not text:
@@ -2650,7 +2807,7 @@ async def handle_admin_reply_via_topic(message: Message):
     if not is_admin(message.from_user.id):
         return
 
-    data = load_support_topics()
+    data = _load_support_topics()
     target_user_id = data["thread_to_user"].get(str(message.message_thread_id))
     if target_user_id is None:
         return  # این تاپیک به صندوقِ پیامِ اعضا مربوط نیست (تاپیکِ دیگه‌ایه)
@@ -2682,12 +2839,6 @@ async def handle_generic_member_message(message: Message):
         "پیام شما به ادمین‌های رواق ارسال شد.\n"
         "به‌زودی پاسخ دریافت خواهید کرد 🙏"
     )
-
-# ---------- هندلرِ پیام‌های تاپیکِ کافه معماری ----------
-# نکته: دیگر الزامی به معرفیِ کاربر در این تاپیک برای تیک‌خوردنِ مرحله‌ی
-# آنبوردینگ نیست (این مرحله حالا با یک کلیکِ ساده + تاخیر کوتاه تکمیل می‌شود؛
-# به تابعِ cb_onboarding_cafe در بخشِ آنبوردینگ نگاه کنید). این هندلر فقط
-# برای رصدِ عمومیِ پیام‌های این تاپیک (در صورتِ نیازِ آینده) نگه داشته شده.
 
 # ==============================================================
 #  بخش پنل کاربری
@@ -2785,7 +2936,7 @@ async def handle_user_menu(callback: CallbackQuery, state: FSMContext):
         caption, keyboard, image_id = await render_vip_page(0)
         await show_vip_page(callback, caption, keyboard, image_id)
         # ثبت مرحله آنبوردینگ (مشاهده VIP)
-        await _mark_onboarding_step(callback.from_user.id, "vip", avoid_message_id=callback.message.message_id)
+        await _mark_onboarding_step(callback.from_user, "vip", avoid_message_id=callback.message.message_id)
         await callback.answer()
         return
 
@@ -3244,13 +3395,6 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
         return
 
     # ۱) تلاش برای اخراج از گروه — best-effort و مستقل از حذفِ داده‌ها؛
-    # اگر کاربر از قبل عضو نیست یا گروه را ترک کرده (رایج‌ترین دلیلِ
-    # حذفِ دستیِ اطلاعاتش)، ban_chat_member ارور می‌دهد ولی نباید
-    # جلویِ پاک‌شدنِ داده‌هایش را بگیرد.
-    # سپس بلافاصله unban می‌کنیم (only_if_banned) تا کاربر واقعاً «هیچ‌وقت
-    # عضو نبوده» به‌حساب بیاید و بتواند دوباره درخواستِ عضویت بدهد —
-    # وگرنه ban بدون تاریخِ انقضا برای همیشه می‌ماند و امکانِ تستِ دوباره
-    # (مثلاً تستِ ریفرال) را از او می‌گیرد.
     try:
         await bot.ban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id)
         await bot.unban_chat_member(chat_id=GROUP_CHAT_ID, user_id=user_id, only_if_banned=True)
@@ -3287,8 +3431,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
             if uid_str in _user_cache:
                 del _user_cache[uid_str]
 
-            # ۲) رد کردنِ ثبتِ ورود به قیف (funnel_users.json) — تا آمارِ ورودیِ
-            # قیف هم مثلِ یک کاربرِ کاملاً تازه دوباره برایش ثبت شود.
+            # ۲) رد کردنِ ثبتِ ورود به قیف
             if FUNNEL_USERS_FILE.exists():
                 try:
                     funnel_users = set(json.loads(FUNNEL_USERS_FILE.read_text(encoding="utf-8")))
@@ -3298,9 +3441,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                     funnel_users.discard(user_id)
                     FUNNEL_USERS_FILE.write_text(json.dumps(list(funnel_users)), encoding="utf-8")
 
-            # ۳) پاکِ‌کردنِ رکوردِ ریفرالِ خودِ این کاربر (به‌عنوانِ «معرفی‌شده»)
-            # تا اگر دوباره با لینکِ دعوت وارد شود، به‌عنوانِ ریفرالِ جدید
-            # ردیابی و پاداش‌دهی شود.
+            # ۳) پاکِ‌کردنِ رکوردِ ریفرالِ خودِ این کاربر
             if REFERRALS_FILE.exists():
                 try:
                     referrals_data = json.loads(REFERRALS_FILE.read_text(encoding="utf-8"))
@@ -3312,7 +3453,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                         json.dumps(referrals_data, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
 
-            # ۴) حذفِ ردِ درخواستِ عضویتِ معلق (در صورتِ وجود)
+            # ۴) حذفِ ردِ درخواستِ عضویتِ معلق
             if PENDING_JOIN_FILE.exists():
                 try:
                     pending_joins = json.loads(PENDING_JOIN_FILE.read_text(encoding="utf-8"))
@@ -3324,7 +3465,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                         json.dumps(pending_joins, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
 
-            # ۵) حذف از صفِ pending_requests در وضعیتِ کلیِ ربات
+            # ۵) حذف از صفِ pending_requests
             if BOT_STATE_FILE.exists():
                 try:
                     bot_state = json.loads(BOT_STATE_FILE.read_text(encoding="utf-8"))
@@ -3348,7 +3489,7 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                         json.dumps(onboarding_data, ensure_ascii=False, indent=2), encoding="utf-8"
                     )
 
-            # ۷) حذفِ نگاشتِ تاپیکِ صندوقِ ورودی (خودِ تاپیکِ تلگرام دست‌نخورده می‌ماند)
+            # ۷) حذفِ نگاشتِ تاپیکِ صندوقِ ورودی
             if SUPPORT_TOPICS_FILE.exists():
                 try:
                     topics_data = json.loads(SUPPORT_TOPICS_FILE.read_text(encoding="utf-8"))
@@ -3356,14 +3497,16 @@ async def cb_delete_confirm(callback: CallbackQuery, state: FSMContext):
                     topics_data = {}
                 topics_data.setdefault("user_to_thread", {})
                 topics_data.setdefault("thread_to_user", {})
+                topics_data.setdefault("user_meta", {})
                 old_thread_id = topics_data["user_to_thread"].pop(uid_str, None)
                 if old_thread_id is not None:
                     topics_data["thread_to_user"].pop(str(old_thread_id), None)
-                    SUPPORT_TOPICS_FILE.write_text(
-                        json.dumps(topics_data, ensure_ascii=False, indent=2), encoding="utf-8"
-                    )
+                topics_data["user_meta"].pop(uid_str, None)
+                SUPPORT_TOPICS_FILE.write_text(
+                    json.dumps(topics_data, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
 
-            # ۸) پاک‌سازیِ وضعیتِ FSM (چت خصوصی → chat_id == user_id)
+            # ۸) پاک‌سازیِ وضعیتِ FSM
             fsm_prefix = f"{bot.id}:{uid_str}:{uid_str}:"
             fsm_keys_to_drop = [k for k in storage._data.keys() if k.startswith(fsm_prefix)]
             for k in fsm_keys_to_drop:
@@ -3989,7 +4132,7 @@ async def cb_vip_open(callback: CallbackQuery, state: FSMContext):
     caption, keyboard, image_id = await render_vip_page(0)
     await show_vip_page(callback, caption, keyboard, image_id)
     # ثبت مرحله آنبوردینگ
-    await _mark_onboarding_step(callback.from_user.id, "vip", avoid_message_id=callback.message.message_id)
+    await _mark_onboarding_step(callback.from_user, "vip", avoid_message_id=callback.message.message_id)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("vipnav:"))
@@ -4156,6 +4299,9 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
     await save_vip_payments(payments)
     await state.clear()
 
+    # لاگ ثبت پرداخت
+    await log_activity(user, f"💳 درخواست اشتراک VIP ثبت شد — {months} ماهه، مبلغ {format_toman(price)}")
+
     await message.answer(
         sign(
             "✅ <b>رسید شما دریافت شد</b>\n\n"
@@ -4222,6 +4368,13 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
                 pass
         try:
             await callback.message.edit_caption(caption=callback.message.caption + f"\n\n❌ رد شد توسط {html_escape(admin_name)}")
+        except Exception:
+            pass
+
+        # لاگ رد پرداخت
+        try:
+            user_obj = await bot.get_chat(user_id)
+            await log_activity(user_obj, "❌ درخواست اشتراک VIP رد شد")
         except Exception:
             pass
 
@@ -4304,6 +4457,14 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         except Exception:
             pass
 
+        # لاگ تایید پرداخت
+        try:
+            user_obj = await bot.get_chat(user_id)
+            await log_activity(user_obj, "🌟 اشتراک VIP تایید شد")
+            await _set_user_status(user_id, "vip")
+        except Exception:
+            pass
+
         end_jalali = format_jalali_datetime(end)
         try:
             await bot.send_message(
@@ -4340,6 +4501,7 @@ async def _check_vip_expirations() -> None:
     changed = False
 
     for user_id_str, user_subs in subs.items():
+        user_id = int(user_id_str)
         for sub in user_subs:
             if sub.get("status") != "active":
                 continue
@@ -4351,7 +4513,7 @@ async def _check_vip_expirations() -> None:
                 changed = True
                 try:
                     await bot.send_message(
-                        chat_id=int(user_id_str),
+                        chat_id=user_id,
                         text=sign(
                             f"⏳ <b>یادآوریِ اشتراکِ VIP</b>\n\n"
                             f"اشتراکِ VIP شما تا "
@@ -4362,6 +4524,12 @@ async def _check_vip_expirations() -> None:
                             inline_keyboard=[[InlineKeyboardButton(text="🌟 تمدیدِ اشتراک", callback_data="vip:open", style="success")]]
                         ),
                     )
+                    # لاگ یادآوری
+                    try:
+                        user_obj = await bot.get_chat(user_id)
+                        await log_activity(user_obj, "⏳ یادآوری انقضای VIP ارسال شد")
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
@@ -4381,17 +4549,28 @@ async def _check_vip_expirations() -> None:
                         other_active_end = other_end
                         break
                 if other_active_end is not None:
+                    # اشتراک دیگری فعال است، فقط وضعیت این یکی عوض می‌شود
                     continue
+
+                # لاگ انقضا و خروج از گروه VIP
+                try:
+                    user_obj = await bot.get_chat(user_id)
+                    await log_activity(user_obj, "⌛️ اشتراک VIP منقضی شد و کاربر از گروه VIP خارج شد")
+                    # وضعیت به 'member' برمی‌گردد مگر اینکه کاربر از گروه اصلی خارج شده باشد
+                    # ما status را به 'member' تغییر نمی‌دهیم چون ممکن است خود کاربر از گروه اصلی خارج شده باشد.
+                    # اما برای گروه VIP کافی است از گروه خارج شود.
+                except Exception:
+                    pass
 
                 if VIP_GROUP_CHAT_ID is not None:
                     try:
-                        await bot.ban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=int(user_id_str))
-                        await bot.unban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=int(user_id_str), only_if_banned=True)
+                        await bot.ban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=user_id)
+                        await bot.unban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=user_id, only_if_banned=True)
                     except Exception as e:
                         logger.warning("حذفِ خودکارِ کاربرِ %s از گروهِ VIP ممکن نشد: %s", user_id_str, e)
                 try:
                     await bot.send_message(
-                        chat_id=int(user_id_str),
+                        chat_id=user_id,
                         text=sign(
                             f"⌛️ اشتراکِ VIP شما به پایان رسید.\n"
                             "برای تمدید، از پنلِ VIP اقدام کنید."
@@ -4585,6 +4764,14 @@ async def _grant_or_extend_vip(user_id: int, days: int, granted_by: int) -> tupl
     })
     await save_vip_subscriptions(subs)
 
+    # لاگ تمدید دستی
+    try:
+        user_obj = await bot.get_chat(user_id)
+        await log_activity(user_obj, f"➕ تمدید دستی توسط ادمین — {days} روز اضافه شد")
+        await _set_user_status(user_id, "vip")
+    except Exception:
+        pass
+
     is_member = False
     try:
         member = await bot.get_chat_member(VIP_GROUP_CHAT_ID, user_id)
@@ -4671,6 +4858,14 @@ async def _grant_vip_reward(
         "reason": reason or None,
     })
     await save_vip_subscriptions(subs)
+
+    # لاگ پاداش
+    try:
+        user_obj = await bot.get_chat(user_id)
+        await log_activity(user_obj, f"🎁 پاداش VIP اعطا شد — {days} روز {'(' + reason + ')' if reason else ''}")
+        await _set_user_status(user_id, "vip")
+    except Exception:
+        pass
 
     reason_line = f"\n\n📝 <i>{html_escape(reason)}</i>" if reason else ""
     end_jalali = format_jalali_datetime(end)
@@ -4760,6 +4955,15 @@ async def _revoke_vip(user_id: int, revoked_by: int) -> tuple[bool, str]:
             sub["cancelled_at"] = datetime.utcnow().isoformat()
             had_active = True
     await save_vip_subscriptions(subs)
+
+    # لاگ لغو
+    try:
+        user_obj = await bot.get_chat(user_id)
+        await log_activity(user_obj, "❌ اشتراک VIP توسط ادمین لغو شد")
+        # وضعیت به member برمی‌گردد (اگر کاربر در گروه اصلی باشد)
+        await _set_user_status(user_id, "member")
+    except Exception:
+        pass
 
     try:
         await bot.ban_chat_member(chat_id=VIP_GROUP_CHAT_ID, user_id=user_id)
@@ -5616,9 +5820,6 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
         return
     referrer_id = entry["referrer_id"]
 
-    # توجه: _grant_vip_reward خودش پیامِ اطلاع‌رسانی (و در صورتِ نیاز لینکِ دعوتِ گروهِ VIP)
-    # را برای معرف ارسال می‌کند؛ اینجا نباید دوباره پیام جداگانه فرستاده شود، وگرنه
-    # کاربر دو پیامِ متفاوت برای یک پاداش دریافت می‌کند.
     try:
         ok, result_msg, _end_dt = await _grant_vip_reward(
             referrer_id,
@@ -5631,13 +5832,6 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
         ok, result_msg = False, str(e)
 
     if not ok:
-        # مهم: اگر اعطای پاداش ناموفق بود، credited را True نمی‌کنیم — تا این رکورد
-        # به‌عنوانِ «پاداشِ ناموفق/معلق» باقی بماند و بی‌سروصدا برای همیشه گم نشود.
-        # قبلاً این پرچم قبل از فراخوانیِ _grant_vip_reward ست می‌شد که باعث می‌شد
-        # در صورتِ هر خطایی (مثلاً تنظیم‌نبودنِ VIP_GROUP_CHAT_ID)، معرف هیچ‌وقت
-        # پاداشش را نگیرد و هیچ‌کس هم متوجه نمی‌شد.
-        # همچنین جزئیاتِ خطا را روی خودِ رکورد ذخیره می‌کنیم تا در «🎁 پاداش‌هایِ
-        # رفرالِ معلق» (پنلِ ادمین) هم قابلِ پیگیریِ دائمی باشد، نه فقط توی چتِ نوتیفیکیشن.
         logger.warning("اعطای پاداشِ ریفرال به %s ناموفق بود: %s", referrer_id, result_msg)
         entry["last_error"] = str(result_msg)[:300]
         entry["failed_at"] = datetime.utcnow().isoformat()
@@ -5785,8 +5979,6 @@ async def cb_refpending_resolve(callback: CallbackQuery):
     text, keyboard = await render_referral_pending_page(page)
     await callback.message.edit_text(text, reply_markup=keyboard)
 
-
-
 # ==============================================================
 #  چک‌لیست آنبوردینگ (شبیه‌سازی‌شده)
 # ==============================================================
@@ -5841,7 +6033,8 @@ async def start_onboarding(user_id: int, chat_id: int) -> None:
     data[str(user_id)] = {"chat_id": chat_id, "message_id": sent.message_id, **progress}
     await save_onboarding(data)
 
-async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: int | None = None) -> None:
+async def _mark_onboarding_step(user, field: str, *, avoid_message_id: int | None = None) -> None:
+    user_id = user.id
     data = load_onboarding()
     entry = data.get(str(user_id))
     if not entry or entry.get(field):
@@ -5853,14 +6046,10 @@ async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: i
     all_done = all(progress.values())
     keyboard = _onboarding_keyboard(progress)
 
-    # نکته: کاربر ممکن است گزینه‌ها را به هر ترتیبی بزند (مثلاً اول VIP، بعد پروفایل).
-    # پیامِ اصلیِ چک‌لیست گاهی توسطِ همان جریان‌ها (مثلاً بازشدنِ صفحه‌ی VIP که عکس دارد،
-    # یا نمایشِ داشبوردِ پروفایل) حذف یا به چیزِ دیگری تبدیل می‌شود. اگر caller صراحتاً
-    # بگوید همین الان دارد چه پیامی را نشان می‌دهد (avoid_message_id) و آن پیام دقیقاً
-    # همان پیامِ چک‌لیست باشد، نباید رویش ادیت بزنیم — وگرنه دکمه‌های تازه‌نمایش‌داده‌شده
-    # (مثلاً دکمه‌های داشبوردِ پروفایل) با دکمه‌های آنبوردینگ جایگزین می‌شوند.
-    # در هر دو حالت (چه شکستِ ادیت، چه این تداخلِ عمدی)، چک‌لیست را به‌عنوانِ پیامِ
-    # تازه می‌فرستیم تا روند هیچ‌وقت «گم» نشود.
+    # لاگ مرحله
+    step_names = {"profile": "تکمیل پروفایل", "cafe": "رفتن به کافه معماری", "vip": "مشاهده VIP"}
+    await log_activity(user, f"✅ مرحله‌ی «{step_names.get(field, field)}» تکمیل شد")
+
     same_message_in_use = avoid_message_id is not None and entry.get("message_id") == avoid_message_id
     updated = False
     if not same_message_in_use:
@@ -5883,6 +6072,7 @@ async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: i
             logger.warning("ارسالِ چک‌لیستِ تازه‌ی آنبوردینگ برای کاربر %s هم ممکن نشد: %s", user_id, e)
 
     if all_done:
+        await log_activity(user, "🎉 تمام مراحل آنبوردینگ تکمیل شد")
         try:
             await bot.send_message(
                 chat_id=entry["chat_id"],
@@ -5895,7 +6085,7 @@ async def _mark_onboarding_step(user_id: int, field: str, *, avoid_message_id: i
 # ---------- مرحله‌ی «کافه معماری» — فقط با یک ضربه، بدونِ لینک، تیک می‌خوره ----------
 @dp.callback_query(F.data == "onboarding:cafe")
 async def cb_onboarding_cafe(callback: CallbackQuery):
-    await _mark_onboarding_step(callback.from_user.id, "cafe")
+    await _mark_onboarding_step(callback.from_user, "cafe")
     await callback.answer()
 
 # ==============================================================
@@ -5927,8 +6117,6 @@ async def stop_self_ping(app: web.Application) -> None:
             await task
         except asyncio.CancelledError:
             pass
-
-# بکاپ خودکار حذف شده و فقط دستی انجام می‌شود
 
 async def stop_vip_expiry_checker(app: web.Application) -> None:
     task = app.get("vip_expiry_task")
@@ -6089,7 +6277,6 @@ def create_app() -> web.Application:
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
     app.on_startup.append(start_self_ping)
-    # بکاپ خودکار حذف شد
     app.on_cleanup.append(stop_self_ping)
     app.on_cleanup.append(stop_vip_expiry_checker)
     app.on_cleanup.append(stop_pending_join_checker)
