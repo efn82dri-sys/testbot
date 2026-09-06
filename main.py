@@ -2877,6 +2877,13 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
+    if action == "quickreplies":
+        await state.clear()
+        text, keyboard = render_quickreplies_menu()
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        await callback.answer()
+        return
+
     await callback.answer("❌ گزینه نامعتبر", show_alert=True)
 
 # ---------- هندلرهای اختصاصی برای FSM ----------
@@ -2979,8 +2986,10 @@ async def cb_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
 # (توابع قبلی با تغییرات اضافه شده: get_or_create_support_topic, log_activity, _set_user_status, ...)
 # اما توابع relay_message_to_admin و handle_admin_reply_via_topic هنوز موجودند و از همان get_or_create_support_topic استفاده می‌کنند.
 
-async def relay_message_to_admin(user, text: str) -> None:
-    if not NOTIFY_CHAT_ID_INT or not text:
+async def relay_message_to_admin(user, html_text: str) -> None:
+    """پیامِ (از قبل به HTML تبدیل‌شده‌ی) کاربر رو عیناً با همون استایل (بولد/کوتیشن/...)
+    به تاپیکش می‌فرسته — چون ورودی از قبل HTML-سیف هست، دیگه html_escape نمی‌کنیم."""
+    if not NOTIFY_CHAT_ID_INT or not html_text:
         return
 
     thread_id = await get_or_create_support_topic(user)
@@ -2988,7 +2997,7 @@ async def relay_message_to_admin(user, text: str) -> None:
         return
 
     try:
-        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, text=html_escape(text))
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id, text=html_text)
         return
     except Exception as e:
         err = str(e).lower()
@@ -3002,7 +3011,7 @@ async def relay_message_to_admin(user, text: str) -> None:
     if new_thread_id is None:
         return
     try:
-        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=new_thread_id, text=html_escape(text))
+        await bot.send_message(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=new_thread_id, text=html_text)
     except Exception as e:
         logger.warning("ارسالِ پیامِ عضو به تاپیکِ تازه هم ممکن نشد: %s", e)
 
@@ -3075,15 +3084,6 @@ def render_quickreplies_menu() -> tuple[str, InlineKeyboardMarkup]:
     rows.append([InlineKeyboardButton(text="➕ افزودنِ پیامِ تازه", callback_data="qr:add", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_messaging", style="primary")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
-
-@dp.callback_query(F.data == "admin:quickreplies")
-async def cb_quickreplies_menu(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-    text, keyboard = render_quickreplies_menu()
-    await callback.message.edit_text(text, reply_markup=keyboard)
-    await callback.answer()
 
 @dp.callback_query(F.data == "qr:add")
 async def cb_quickreply_add(callback: CallbackQuery, state: FSMContext):
@@ -3240,8 +3240,8 @@ async def handle_generic_member_message(message: Message):
     if is_admin(message.from_user.id):
         return
 
-    text = message.text or message.caption
-    if not text or text.startswith("/"):
+    text = message.html_text or message.caption
+    if not text or (message.text or "").startswith("/"):
         return
 
     await relay_message_to_admin(message.from_user, text)
@@ -3463,7 +3463,7 @@ async def handle_contact_admin_message(message: Message, state: FSMContext):
         await message.answer("لغو شد.", reply_markup=user_panel_keyboard())
         return
 
-    await relay_message_to_admin(message.from_user, message.text)
+    await relay_message_to_admin(message.from_user, message.html_text or message.text)
     await message.answer("✅ پیام شما به ادمین ارسال شد.", reply_markup=user_panel_keyboard())
     await state.clear()
 
@@ -4005,11 +4005,11 @@ async def admin_sendmsg_media(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    caption = message.caption or ""
+    caption = message.html_text or message.caption or ""
 
     try:
         if message.text:
-            await bot.send_message(chat_id=user_id, text=message.text)
+            await bot.send_message(chat_id=user_id, text=message.html_text or message.text)
         elif message.photo:
             await bot.send_photo(chat_id=user_id, photo=message.photo[-1].file_id, caption=caption)
         elif message.document:
