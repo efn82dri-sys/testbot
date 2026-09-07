@@ -104,6 +104,7 @@ except ValueError:
 VIP_CARD_NUMBER = os.environ.get("VIP_CARD_NUMBER", "6219861963810246").strip()
 VIP_CARD_HOLDER = os.environ.get("VIP_CARD_HOLDER", "عرفان دارائی").strip()
 VIP_INTRO_DELAY_MINUTES = int(os.environ.get("VIP_INTRO_DELAY_MINUTES", 30))
+ONBOARDING_START_DELAY_SECONDS = int(os.environ.get("ONBOARDING_START_DELAY_SECONDS", 45))
 
 VIP_CATEGORIES_FILE = Path(__file__).parent / "data" / "vip_categories.json"
 VIP_SUBSCRIPTIONS_FILE = Path(__file__).parent / "data" / "vip_subscriptions.json"
@@ -112,6 +113,7 @@ VIP_GLOBAL_SETTINGS_FILE = Path(__file__).parent / "data" / "vip_global_settings
 
 VIP_MONTHS_TO_DAYS = {3: 90, 6: 180, 12: 365}
 _vip_intro_tasks: dict[int, asyncio.Task] = {}
+_onboarding_start_tasks: dict[int, asyncio.Task] = {}
 
 REFERRAL_LABELS = {
     "instagram": "📷 اینستاگرام",
@@ -1751,17 +1753,12 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
 
     if notify_user:
         try:
-            user = await bot.get_chat(user_id)
-            await bot.send_message(
-                chat_id=user_id,
-                text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
-                reply_markup=user_panel_keyboard(),
-            )
+            await open_user_panel(user_id)
         except Exception as e:
             logger.warning("ارسالِ پیامِ خوش‌آمدگویی به کاربر %s ممکن نشد: %s", user_id, e)
 
         # شروع چک‌لیست آنبوردینگ
-        await start_onboarding(user_id, user_id)
+        schedule_onboarding_start(user_id, user_id)
 
     _schedule_vip_intro(user_id)
     return True
@@ -1849,6 +1846,7 @@ async def handle_start(message: Message, command: CommandObject):
             await open_vip_panel(message.chat.id)
         else:
             await open_user_panel(message.chat.id)
+        await trigger_onboarding_now_if_pending(user_id, message.chat.id)
         return
 
     member_count_line = ""
@@ -2015,12 +2013,8 @@ async def cb_rules_accept(callback: CallbackQuery):
         except Exception as e:
             logger.warning("افزودنِ ری‌اکشن به پیامِ قوانینِ کاربر %s ممکن نشد: %s", user.id, e)
         await callback.answer("عضویت تایید شد ✅")
-        await bot.send_message(
-            chat_id=user.id,
-            text=sign(f"{greet_user(user)}، به رواق خوش آمدید 🏛\n\nاز پنل زیر یکی از گزینه‌ها را انتخاب کنید:"),
-            reply_markup=user_panel_keyboard(),
-        )
-        await start_onboarding(user.id, user.id)
+        await open_user_panel(user.id)
+        schedule_onboarding_start(user.id, user.id)
     else:
         await callback.answer(
             "❌ تاییدِ عضویت با مشکلی مواجه شد. کمی صبر کنید یا از طریق «ارتباط با ادمین» پیگیری کنید.",
@@ -6443,6 +6437,37 @@ async def start_onboarding(user_id: int, chat_id: int) -> None:
     data[str(user_id)] = {"chat_id": chat_id, "message_id": sent.message_id, **progress}
     await save_onboarding(data)
 
+def _cancel_onboarding_start(user_id: int) -> None:
+    task = _onboarding_start_tasks.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+
+def schedule_onboarding_start(user_id: int, chat_id: int) -> None:
+    """چک‌لیستِ آنبوردینگ رو بلافاصله بعدِ پیامِ خوش‌آمدگویی نمی‌فرسته (که باعثِ
+    شلوغی/انبوهِ پیام می‌شد)، بلکه چند ثانیه صبر می‌کنه تا جزوِ همون یک بسته‌ی پیامی
+    حس نشه. اگه کاربر زودتر از اون، دوباره /start بزنه، همون‌جا زودتر فرستاده می‌شه
+    (چون start_onboarding خودش idempotent هست و تسکِ تاخیریِ قبلی هم کنسل می‌شه)."""
+    _cancel_onboarding_start(user_id)
+
+    async def _delayed():
+        await asyncio.sleep(ONBOARDING_START_DELAY_SECONDS)
+        try:
+            await start_onboarding(user_id, chat_id)
+        except Exception as e:
+            logger.warning("ارسالِ تاخیریِ چک‌لیستِ آنبوردینگ به کاربر %s ممکن نشد: %s", user_id, e)
+        finally:
+            _onboarding_start_tasks.pop(user_id, None)
+
+    _onboarding_start_tasks[user_id] = asyncio.create_task(_delayed())
+
+async def trigger_onboarding_now_if_pending(user_id: int, chat_id: int) -> None:
+    """اگه کاربر قبل از اتمامِ تاخیرِ زمانی دوباره سراغِ ربات اومد (مثلاً /start زد)،
+    به‌جایِ اینکه منتظرِ اتمامِ تایمر بمونه، همون لحظه چک‌لیست رو براش می‌فرسته."""
+    task = _onboarding_start_tasks.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+        await start_onboarding(user_id, chat_id)
+
 async def _mark_onboarding_step(user, field: str, *, avoid_message_id: int | None = None) -> None:
     user_id = user.id
     data = load_onboarding()
@@ -6454,13 +6479,41 @@ async def _mark_onboarding_step(user, field: str, *, avoid_message_id: int | Non
 
     progress = {k: entry.get(k, False) for k in ("profile", "cafe", "vip")}
     all_done = all(progress.values())
-    keyboard = _onboarding_keyboard(progress)
 
     # لاگ مرحله
     step_names = {"profile": "تکمیل پروفایل", "cafe": "رفتن به کافه معماری", "vip": "مشاهده VIP"}
     await log_activity(user, f"✅ مرحله‌ی «{step_names.get(field, field)}» تکمیل شد")
 
     same_message_in_use = avoid_message_id is not None and entry.get("message_id") == avoid_message_id
+
+    if all_done:
+        # پاکسازیِ خودکار: به‌جایِ رهاکردنِ چک‌لیستِ سه‌دکمه‌ای برایِ همیشه، یا حذفش
+        # می‌کنیم یا در یک خطِ کوتاه جمعش می‌کنیم — که کمترین شلوغی رو داشته باشه.
+        if not same_message_in_use:
+            try:
+                await bot.delete_message(chat_id=entry["chat_id"], message_id=entry["message_id"])
+            except Exception:
+                try:
+                    await bot.edit_message_text(
+                        chat_id=entry["chat_id"],
+                        message_id=entry["message_id"],
+                        text="✅ مسیرِ شروع تکمیل شد",
+                    )
+                except Exception as e:
+                    logger.warning("پاکسازیِ چک‌لیستِ آنبوردینگِ کاربر %s ممکن نشد: %s", user_id, e)
+
+        await log_activity(user, "🎉 تمام مراحل آنبوردینگ تکمیل شد")
+        try:
+            await bot.send_message(
+                chat_id=entry["chat_id"],
+                text=sign("🏆 هر سه قدمِ اولیه رو کامل کردی — از اینجا به بعدش با خودته 🚀"),
+                message_effect_id=MESSAGE_EFFECT_PARTY_POPPER,
+            )
+        except Exception:
+            pass
+        return
+
+    keyboard = _onboarding_keyboard(progress)
     updated = False
     if not same_message_in_use:
         try:
@@ -6480,17 +6533,6 @@ async def _mark_onboarding_step(user, field: str, *, avoid_message_id: int | Non
             await save_onboarding(data)
         except Exception as e:
             logger.warning("ارسالِ چک‌لیستِ تازه‌ی آنبوردینگ برای کاربر %s هم ممکن نشد: %s", user_id, e)
-
-    if all_done:
-        await log_activity(user, "🎉 تمام مراحل آنبوردینگ تکمیل شد")
-        try:
-            await bot.send_message(
-                chat_id=entry["chat_id"],
-                text=sign("🏆 هر سه قدمِ اولیه رو کامل کردی — از اینجا به بعدش با خودته 🚀"),
-                message_effect_id=MESSAGE_EFFECT_PARTY_POPPER,
-            )
-        except Exception:
-            pass
 
 # ---------- مرحله‌ی «کافه معماری» — فقط با یک ضربه، بدونِ لینک، تیک می‌خوره ----------
 @dp.callback_query(F.data == "onboarding:cafe")
