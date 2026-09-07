@@ -12,11 +12,13 @@ import logging
 import os
 import uuid
 import zipfile
-from datetime import datetime, timedelta
+import hashlib
+import hmac
+from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, parse_qsl
 
 import jdatetime
 import pytz
@@ -34,13 +36,19 @@ from aiogram.types import (
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
     Message,
+    MessageReactionUpdated,
+    ReactionTypeEmoji,
     PollAnswer,
     Update,
     InputMediaPhoto,
     BotCommand,
     BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
     MenuButtonCommands,
+    WebAppInfo,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -426,6 +434,12 @@ LEAVE_REASONS: list[tuple[str, str]] = [
 TEHRAN_TZ = pytz.timezone('Asia/Tehran')
 
 def utc_to_tehran(utc_dt: datetime) -> datetime:
+    # رفعِ باگ: datetime.utcnow() یک datetime «naive» برمی‌گردونه (بدونِ tzinfo).
+    # صدا زدنِ مستقیمِ .astimezone() روی یک datetime naive باعث می‌شه پایتون فرض کنه
+    # از قبل در تایم‌زونِ محلیِ سیستم است (نه UTC) — که بسته به تایم‌زونِ سرور
+    # می‌تونه ساعت‌ها اشتباه باشه. اینجا صراحتاً naive رو UTC فرض می‌کنیم.
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(TEHRAN_TZ)
 
 def to_jalali(utc_dt: datetime) -> jdatetime.datetime:
@@ -1072,15 +1086,19 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         toggle_label = "🟢 روشن کردن ربات"
         toggle_style = "success"
 
-    pending_count = len(load_pending_joins())
-    pending_label = "🕐 درخواست‌هایِ عضویتِ معلق"
-    if pending_count:
-        pending_label += f" ({to_persian_num(pending_count)})"
+    inbox_total = _unified_inbox_total_count()
+    inbox_label = "📥 این‌باکسِ ادمین"
+    if inbox_total:
+        inbox_label += f" ({to_persian_num(inbox_total)})"
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=pending_label, callback_data="pendingjoin:list:0", style="danger" if pending_count else "primary"),
+                InlineKeyboardButton(text=inbox_label, callback_data="admin:inbox", style="danger" if inbox_total else "primary"),
+                InlineKeyboardButton(text="🔍 جست‌وجویِ سریعِ کاربر", callback_data="admin:lookup_user", style="primary"),
+            ],
+            [
+                InlineKeyboardButton(text="📱 داشبوردِ Mini App", web_app=WebAppInfo(url=MINIAPP_URL), style="success"),
             ],
             [
                 InlineKeyboardButton(text="📊 گزارش‌ها", callback_data="admin:cat_reports", style="primary"),
@@ -1102,6 +1120,87 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
+def _unified_inbox_total_count() -> int:
+    """مجموعِ سه‌دسته‌ی کارِ معلقِ ادمین: درخواست‌هایِ عضویت + پرداخت‌هایِ VIP + پاداش‌هایِ رفرالِ ناموفق."""
+    pending_joins = len(load_pending_joins())
+    pending_vip = sum(1 for p in load_vip_payments().values() if p.get("status") == "pending")
+    pending_ref = len(pending_referral_reward_entries())
+    return pending_joins + pending_vip + pending_ref
+
+def admin_inbox_keyboard() -> InlineKeyboardMarkup:
+    pending_joins = len(load_pending_joins())
+    pending_vip = sum(1 for p in load_vip_payments().values() if p.get("status") == "pending")
+    pending_ref = len(pending_referral_reward_entries())
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"🕐 درخواست‌هایِ عضویتِ معلق ({to_persian_num(pending_joins)})",
+            callback_data="pendingjoin:list:0", style="danger" if pending_joins else "primary",
+        )],
+        [InlineKeyboardButton(
+            text=f"💳 پرداخت‌هایِ VIP در انتظار ({to_persian_num(pending_vip)})",
+            callback_data="vippay:list:0", style="danger" if pending_vip else "primary",
+        )],
+        [InlineKeyboardButton(
+            text=f"🎁 پاداش‌هایِ رفرالِ ناموفق ({to_persian_num(pending_ref)})",
+            callback_data="refpending:list:0", style="danger" if pending_ref else "primary",
+        )],
+        [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
+    ])
+
+DAILY_DIGEST_HOUR_TEHRAN = int(os.environ.get("DAILY_DIGEST_HOUR_TEHRAN", 9))
+
+async def build_daily_digest_text(hours: int = 24) -> str:
+    """خلاصه‌ی خودکارِ اتفاقاتِ N ساعتِ اخیر — دقیقاً به‌سبکِ پیام‌هایِ notify chat."""
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    def _parse(iso_str):
+        try:
+            dt = datetime.fromisoformat(iso_str)
+        except (ValueError, TypeError):
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    new_members = sum(1 for iso in load_verified().values() if (d := _parse(iso)) and d >= since)
+    vip_requests = sum(1 for p in load_vip_payments().values() if (d := _parse(p.get("requested_at"))) and d >= since)
+    left_users = sum(
+        1 for meta in _load_support_topics()["user_meta"].values()
+        if (d := _parse(meta.get("left_at"))) and d >= since
+    )
+    inbox_total = _unified_inbox_total_count()
+    period_label = "۲۴ ساعتِ گذشته" if hours <= 24 else f"{to_persian_num(hours // 24)} روزِ گذشته"
+
+    return (
+        f"🌅 <b>خلاصه‌ی خودکارِ رواق</b>\n\n"
+        f"در {period_label}:\n"
+        f"🆕 عضوِ جدید: <b>{to_persian_num(new_members)}</b>\n"
+        f"💳 درخواستِ VIP: <b>{to_persian_num(vip_requests)}</b>\n"
+        f"🚪 کاربرِ تازه left: <b>{to_persian_num(left_users)}</b>\n\n"
+        f"📥 موردهایِ معلقِ فعلی در این‌باکس: <b>{to_persian_num(inbox_total)}</b>\n"
+        f"🕐 {format_jalali_datetime(now)}"
+    )
+
+async def daily_digest_loop() -> None:
+    """هرروز صبح (به‌وقتِ تهران) خلاصه‌ی روزانه را به notify chat پوش می‌کند."""
+    while True:
+        try:
+            now_tehran = utc_to_tehran(datetime.now(timezone.utc))
+            target = now_tehran.replace(hour=DAILY_DIGEST_HOUR_TEHRAN, minute=0, second=0, microsecond=0)
+            if target <= now_tehran:
+                target += timedelta(days=1)
+            wait_seconds = (target - now_tehran).total_seconds()
+            await asyncio.sleep(max(wait_seconds, 60))
+            await _notify_backup_admin(await build_daily_digest_text(hours=24))
+            if target.weekday() == 4:  # جمعه — همراهِ خلاصه‌ی روزانه، خلاصه‌ی هفتگی هم پوش می‌شود
+                await _notify_backup_admin(await build_daily_digest_text(hours=24 * 7))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"خطا در حلقه‌ی خلاصه‌ی روزانه: {e}", exc_info=True)
+            await asyncio.sleep(3600)
+
 def admin_reports_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -1109,6 +1208,7 @@ def admin_reports_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📈 آمار تفصیلی", callback_data="admin:stats_detail", style="primary"),
                 InlineKeyboardButton(text="📄 خروجی اکسل", callback_data="admin:export", style="primary"),
             ],
+            [InlineKeyboardButton(text="🌅 خلاصه‌ی امروز", callback_data="admin:daily_digest_preview", style="primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -1442,6 +1542,8 @@ STATUS_LABEL_FA = {
     "left": "ترک‌کرده",
 }
 MAX_HISTORY_ITEMS = 12  # فقط این تعداد رویدادِ اخیر داخل کارت نگه داشته می‌شود
+TOPIC_ARCHIVE_AFTER_DAYS = int(os.environ.get("TOPIC_ARCHIVE_AFTER_DAYS", 90))
+TOPIC_ARCHIVE_CHECK_INTERVAL_SECONDS = int(os.environ.get("TOPIC_ARCHIVE_CHECK_INTERVAL_SECONDS", 6 * 3600))
 
 def _load_support_topics() -> dict:
     if not SUPPORT_TOPICS_FILE.exists():
@@ -1462,6 +1564,21 @@ async def _save_support_topics(data: dict) -> None:
 def _get_user_meta(user_id: int) -> dict:
     data = _load_support_topics()
     return data["user_meta"].get(str(user_id), {})
+
+def _topic_link_for_user(user_id: int, data: dict | None = None) -> str | None:
+    """لینکِ مستقیمِ تاپیکِ اختصاصیِ کاربر در گروهِ NOTIFY_CHAT_ID را می‌سازد (یا None اگر تاپیکی نداشته باشد)."""
+    if not NOTIFY_CHAT_ID_INT:
+        return None
+    data = data if data is not None else _load_support_topics()
+    thread_id = data["user_to_thread"].get(str(user_id))
+    if not thread_id:
+        return None
+    internal_id = str(NOTIFY_CHAT_ID_INT)
+    if internal_id.startswith("-100"):
+        internal_id = internal_id[4:]
+    elif internal_id.startswith("-"):
+        internal_id = internal_id[1:]
+    return f"https://t.me/c/{internal_id}/{thread_id}"
 
 def _topic_display_name(meta: dict, user_id: int, status: str | None = None) -> str:
     """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت (+ ایموجیِ طلایی در صورت داشتنش) + نام + یوزرنیم/آیدی."""
@@ -1484,6 +1601,33 @@ async def _append_history(user_id: int, text: str) -> None:
         history.append(f"{time_str} — {text}")
         meta["history"] = history[-MAX_HISTORY_ITEMS:]
         await _save_support_topics(data)
+
+def _compute_engagement_score(user_id: int, meta: dict | None = None) -> tuple[int, str]:
+    """امتیازِ «سلامتِ کاربر» (۰ تا ۱۰۰) بر اساسِ ترکیبِ فعالیت + وضعیتِ VIP + رفرال + نشانِ طلایی."""
+    meta = meta if meta is not None else _get_user_meta(user_id)
+    score = 0
+    score += min(len(meta.get("history", [])) * 3, 30)
+    status = meta.get("status", "new")
+    score += {"member": 15, "vip": 25, "pending": 5, "new": 0, "left": -20}.get(status, 0)
+    vip_status = get_user_vip_status(user_id)
+    if vip_status["is_active"]:
+        score += 25
+    elif vip_status["has_subscription"]:
+        score += 5
+    ref_counts = count_referrals(user_id)
+    score += min(ref_counts.get("total", 0) * 5, 20)
+    if meta.get("is_gold"):
+        score += 10
+    score = max(0, min(100, score))
+    if score >= 70:
+        label = "🔥 عالی"
+    elif score >= 40:
+        label = "🙂 خوب"
+    elif score >= 15:
+        label = "😐 متوسط"
+    else:
+        label = "🥶 کم"
+    return score, label
 
 def _build_card_text(user_id: int) -> str:
     """متنِ کاملِ کارتِ پروفایلِ زنده‌ی کاربر را می‌سازد (این متن هربار جایگزینِ همان پیامِ پین‌شده می‌شود)."""
@@ -1514,6 +1658,10 @@ def _build_card_text(user_id: int) -> str:
     status_label = STATUS_LABEL_FA.get(status, status)
     gold_line = "🥇 کاربرِ طلایی: بله\n" if meta.get("is_gold") else ""
 
+    score, score_label = _compute_engagement_score(user_id, meta)
+    score_line = f"📊 امتیازِ تعامل: {to_persian_num(score)}/۱۰۰ — {score_label}\n"
+    followup_line = "✅ پیگیری‌شده (با ری‌اکشن)\n" if meta.get("followed_up") else ""
+
     history = meta.get("history", [])
     if history:
         history_lines = "\n".join(f"• {line}" for line in reversed(history))
@@ -1528,7 +1676,9 @@ def _build_card_text(user_id: int) -> str:
         f"{joined_line}"
         f"📌 وضعیت: {status_emoji} {status_label}\n"
         f"{gold_line}"
-        f"{vip_line}"
+        f"{vip_line}\n"
+        f"{score_line}"
+        f"{followup_line}"
         f"{history_block}"
     )
 
@@ -1544,6 +1694,10 @@ async def _set_user_status(user_id: int, status: str) -> None:
 
     meta = data["user_meta"].setdefault(str(user_id), {})
     meta["status"] = status
+    if status == "left":
+        meta["left_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        meta.pop("left_at", None)
     await _save_support_topics(data)
 
     try:
@@ -1553,6 +1707,69 @@ async def _set_user_status(user_id: int, status: str) -> None:
         logger.warning(f"تغییر نام تاپیک برای کاربر {user_id} ممکن نشد: {e}")
 
     await _update_pinned_card(user_id)
+
+    if status != "left":
+        await _reopen_topic_if_archived(user_id, thread_id)
+
+async def _reopen_topic_if_archived(user_id: int, thread_id: int) -> None:
+    """اگر تاپیکِ کاربر به‌خاطرِ عدمِ فعالیت آرشیو (Close) شده، با اولین فعالیتِ تازه خودکار Reopen می‌شود."""
+    data = _load_support_topics()
+    meta = data["user_meta"].get(str(user_id), {})
+    if not meta.get("archived"):
+        return
+    try:
+        await bot.reopen_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id)
+    except Exception as e:
+        logger.warning(f"بازکردنِ تاپیکِ آرشیوشده‌ی کاربر {user_id} ممکن نشد: {e}")
+        return
+    async with _write_lock:
+        d = _load_support_topics()
+        m = d["user_meta"].setdefault(str(user_id), {})
+        m["archived"] = False
+        await _save_support_topics(d)
+    await _append_history(user_id, "📂 تاپیک به‌خاطرِ فعالیتِ تازه خودکار بازگشایی شد")
+
+async def topic_archive_checker_loop() -> None:
+    """هر چند ساعت یک‌بار: تاپیکِ کاربرهایی که مدت‌هاست گروه را ترک کرده‌اند و فعالیتِ تازه‌ای ندارند
+    را خودکار Close (آرشیو) می‌کند تا لیستِ تاپیک‌ها روی گوشیِ ادمین شلوغ نماند."""
+    while True:
+        try:
+            await asyncio.sleep(TOPIC_ARCHIVE_CHECK_INTERVAL_SECONDS)
+            if not NOTIFY_CHAT_ID_INT:
+                continue
+            data = _load_support_topics()
+            now = datetime.now(timezone.utc)
+            changed = False
+            for user_id_str, meta in list(data["user_meta"].items()):
+                if meta.get("status") != "left" or meta.get("archived"):
+                    continue
+                left_at_raw = meta.get("left_at")
+                if not left_at_raw:
+                    continue
+                try:
+                    left_at = datetime.fromisoformat(left_at_raw)
+                    if left_at.tzinfo is None:
+                        left_at = left_at.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                if (now - left_at).days < TOPIC_ARCHIVE_AFTER_DAYS:
+                    continue
+                thread_id = data["user_to_thread"].get(user_id_str)
+                if not thread_id:
+                    continue
+                try:
+                    await bot.close_forum_topic(chat_id=NOTIFY_CHAT_ID_INT, message_thread_id=thread_id)
+                    meta["archived"] = True
+                    changed = True
+                    await _append_history(int(user_id_str), f"🗄 تاپیک به‌خاطرِ عدمِ فعالیت (بیش از {TOPIC_ARCHIVE_AFTER_DAYS} روز پس از ترکِ گروه) آرشیو شد")
+                except Exception as e:
+                    logger.warning(f"آرشیوِ خودکارِ تاپیکِ کاربر {user_id_str} ممکن نشد: {e}")
+            if changed:
+                await _save_support_topics(data)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"خطا در حلقه‌ی آرشیوِ خودکارِ تاپیک‌ها: {e}", exc_info=True)
 
 async def _set_user_gold(user_id: int, is_gold: bool = True) -> None:
     """نشانِ «کاربرِ طلایی» را جدا از وضعیتِ عضویت/VIP روی تاپیک و کارت اعمال می‌کند
@@ -1652,6 +1869,42 @@ async def _update_pinned_card(user_id: int, user=None) -> None:
         d["user_meta"].setdefault(str(user_id), {})["pinned_message_id"] = sent.message_id
         await _save_support_topics(d)
 
+@dp.message_reaction()
+async def handle_message_reaction(update: MessageReactionUpdated) -> None:
+    """واکنشِ سریع به‌عنوانِ اکشن: ری‌اکشنِ ✅ ادمین رویِ کارتِ پروفایلِ پین‌شده = «علامت‌بزن به‌عنوانِ پیگیری‌شده» — بدونِ نیازِ به بازکردنِ منو."""
+    if not NOTIFY_CHAT_ID_INT or update.chat.id != NOTIFY_CHAT_ID_INT:
+        return
+    if not update.user or not is_admin(update.user.id):
+        return
+    new_emojis = {r.emoji for r in update.new_reaction if isinstance(r, ReactionTypeEmoji)}
+    if "✅" not in new_emojis:
+        return
+
+    data = _load_support_topics()
+    user_id = None
+    for uid_str, meta in data["user_meta"].items():
+        if meta.get("pinned_message_id") == update.message_id:
+            user_id = int(uid_str)
+            break
+    if user_id is None:
+        return
+
+    meta = data["user_meta"].get(str(user_id), {})
+    if meta.get("followed_up"):
+        return
+
+    async with _write_lock:
+        d = _load_support_topics()
+        m = d["user_meta"].setdefault(str(user_id), {})
+        m["followed_up"] = True
+        m["followed_up_at"] = datetime.now(timezone.utc).isoformat()
+        m["followed_up_by"] = update.user.id
+        await _save_support_topics(d)
+
+    admin_name = update.user.full_name or str(update.user.id)
+    await _append_history(user_id, f"✅ توسطِ {html_escape(admin_name)} به‌عنوانِ پیگیری‌شده علامت خورد (ری‌اکشن)")
+    await _update_pinned_card(user_id)
+
 async def log_activity(user, text: str) -> None:
     """
     یک رویداد را ثبت می‌کند: به‌جای ارسالِ پیامِ جداگانه، فقط به تاریخچه‌ی داخلِ
@@ -1687,13 +1940,15 @@ async def get_or_create_support_topic(user, force_new: bool = False) -> int | No
         return None
 
     is_brand_new = False
+    if not force_new:
+        async with _write_lock:
+            existing = _load_support_topics()["user_to_thread"].get(str(user.id))
+        if existing is not None:
+            await _reopen_topic_if_archived(user.id, existing)
+            return existing
+
     async with _write_lock:
         data = _load_support_topics()
-        if not force_new:
-            existing = data["user_to_thread"].get(str(user.id))
-            if existing is not None:
-                return existing
-
         display_name = user.full_name or user.first_name or f"کاربر {user.id}"
         meta_existing = data["user_meta"].get(str(user.id), {})
         pre_status = meta_existing.get("status", "new")
@@ -1753,6 +2008,7 @@ async def _finalize_group_approval(user_id: int, notify_user: bool = True) -> bo
 
     if notify_user:
         try:
+            await _ensure_reply_keyboard(user_id, user_id)
             await open_user_panel(user_id)
         except Exception as e:
             logger.warning("ارسالِ پیامِ خوش‌آمدگویی به کاربر %s ممکن نشد: %s", user_id, e)
@@ -1813,6 +2069,69 @@ async def open_vip_panel(chat_id: int) -> None:
     else:
         await bot.send_message(chat_id=chat_id, text=caption, reply_markup=keyboard)
 
+# ---------- منویِ ثابتِ پایینِ صفحه (Reply Keyboard) — همیشه در دسترس ----------
+REPLY_KB_PANEL = "🏛 پنل من"
+REPLY_KB_VIP = "🌟 VIP"
+REPLY_KB_CONTACT = "📞 ارتباط با ادمین"
+
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text=REPLY_KB_PANEL, style="primary"),
+                KeyboardButton(text=REPLY_KB_VIP, style="success"),
+            ],
+            [KeyboardButton(text=REPLY_KB_CONTACT, style="primary")],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="یکی از گزینه‌های زیر را انتخاب کنید…",
+    )
+
+async def _ensure_reply_keyboard(user_id: int, chat_id: int) -> None:
+    """منویِ ثابتِ پایینِ صفحه را فقط یک‌بار برایِ هر کاربر فعال می‌کند (تلگرام خودش تا وقتی
+    ReplyKeyboardRemove نفرستیم، این کیبورد را رویِ تمامِ پیام‌هایِ بعدی نگه می‌دارد)."""
+    async with _write_lock:
+        data = _load_support_topics()
+        meta = data["user_meta"].setdefault(str(user_id), {})
+        if meta.get("reply_kb_sent"):
+            return
+        meta["reply_kb_sent"] = True
+        await _save_support_topics(data)
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="🧭 منویِ ناوبریِ ثابت در پایینِ صفحه فعال شد — همیشه در دسترس است.",
+            reply_markup=main_reply_keyboard(),
+        )
+    except Exception as e:
+        logger.warning("فعال‌سازیِ منویِ ثابت برایِ کاربر %s ممکن نشد: %s", user_id, e)
+
+@dp.message(StateFilter(None), F.text == REPLY_KB_PANEL)
+async def handle_reply_kb_panel(message: Message):
+    if not await is_user_member(message.from_user.id):
+        await message.answer("برای دسترسی به پنل، ابتدا با /start عضوِ رواق شوید.")
+        return
+    await open_user_panel(message.chat.id)
+
+@dp.message(StateFilter(None), F.text == REPLY_KB_VIP)
+async def handle_reply_kb_vip(message: Message):
+    if not await is_user_member(message.from_user.id):
+        await message.answer("برای دسترسی به گروهِ VIP، ابتدا با /start عضوِ رواق شوید.")
+        return
+    await open_vip_panel(message.chat.id)
+
+@dp.message(StateFilter(None), F.text == REPLY_KB_CONTACT)
+async def handle_reply_kb_contact(message: Message, state: FSMContext):
+    if not await is_user_member(message.from_user.id):
+        await message.answer("برای ارتباط با ادمین، ابتدا با /start عضوِ رواق شوید.")
+        return
+    await state.set_state(ContactAdminStates.waiting_for_message)
+    await message.answer(
+        "📞 پیام خود را تایپ کنید تا برای ادمین ارسال شود.\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
@@ -1842,6 +2161,7 @@ async def handle_start(message: Message, command: CommandObject):
     is_member = await is_user_member(user_id)
 
     if is_member:
+        await _ensure_reply_keyboard(user_id, message.chat.id)
         if args.lower() == "vip":
             await open_vip_panel(message.chat.id)
         else:
@@ -2524,6 +2844,14 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
 
+    if action == "inbox":
+        await callback.answer()
+        await callback.message.edit_text(
+            "📥 <b>این‌باکسِ ادمین</b>\n\nهمه‌یِ کارهایِ معلقِ نیازمندِ تصمیم، یک‌جا:",
+            reply_markup=admin_inbox_keyboard(),
+        )
+        return
+
     if action == "cat_reports":
         await callback.answer()
         await callback.message.edit_text(
@@ -2571,6 +2899,14 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         except Exception:
             pass
         await callback.answer("پنل بسته شد.")
+        return
+
+    if action == "daily_digest_preview":
+        await callback.answer()
+        reports_back_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_reports", style="primary")]]
+        )
+        await callback.message.edit_text(await build_daily_digest_text(hours=24), reply_markup=reports_back_keyboard)
         return
 
     if action == "stats_detail":
@@ -3714,6 +4050,9 @@ async def admin_lookup_identifier(message: Message, state: FSMContext):
     else:
         submitted_line = "📝 فرمِ عضویت: تکمیل نشده\n"
 
+    topic_link = _topic_link_for_user(user_id)
+    topic_line = f"🔗 لینکِ تاپیک: {topic_link}\n" if topic_link else "🔗 لینکِ تاپیک: هنوز تاپیکی ساخته نشده\n"
+
     text = (
         f"🔍 <b>پروفایلِ کاربر</b>\n\n"
         f"👤 {html_escape(display)} (<code>{user_id}</code>)\n"
@@ -3724,11 +4063,16 @@ async def admin_lookup_identifier(message: Message, state: FSMContext):
         f"{referral_line}"
         f"{onboarding_line}"
         f"{submitted_line}"
+        f"{topic_line}"
     )
+    row1 = []
+    if topic_link:
+        row1.append(InlineKeyboardButton(text="🔗 بازکردنِ تاپیک", url=topic_link, style="success"))
+    row1.append(InlineKeyboardButton(text="🔍 بررسیِ کاربرِ دیگر", callback_data="admin:lookup_user", style="primary"))
     await message.answer(
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔍 بررسیِ کاربرِ دیگر", callback_data="admin:lookup_user", style="primary")],
+            row1,
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]),
     )
@@ -4648,6 +4992,64 @@ async def cb_vip_cancel_payment(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("عملیاتِ خرید لغو شد.", reply_markup=user_panel_keyboard())
     await callback.answer()
 
+VIP_PAYMENT_PAGE_SIZE = 5
+
+async def render_vip_payments_pending_page(page: int) -> tuple[str, InlineKeyboardMarkup]:
+    payments = load_vip_payments()
+    pending = [p for p in payments.values() if p.get("status") == "pending"]
+    pending.sort(key=lambda p: p.get("requested_at", ""))
+
+    if not pending:
+        text = "💳 <b>پرداخت‌هایِ VIP در انتظار</b>\n\n✅ در حال حاضر پرداختِ معلقی وجود ندارد."
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:inbox", style="primary")]
+        ])
+        return text, keyboard
+
+    total_pages = max(1, (len(pending) + VIP_PAYMENT_PAGE_SIZE - 1) // VIP_PAYMENT_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_items = pending[page * VIP_PAYMENT_PAGE_SIZE:(page + 1) * VIP_PAYMENT_PAGE_SIZE]
+
+    lines = [
+        f"💳 <b>پرداخت‌هایِ VIP در انتظار</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
+        f"مجموع: {to_persian_num(len(pending))} مورد\n",
+    ]
+    rows = []
+    for payment in page_items:
+        username_part = f"@{payment['username']}" if payment.get("username") else str(payment.get("user_id"))
+        lines.append(
+            f"👤 {html_escape(payment.get('user_display', ''))} ({username_part})\n"
+            f"🗓 {to_persian_num(payment.get('months', ''))} ماهه — 💰 {format_toman(payment.get('price', 0))}\n"
+        )
+        rows.append([
+            InlineKeyboardButton(text="✅ تایید", callback_data=f"vipadm:approve:{payment['id']}", style="success"),
+            InlineKeyboardButton(text="❌ رد", callback_data=f"vipadm:reject:{payment['id']}", style="danger"),
+        ])
+
+    text = "\n".join(lines)
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"vippay:list:{page - 1}", style="primary"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"vippay:list:{page + 1}", style="primary"))
+    if nav_row:
+        rows.append(nav_row)
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:inbox", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data.startswith("vippay:list:"))
+async def cb_vippay_list(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    try:
+        page = int(callback.data.split(":")[2])
+    except (IndexError, ValueError):
+        page = 0
+    text, keyboard = await render_vip_payments_pending_page(page)
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
 def vip_admin_decision_keyboard(payment_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[
@@ -4795,6 +5197,12 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
             logger.warning("اطلاع‌رسانیِ ردِ پرداخت به کاربر %s ممکن نشد: %s", user_id, e)
 
         await callback.answer("درخواست رد شد.")
+        if not callback.message.photo:
+            try:
+                list_text, list_keyboard = await render_vip_payments_pending_page(0)
+                await callback.message.edit_text(list_text, reply_markup=list_keyboard)
+            except Exception:
+                pass
         return
 
     if action == "approve":
@@ -4888,6 +5296,12 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
             logger.warning("ارسالِ لینکِ VIP به کاربر %s ممکن نشد: %s", user_id, e)
 
         await callback.answer("تایید شد و لینک ارسال شد.")
+        if not callback.message.photo:
+            try:
+                list_text, list_keyboard = await render_vip_payments_pending_page(0)
+                await callback.message.edit_text(list_text, reply_markup=list_keyboard)
+            except Exception:
+                pass
         return
 
 # ---------- بررسیِ دوره‌ایِ انقضای اشتراک ----------
@@ -6588,6 +7002,24 @@ async def stop_pending_join_checker(app: web.Application) -> None:
         except asyncio.CancelledError:
             pass
 
+async def stop_topic_archive_checker(app: web.Application) -> None:
+    task = app.get("topic_archive_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+async def stop_daily_digest(app: web.Application) -> None:
+    task = app.get("daily_digest_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
 # ==============================================================
 #  مدیریت خطاهای سراسری
 # ==============================================================
@@ -6663,6 +7095,387 @@ async def global_error_handler(update: Update, exception: Exception):
 
     return True
 
+# ==============================================================
+#  حالتِ Mini App (Telegram WebApp) — داشبوردِ ادمین
+# ==============================================================
+MINIAPP_URL = f"{WEBHOOK_HOST}/miniapp"
+
+def _validate_webapp_init_data(init_data: str) -> dict | None:
+    """اعتبارسنجیِ initData طبقِ الگوریتمِ رسمیِ تلگرام (HMAC-SHA256 با کلیدِ WebAppData)."""
+    if not init_data:
+        return None
+    try:
+        parsed = dict(parse_qsl(init_data, strict_parsing=True))
+    except ValueError:
+        return None
+    received_hash = parsed.pop("hash", None)
+    if not received_hash:
+        return None
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(computed_hash, received_hash):
+        return None
+    try:
+        auth_date = int(parsed.get("auth_date", "0"))
+        if datetime.now(timezone.utc).timestamp() - auth_date > 86400:
+            return None
+    except ValueError:
+        pass
+    return parsed
+
+def _miniapp_admin_id(request: web.Request) -> int | None:
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    parsed = _validate_webapp_init_data(init_data)
+    if not parsed:
+        return None
+    try:
+        user_info = json.loads(parsed.get("user", "{}"))
+        admin_id = user_info.get("id")
+    except json.JSONDecodeError:
+        return None
+    if not admin_id or not is_admin(admin_id):
+        return None
+    return admin_id
+
+async def _apply_vip_payment_decision(payment_id: str, action: str, admin_id: int) -> bool:
+    """منطقِ تاییدِ/ردِ پرداختِ VIP (نسخه‌یِ مشترک، قابلِ‌استفاده هم از دکمه‌یِ شیشه‌ای و هم از Mini App)."""
+    payments = load_vip_payments()
+    payment = payments.get(payment_id)
+    if not payment or payment.get("status") != "pending":
+        return False
+    user_id = payment["user_id"]
+    now = datetime.now(timezone.utc)
+
+    if action == "reject":
+        payment["status"] = "rejected"
+        payment["decided_by"] = admin_id
+        payment["decided_at"] = now.isoformat()
+        payments[payment_id] = payment
+        await save_vip_payments(payments)
+        for ref in payment.get("admin_messages", []):
+            try:
+                await bot.edit_message_reply_markup(chat_id=ref["chat_id"], message_id=ref["message_id"], reply_markup=None)
+            except Exception:
+                pass
+        try:
+            user_obj = await bot.get_chat(user_id)
+            await log_activity(user_obj, "❌ درخواست اشتراک VIP رد شد")
+        except Exception:
+            pass
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=sign(
+                    "❌ <b>پرداختِ شما تایید نشد</b>\n\n"
+                    "ممکن است رسیدِ ارسالی خوانا نبوده یا مبلغ مطابقت نداشته باشد.\n"
+                    "برای پیگیری، از «📞 ارتباط با ادمین» استفاده کنید یا دوباره از پنلِ VIP اقدام کنید."
+                ),
+            )
+        except Exception:
+            pass
+        return True
+
+    if action == "approve":
+        if VIP_GROUP_CHAT_ID is None:
+            return False
+        try:
+            invite = await bot.create_chat_invite_link(
+                chat_id=VIP_GROUP_CHAT_ID, member_limit=1, name=f"vip-{user_id}-{payment['months']}m",
+            )
+        except Exception as e:
+            logger.error("ساختِ لینکِ دعوتِ VIP (Mini App) ناموفق بود: %s", e)
+            return False
+
+        days = VIP_MONTHS_TO_DAYS.get(payment["months"], payment["months"] * 30)
+        subs = load_vip_subscriptions()
+        user_subs = subs.setdefault(str(user_id), [])
+        previous_active_end = None
+        for sub in user_subs:
+            if sub.get("status") == "active":
+                try:
+                    sub_end = datetime.fromisoformat(sub["end"])
+                except (KeyError, ValueError):
+                    sub_end = None
+                if sub_end and sub_end > now and (previous_active_end is None or sub_end > previous_active_end):
+                    previous_active_end = sub_end
+                sub["status"] = "renewed"
+        start = previous_active_end if previous_active_end else now
+        end = start + timedelta(days=days)
+        user_subs.append({
+            "category_id": "all", "category_name": "اشتراک کامل VIP",
+            "months": payment["months"], "price": payment["price"],
+            "start": start.isoformat(), "end": end.isoformat(),
+            "status": "active", "reminded": False,
+        })
+        await save_vip_subscriptions(subs)
+
+        payment["status"] = "approved"
+        payment["decided_by"] = admin_id
+        payment["decided_at"] = now.isoformat()
+        payments[payment_id] = payment
+        await save_vip_payments(payments)
+
+        for ref in payment.get("admin_messages", []):
+            try:
+                await bot.edit_message_reply_markup(chat_id=ref["chat_id"], message_id=ref["message_id"], reply_markup=None)
+            except Exception:
+                pass
+        try:
+            user_obj = await bot.get_chat(user_id)
+            await log_activity(user_obj, "🌟 اشتراک VIP تایید شد")
+            await _set_user_status(user_id, "vip")
+        except Exception:
+            pass
+
+        end_jalali = format_jalali_datetime(end)
+        try:
+            await bot.send_message(
+                chat_id=user_id,
+                text=sign(
+                    "✅ <b>پرداختِ شما تایید شد</b>\n\n"
+                    f"🗓 مدت: <b>{to_persian_num(payment['months'])} ماهه</b>\n"
+                    f"⏳ تا تاریخِ: <b>{end_jalali}</b>\n\n"
+                    "برای ورود به گروهِ VIP از لینکِ زیر استفاده کنید (این لینک فقط یک‌بار قابلِ استفاده است):"
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🌟 ورود به گروهِ VIP", url=invite.invite_link)]]
+                ),
+                message_effect_id=MESSAGE_EFFECT_FIRE,
+            )
+        except Exception as e:
+            logger.warning("ارسالِ لینکِ VIP به کاربر %s ممکن نشد: %s", user_id, e)
+        return True
+
+    return False
+
+MINIAPP_HTML = """<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>داشبورد رواق</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #0f1115);
+    --text: var(--tg-theme-text-color, #ffffff);
+    --hint: var(--tg-theme-hint-color, #8b8f96);
+    --link: var(--tg-theme-link-color, #6ab3f3);
+    --button: var(--tg-theme-button-color, #2ea6ff);
+    --button-text: var(--tg-theme-button-text-color, #ffffff);
+    --secondary-bg: var(--tg-theme-secondary-bg-color, #181a20);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); padding: 12px; }
+  h1 { font-size: 18px; margin: 4px 0 12px; }
+  .search { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--secondary-bg);
+            background: var(--secondary-bg); color: var(--text); font-size: 14px; margin-bottom: 10px; }
+  .chips { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .chip { padding: 6px 12px; border-radius: 999px; background: var(--secondary-bg); color: var(--text);
+          font-size: 13px; cursor: pointer; border: 1px solid transparent; user-select: none; }
+  .chip.active { background: var(--button); color: var(--button-text); }
+  .card { background: var(--secondary-bg); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  .card .row1 { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .card .title { font-weight: 600; font-size: 14px; }
+  .card .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--hint); }
+  .card .subtitle { font-size: 13px; color: var(--hint); margin-bottom: 8px; }
+  .card .actions { display: flex; gap: 8px; }
+  .card button { flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-approve { background: #2ecc71; color: #05320f; }
+  .btn-reject { background: #e74c3c; color: #380a08; }
+  .empty { text-align: center; color: var(--hint); padding: 40px 0; font-size: 14px; }
+  .loading { text-align: center; color: var(--hint); padding: 40px 0; }
+</style>
+</head>
+<body>
+<h1>📥 این‌باکسِ ادمین رواق</h1>
+<input class="search" id="search" placeholder="جست‌وجو بر اساسِ نام…">
+<div class="chips" id="chips">
+  <div class="chip active" data-type="all">همه</div>
+  <div class="chip" data-type="join">عضویت</div>
+  <div class="chip" data-type="vip">VIP</div>
+  <div class="chip" data-type="referral">رفرال</div>
+</div>
+<div id="list"><div class="loading">در حال بارگذاری…</div></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const initData = tg ? tg.initData : "";
+
+let allItems = [];
+let activeFilter = "all";
+let searchQuery = "";
+
+const TYPE_LABEL = {join: "🕐 عضویت", vip: "💳 VIP", referral: "🎁 رفرال"};
+
+async function loadData() {
+  try {
+    const res = await fetch("/miniapp/api/data", { headers: { "X-Telegram-Init-Data": initData } });
+    if (!res.ok) {
+      document.getElementById("list").innerHTML = '<div class="empty">دسترسی غیرمجاز یا خطا در بارگذاری.</div>';
+      return;
+    }
+    const data = await res.json();
+    allItems = data.items || [];
+    render();
+  } catch (e) {
+    document.getElementById("list").innerHTML = '<div class="empty">خطا در ارتباط با سرور.</div>';
+  }
+}
+
+function render() {
+  const list = document.getElementById("list");
+  let items = allItems.filter(it => activeFilter === "all" || it.type === activeFilter);
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    items = items.filter(it => (it.title || "").toLowerCase().includes(q) || (it.subtitle || "").toLowerCase().includes(q));
+  }
+  if (!items.length) {
+    list.innerHTML = '<div class="empty">✅ موردی برای نمایش نیست.</div>';
+    return;
+  }
+  list.innerHTML = items.map(it => `
+    <div class="card" data-key="${it.type}:${it.id}">
+      <div class="row1">
+        <span class="title">${escapeHtml(it.title || "بدون‌نام")}</span>
+        <span class="badge">${TYPE_LABEL[it.type] || it.type}</span>
+      </div>
+      <div class="subtitle">${escapeHtml(it.subtitle || "")}</div>
+      <div class="actions">
+        <button class="btn-approve" onclick="doAction('${it.type}','${it.id}','approve',this)">✅ تایید</button>
+        <button class="btn-reject" onclick="doAction('${it.type}','${it.id}','reject',this)">❌ رد</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+async function doAction(type, id, action, btn) {
+  btn.closest(".card").style.opacity = "0.5";
+  try {
+    const res = await fetch("/miniapp/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData },
+      body: JSON.stringify({ type, id, action }),
+    });
+    const result = await res.json();
+    if (result.ok) {
+      allItems = allItems.filter(it => !(it.type === type && String(it.id) === String(id)));
+      render();
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+    } else {
+      btn.closest(".card").style.opacity = "1";
+      if (tg) tg.showAlert("عملیات ناموفق بود.");
+    }
+  } catch (e) {
+    btn.closest(".card").style.opacity = "1";
+  }
+}
+
+document.getElementById("search").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  render();
+});
+document.querySelectorAll(".chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    activeFilter = chip.dataset.type;
+    render();
+  });
+});
+
+loadData();
+</script>
+</body>
+</html>"""
+
+async def handle_miniapp_page(request: web.Request) -> web.Response:
+    return web.Response(text=MINIAPP_HTML, content_type="text/html")
+
+async def handle_miniapp_data(request: web.Request) -> web.Response:
+    admin_id = _miniapp_admin_id(request)
+    if not admin_id:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    items = []
+    for uid, info in load_pending_joins().items():
+        username_part = f"@{info['username']}" if info.get("username") else uid
+        items.append({
+            "type": "join", "id": uid,
+            "title": info.get("full_name", "") or uid,
+            "subtitle": username_part,
+        })
+    for pid, payment in load_vip_payments().items():
+        if payment.get("status") != "pending":
+            continue
+        items.append({
+            "type": "vip", "id": pid,
+            "title": payment.get("user_display", "") or str(payment.get("user_id")),
+            "subtitle": f"{payment.get('months')} ماهه — {format_toman(payment.get('price', 0))}",
+        })
+    for new_uid, entry in pending_referral_reward_entries():
+        try:
+            title = await _display_name_for(int(new_uid))
+        except Exception:
+            title = new_uid
+        items.append({
+            "type": "referral", "id": new_uid,
+            "title": title,
+            "subtitle": entry.get("last_error", "") or "",
+        })
+
+    return web.json_response({"items": items, "generated_at": datetime.now(timezone.utc).isoformat()})
+
+async def handle_miniapp_action(request: web.Request) -> web.Response:
+    admin_id = _miniapp_admin_id(request)
+    if not admin_id:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "bad_request"}, status=400)
+
+    item_type = body.get("type")
+    item_id = body.get("id")
+    action = body.get("action")
+    if action not in ("approve", "reject") or not item_id or not item_type:
+        return web.json_response({"error": "bad_request"}, status=400)
+
+    ok = False
+    try:
+        if item_type == "join":
+            if action == "approve":
+                ok = await _finalize_group_approval(int(item_id), notify_user=True)
+            else:
+                try:
+                    await bot.decline_chat_join_request(chat_id=GROUP_CHAT_ID, user_id=int(item_id))
+                except Exception:
+                    pass
+                await _untrack_pending_join(int(item_id))
+                ok = True
+        elif item_type == "vip":
+            ok = await _apply_vip_payment_decision(item_id, action, admin_id)
+        elif item_type == "referral":
+            data = load_referrals()
+            entry = data.get(item_id)
+            if entry:
+                entry["resolved"] = True
+                entry["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                entry["resolved_by"] = admin_id
+                await save_referrals(data)
+                ok = True
+    except Exception as e:
+        logger.error("خطا در اکشنِ Mini App (%s/%s/%s): %s", item_type, item_id, action, e, exc_info=True)
+        ok = False
+
+    return web.json_response({"ok": ok})
+
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
     # بازیابی بکاپ
@@ -6692,14 +7505,28 @@ async def on_startup(app: web.Application):
     me = await bot.get_me()
     BOT_USERNAME = me.username
 
+    # جداسازیِ اسکوپِ دستورات: /admin فقط برایِ چت‌هایِ خصوصیِ خودِ ادمین‌ها ثبت می‌شود،
+    # نه برایِ همه‌ی کاربرها — تا کاربرِ عادی حتی سرنخی از وجودِ پنلِ ادمین در لیستِ
+    # دستوراتِ خودش نبیند.
     await bot.set_my_commands(
         [
             BotCommand(command="start", description="🏛 شروع / بازکردنِ پنل"),
             BotCommand(command="vip", description="🌟 مشاهده‌ی گروهِ VIP"),
-            BotCommand(command="admin", description="⚙️ پنلِ مدیریت (فقط ادمین)"),
         ],
         scope=BotCommandScopeAllPrivateChats(),
     )
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.set_my_commands(
+                [
+                    BotCommand(command="start", description="🏛 شروع / بازکردنِ پنل"),
+                    BotCommand(command="vip", description="🌟 مشاهده‌ی گروهِ VIP"),
+                    BotCommand(command="admin", description="⚙️ پنلِ مدیریت (فقط ادمین)"),
+                ],
+                scope=BotCommandScopeChat(chat_id=admin_id),
+            )
+        except Exception as e:
+            logger.warning("تنظیمِ دستوراتِ ادمین برایِ %s ممکن نشد: %s", admin_id, e)
     await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
     await bot.set_webhook(
@@ -6711,6 +7538,7 @@ async def on_startup(app: web.Application):
             "chat_member",
             "poll_answer",
             "callback_query",
+            "message_reaction",
         ],
     )
     logger.info("Webhook تنظیم شد روی: %s", WEBHOOK_URL)
@@ -6718,12 +7546,17 @@ async def on_startup(app: web.Application):
     await restore_attendance_tasks()
     app["vip_expiry_task"] = asyncio.create_task(vip_expiry_checker_loop())
     app["pending_join_task"] = asyncio.create_task(pending_join_checker_loop())
+    app["topic_archive_task"] = asyncio.create_task(topic_archive_checker_loop())
+    app["daily_digest_task"] = asyncio.create_task(daily_digest_loop())
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
 def create_app() -> web.Application:
     app = web.Application()
 
     app.router.add_get("/health", handle_health)
+    app.router.add_get("/miniapp", handle_miniapp_page)
+    app.router.add_get("/miniapp/api/data", handle_miniapp_data)
+    app.router.add_post("/miniapp/api/action", handle_miniapp_action)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
@@ -6732,6 +7565,8 @@ def create_app() -> web.Application:
     app.on_cleanup.append(stop_self_ping)
     app.on_cleanup.append(stop_vip_expiry_checker)
     app.on_cleanup.append(stop_pending_join_checker)
+    app.on_cleanup.append(stop_topic_archive_checker)
+    app.on_cleanup.append(stop_daily_digest)
     return app
 
 if __name__ == "__main__":
