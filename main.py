@@ -1078,14 +1078,6 @@ def user_panel_keyboard() -> InlineKeyboardMarkup:
 
 # ---------- پنل ادمین ----------
 def admin_panel_keyboard() -> InlineKeyboardMarkup:
-    bot_enabled = load_bot_state().get("enabled", True)
-    if bot_enabled:
-        toggle_label = "🔴 خاموش کردن ربات"
-        toggle_style = "danger"
-    else:
-        toggle_label = "🟢 روشن کردن ربات"
-        toggle_style = "success"
-
     inbox_total = _unified_inbox_total_count()
     inbox_label = "📥 این‌باکسِ ادمین"
     if inbox_total:
@@ -1098,9 +1090,6 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔍 جست‌وجویِ سریعِ کاربر", callback_data="admin:lookup_user", style="primary"),
             ],
             [
-                InlineKeyboardButton(text="📱 داشبوردِ Mini App", web_app=WebAppInfo(url=MINIAPP_URL), style="success"),
-            ],
-            [
                 InlineKeyboardButton(text="📊 گزارش‌ها", callback_data="admin:cat_reports", style="primary"),
                 InlineKeyboardButton(text="📨 پیام‌رسانی", callback_data="admin:cat_messaging", style="primary"),
             ],
@@ -1110,9 +1099,6 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="⚙️ بکاپ و سیستم", callback_data="admin:cat_backup", style="primary"),
-            ],
-            [
-                InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style),
             ],
             [
                 InlineKeyboardButton(text="❌ بستن", callback_data="admin:close", style="danger"),
@@ -1226,22 +1212,19 @@ def admin_messaging_keyboard() -> InlineKeyboardMarkup:
     )
 
 def admin_users_keyboard() -> InlineKeyboardMarkup:
+    # نکته: جست‌وجو/پروفایلِ کاربر عمداً اینجا تکرار نشده — همان دکمه‌ی «🔍 جست‌وجویِ سریعِ کاربر»
+    # که رویِ منویِ اصلی هست برایِ این کار استفاده می‌شود تا در دو جا با یک کارکرد نباشد.
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary"),
-                InlineKeyboardButton(text="🔍 پروفایلِ کاربر", callback_data="admin:lookup_user", style="primary"),
-            ],
+            [InlineKeyboardButton(text="🛠 مدیریت محتوا", callback_data="admin:menu_edit", style="primary")],
             [InlineKeyboardButton(text="🗑 حذف کاربر", callback_data="admin:delete_user", style="danger")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
 
 def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
-    pending_count = len(pending_referral_reward_entries())
-    pending_label = "⚠️ پاداش‌هایِ رفرالِ معلق"
-    if pending_count:
-        pending_label += f" ({to_persian_num(pending_count)})"
+    # نکته: «پاداش‌هایِ رفرالِ ناموفق» عمداً اینجا تکرار نشده — چون یک موردِ کارِ معلق/نیازمندِ
+    # پیگیریِ ادمین است، فقط داخلِ «این‌باکسِ ادمین» (در منویِ اصلی) نمایش داده می‌شود.
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1250,18 +1233,25 @@ def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="📋 مشترکینِ VIP", callback_data="vipadmin:list:0", style="primary")],
             [InlineKeyboardButton(text="🎁 اهدای پاداش VIP", callback_data="vipreward:start", style="success")],
-            [InlineKeyboardButton(text=pending_label, callback_data="refpending:list:0", style="danger" if pending_count else "primary")],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
 
 def admin_backup_keyboard() -> InlineKeyboardMarkup:
+    bot_enabled = load_bot_state().get("enabled", True)
+    if bot_enabled:
+        toggle_label = "🔴 خاموش کردن ربات"
+        toggle_style = "danger"
+    else:
+        toggle_label = "🟢 روشن کردن ربات"
+        toggle_style = "success"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="📥 گرفتن بکاپ", callback_data="admin:manual_backup", style="success"),
                 InlineKeyboardButton(text="🔁 بازیابی از بکاپ", callback_data="admin:restore_backup", style="danger"),
             ],
+            [InlineKeyboardButton(text=toggle_label, callback_data="admin:toggle_bot", style=toggle_style)],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -1324,10 +1314,29 @@ async def _untrack_pending_join(user_id: int) -> None:
         pending.pop(str(user_id))
         await save_pending_joins(pending)
 
+async def _reconcile_pending_joins(pending: dict) -> dict:
+    """
+    وضعیتِ واقعیِ هرکدام از درخواست‌هایِ معلق را از خودِ گروه استعلام می‌کند تا اگر ادمین دستی از
+    داخلِ خودِ گروه کسی را عضو/حذف کرده باشد (بدون استفاده از دکمه‌هایِ ربات)، این باکس هیچ‌وقت با
+    واقعیتِ گروه ناهماهنگ نماند. عضوهایِ تاییدشده یا بن‌شده از لیست پاک می‌شوند؛ رد ساده (بدون بن)
+    از طریقِ Bot API قابلِ‌تشخیص نیست، چون تلگرام برایش هیچ آپدیتی نمی‌فرستد.
+    """
+    if not pending:
+        return pending
+    for user_id_str in list(pending.keys()):
+        try:
+            member = await bot.get_chat_member(GROUP_CHAT_ID, int(user_id_str))
+        except Exception:
+            continue
+        if member.status in (ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR, ChatMemberStatus.KICKED):
+            await _untrack_pending_join(int(user_id_str))
+            pending.pop(user_id_str, None)
+    return pending
+
 PENDING_JOIN_PAGE_SIZE = 5
 
 async def render_pending_joins_page(page: int) -> tuple[str, InlineKeyboardMarkup]:
-    pending = load_pending_joins()
+    pending = await _reconcile_pending_joins(load_pending_joins())
 
     if not pending:
         text = (
@@ -1434,7 +1443,7 @@ async def pending_join_checker_loop() -> None:
         await asyncio.sleep(3 * 3600)
 
 async def _check_pending_joins() -> None:
-    pending = load_pending_joins()
+    pending = await _reconcile_pending_joins(load_pending_joins())
     if not pending:
         return
     now = datetime.utcnow()
@@ -1793,6 +1802,13 @@ async def _set_user_gold(user_id: int, is_gold: bool = True) -> None:
 
     await _update_pinned_card(user_id)
 
+def _pinned_card_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    # tg://user?id=... مستقیم پیوی همان کاربر را باز می‌کند — نیازی به دانستنِ یوزرنیم نیست و
+    # با همان آیدیِ عددی که رویِ کارت هست کار می‌کند.
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="👤 نمایشِ پروفایل (بازکردنِ پیوی)", url=f"tg://user?id={user_id}"),
+    ]])
+
 async def _update_pinned_card(user_id: int, user=None) -> None:
     """
     کارتِ پروفایلِ پین‌شده را در جا ویرایش می‌کند (نه ارسالِ پیامِ تازه).
@@ -1805,6 +1821,7 @@ async def _update_pinned_card(user_id: int, user=None) -> None:
         return
 
     card_text = _build_card_text(user_id)
+    card_keyboard = _pinned_card_keyboard(user_id)
     meta = data["user_meta"].get(str(user_id), {})
     pinned_id = meta.get("pinned_message_id")
 
@@ -1826,6 +1843,7 @@ async def _update_pinned_card(user_id: int, user=None) -> None:
                 message_id=pinned_id,
                 text=card_text,
                 parse_mode=ParseMode.HTML,
+                reply_markup=card_keyboard,
             )
             return
         except Exception as e:
@@ -1845,6 +1863,7 @@ async def _update_pinned_card(user_id: int, user=None) -> None:
             text=card_text,
             parse_mode=ParseMode.HTML,
             disable_notification=True,
+            reply_markup=card_keyboard,
         )
     except Exception as e:
         err = str(e).lower()
@@ -2622,6 +2641,10 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
 
     became_member = new_status == ChatMemberStatus.MEMBER and old_status != ChatMemberStatus.MEMBER
     if became_member:
+        # این آپدیت با هر نوع عضویتی صادر می‌شود — چه با تاییدِ درخواستِ عضویت از داخلِ ربات،
+        # چه با تاییدِ دستیِ ادمین از داخلِ خودِ گروه، چه با افزودنِ مستقیم. پس همینجا از لیستِ
+        # «درخواست‌هایِ عضویتِ معلق» هم پاکش می‌کنیم تا آن باکس هیچ‌وقت با واقعیتِ گروه ناهماهنگ نشود.
+        await _untrack_pending_join(user.id)
         await increment_stat("total_joined")
         await notify_new_member(user)
         await send_welcome_to_group(user)
@@ -2991,7 +3014,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
             confirm_keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="✅ بله، خاموش شود", callback_data="admin:toggle_bot_confirm", style="danger")],
-                    [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:menu", style="primary")],
+                    [InlineKeyboardButton(text="🔙 انصراف", callback_data="admin:cat_backup", style="primary")],
                 ]
             )
             await callback.message.answer(
@@ -3005,7 +3028,10 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         state_data["enabled"] = True
         await save_bot_state(state_data)
         await callback.answer("ربات روشن ✅ شد.")
-        await callback.message.edit_text(await build_admin_dashboard_text(), reply_markup=admin_panel_keyboard())
+        await callback.message.edit_text(
+            "⚙️ <b>بکاپ و سیستم</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_backup_keyboard(),
+        )
         asyncio.create_task(process_pending_requests())
         return
 
@@ -3014,7 +3040,10 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         state_data["enabled"] = False
         await save_bot_state(state_data)
         await callback.answer("ربات خاموش 🔴 شد.")
-        await callback.message.answer(await build_admin_dashboard_text(), reply_markup=admin_panel_keyboard())
+        await callback.message.answer(
+            "⚙️ <b>بکاپ و سیستم</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_backup_keyboard(),
+        )
         return
 
     if action == "menu_edit":
@@ -6691,11 +6720,11 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
 
     if not pending:
         text = (
-            "🎁 <b>پاداش‌هایِ رفرالِ معلق</b>\n\n"
-            "✅ در حال حاضر هیچ پاداشِ رفرالِ ناموفق/معلقی وجود ندارد."
+            "🎁 <b>پاداش‌هایِ رفرالِ ناموفق</b>\n\n"
+            "✅ در حال حاضر هیچ پاداشِ رفرالِ ناموفقی وجود ندارد."
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_vip", style="primary")]
+            [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:inbox", style="primary")]
         ])
         return text, keyboard
 
@@ -6704,7 +6733,9 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
     page_items = pending[page * REFERRAL_PENDING_PAGE_SIZE: (page + 1) * REFERRAL_PENDING_PAGE_SIZE]
 
     lines = [
-        f"⚠️ <b>پاداش‌هایِ رفرالِ معلق</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
+        f"⚠️ <b>پاداش‌هایِ رفرالِ ناموفق</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
+        f"این یعنی هنگامِ معرفیِ این کاربر، تلاش برایِ فعال‌کردنِ خودکارِ پاداشِ VIP برایِ معرف با خطا مواجه شده "
+        f"و باید دستی بررسی و تسویه شود.\n",
         f"مجموع: {to_persian_num(len(pending))} مورد\n",
     ]
     rows = []
@@ -6740,7 +6771,7 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
     if nav_row:
         rows.append(nav_row)
 
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:cat_vip", style="primary")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:inbox", style="primary")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 @dp.callback_query(F.data.startswith("refpending:list:"))
