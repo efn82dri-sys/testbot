@@ -3221,11 +3221,14 @@ async def handle_broadcast_text_input(message: Message, state: FSMContext):
     )
     await state.set_state(BroadcastStates.confirming)
 
+    # از html_text استفاده می‌کنیم نه message.text/caption خام: چون پیام با parse_mode=HTML
+    # ارسال می‌شه، متنِ خام یا استایل‌ها (بولد/کوتیشن/لینک) رو نشون نمی‌ده یا اگه شاملِ کاراکترهای
+    # <, >, & باشه ممکنه خطا بده؛ html_text همون entities رو به تگِ HTML معادل تبدیل می‌کنه
+    # و پیش‌نمایش دقیقاً همون چیزی می‌شه که به دستِ کاربر می‌رسه.
     preview_text = "پیش‌نمایش پیام:\n"
-    if message.text:
-        preview_text += message.text
-    elif message.caption:
-        preview_text += f"📎 {message.caption}"
+    if message.html_text:
+        prefix = "" if message.text else "📎 "
+        preview_text += f"{prefix}{message.html_text}"
     else:
         preview_text += "📎 (یک فایل یا رسانه)"
 
