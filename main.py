@@ -2782,41 +2782,22 @@ async def handle_export(message: Message):
     await message.answer_document(file, caption="📄 خروجی اکسل همه‌ی تأییدشده‌ها")
 
 @dp.message(Command("broadcast"))
-async def handle_broadcast(message: Message, command: CommandObject):
+async def handle_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    text = (command.args or "").strip()
-    if not text:
-        await message.answer(
-            "برای ارسال پیام همگانی به این شکل دستور را بفرستید:\n"
-            "<code>/broadcast متن پیام شما</code>\n\n"
-            "یا از پنل شیشه‌ای با دستور /admin استفاده کنید (که از عکس و فایل هم پشتیبانی می‌کند)."
-        )
-        return
-
-    user_ids = load_funnel_users()
-    if not user_ids:
-        await message.answer("هیچ کاربری برای ارسال پیدا نشد.")
-        return
-
-    await message.answer(f"⏳ در حال ارسال پیام به {to_persian_num(len(user_ids))} نفر...")
-    sent, failed = await send_broadcast_text(text, user_ids)
+    # به‌جای گرفتنِ متن به‌صورتِ آرگومانِ دستور (که استایل‌ها/بولد/کوتیشن/لینک را از دست می‌داد چون
+    # command.args فقط رشته‌ی خام است و entities را در بر نمی‌گیرد)، همان مسیرِ مطمئنِ پنل را فعال می‌کنیم:
+    # پیامِ بعدیِ ادمین با bot.copy_message ارسال می‌شود که عیناً و با تمامِ استایل‌ها
+    # (بولد، ایتالیک، کوتیشن، لینک، اسپویلر، کد و...) و حتی رسانه، بدون هیچ تغییری کپی می‌شود.
+    await state.set_state(BroadcastStates.waiting_for_text)
+    audience_count = len(load_funnel_users())
     await message.answer(
-        f"✅ ارسال همگانی تمام شد.\n"
-        f"موفق: <b>{to_persian_num(sent)}</b>\n"
-        f"ناموفق: <b>{to_persian_num(failed)}</b>"
+        f"📢 <b>ارسال پیام همگانی</b>\n\n"
+        f"این پیام برای همه‌ی کسانی که ربات را استارت زده‌اند ارسال می‌شود ({to_persian_num(audience_count)} نفر).\n\n"
+        "حالا پیامِ خودتان را دقیقاً با همان استایلی که می‌خواهید به دستِ کاربر برسد بفرستید "
+        "(بولد، کوتیشن، لینک، عکس، فایل و... همه حفظ می‌شود).\n\n"
+        "برای انصراف، دستور /cancel را بفرستید."
     )
-
-async def send_broadcast_text(text: str, user_ids: set[int]) -> tuple[int, int]:
-    sent, failed = 0, 0
-    for user_id in user_ids:
-        try:
-            await bot.send_message(chat_id=user_id, text=text)
-            sent += 1
-        except Exception:
-            failed += 1
-        await asyncio.sleep(0.05)
-    return sent, failed
 
 # ---------- هندلر واحد برای تمام کالبک‌های ادمین ----------
 _ADMIN_STATE_SPECIFIC_CALLBACKS = {
