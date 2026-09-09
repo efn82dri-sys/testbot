@@ -1127,7 +1127,7 @@ def admin_inbox_keyboard() -> InlineKeyboardMarkup:
             callback_data="vippay:list:0", style="danger" if pending_vip else "primary",
         )],
         [InlineKeyboardButton(
-            text=f"🎁 پاداش‌هایِ رفرالِ ناموفق ({to_persian_num(pending_ref)})",
+            text=f"🎁 پاداش‌هایِ رفرال (نیازمندِ بررسی) ({to_persian_num(pending_ref)})",
             callback_data="refpending:list:0", style="danger" if pending_ref else "primary",
         )],
         [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
@@ -1225,6 +1225,13 @@ def admin_users_keyboard() -> InlineKeyboardMarkup:
 def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
     # نکته: «پاداش‌هایِ رفرالِ ناموفق» عمداً اینجا تکرار نشده — چون یک موردِ کارِ معلق/نیازمندِ
     # پیگیریِ ادمین است، فقط داخلِ «این‌باکسِ ادمین» (در منویِ اصلی) نمایش داده می‌شود.
+    auto_grant = load_bot_state().get("referral_auto_grant", False)
+    if auto_grant:
+        ref_mode_label = "🎛 پاداشِ رفرال: خودکار (بدونِ تاییدِ تو ارسال می‌شود)"
+        ref_mode_style = "danger"
+    else:
+        ref_mode_label = "🎛 پاداشِ رفرال: نیازمندِ تاییدِ تو"
+        ref_mode_style = "success"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1233,6 +1240,7 @@ def admin_vip_category_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="📋 مشترکینِ VIP", callback_data="vipadmin:list:0", style="primary")],
             [InlineKeyboardButton(text="🎁 اهدای پاداش VIP", callback_data="vipreward:start", style="success")],
+            [InlineKeyboardButton(text=ref_mode_label, callback_data="admin:toggle_referral_auto", style=ref_mode_style)],
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
@@ -2882,6 +2890,24 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "cat_vip":
         await callback.answer()
+        await callback.message.edit_text(
+            "💎 <b>مدیریت VIP</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=admin_vip_category_keyboard(),
+        )
+        return
+
+    if action == "toggle_referral_auto":
+        state_data = load_bot_state()
+        currently_auto = state_data.get("referral_auto_grant", False)
+        state_data["referral_auto_grant"] = not currently_auto
+        await save_bot_state(state_data)
+        alert_text = (
+            "⚠️ از این به بعد، به‌محضِ عضویتِ فردِ معرفی‌شده، لینکِ گروهِ VIP خودکار و بدونِ تاییدِ تو "
+            "برایِ معرف ارسال می‌شود."
+            if not currently_auto else
+            "از این به بعد، هر پاداشِ رفرال قبل از ارسال منتظرِ تاییدِ تو می‌ماند."
+        )
+        await callback.answer(alert_text, show_alert=True)
         await callback.message.edit_text(
             "💎 <b>مدیریت VIP</b>\n\nیکی از گزینه‌ها را انتخاب کنید.",
             reply_markup=admin_vip_category_keyboard(),
@@ -6647,8 +6673,45 @@ async def _track_referral(new_user_id: int, referrer_id: int) -> None:
 async def _credit_referral_if_pending(new_user_id: int) -> None:
     data = load_referrals()
     entry = data.get(str(new_user_id))
-    if not entry or entry.get("credited"):
+    if not entry or entry.get("credited") or entry.get("awaiting_admin"):
         return
+
+    auto_grant = load_bot_state().get("referral_auto_grant", False)
+    if not auto_grant:
+        # به‌جایِ ارسالِ خودکارِ لینکِ گروهِ VIP، فقط علامت می‌زنیم که در انتظارِ تاییدِ دستیِ
+        # ادمین است و با دکمه به ادمین اطلاع می‌دهیم — هیچ لینکی بدونِ تاییدِ صریحِ ادمین نمی‌رود.
+        entry["awaiting_admin"] = True
+        entry["awaiting_since"] = datetime.utcnow().isoformat()
+        entry.pop("last_error", None)
+        entry.pop("failed_at", None)
+        await save_referrals(data)
+        if NOTIFY_CHAT_ID_INT:
+            try:
+                referrer_name = await _display_name_for(entry["referrer_id"])
+                new_user_name = await _display_name_for(new_user_id)
+                await bot.send_message(
+                    chat_id=NOTIFY_CHAT_ID_INT,
+                    text=(
+                        "🎁 <b>پاداشِ رفرال در انتظارِ تاییدِ شماست</b>\n\n"
+                        f"👤 معرف: {html_escape(referrer_name)} (<code>{entry['referrer_id']}</code>)\n"
+                        f"🆕 عضوِ جدید: {html_escape(new_user_name)} (<code>{new_user_id}</code>)\n\n"
+                        f"با تایید، {to_persian_num(REFERRAL_REWARD_DAYS)} روز اعتبارِ VIP فعال و لینکِ گروهِ VIP "
+                        "برایِ معرف ارسال می‌شود.\n"
+                        "(می‌تونی حالتِ ارسالِ خودکار رو از «💎 VIP ← تنظیماتِ پاداشِ رفرال» عوض کنی.)"
+                    ),
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ تایید و ارسال", callback_data=f"refapprove:grant:{new_user_id}", style="success"),
+                        InlineKeyboardButton(text="❌ رد کردن", callback_data=f"refapprove:reject:{new_user_id}", style="danger"),
+                    ]]),
+                )
+            except Exception as e:
+                logger.warning("اطلاع‌رسانیِ پاداشِ رفرالِ درِ‌انتظار ممکن نشد: %s", e)
+        return
+
+    await _execute_referral_grant(new_user_id, data, entry)
+
+async def _execute_referral_grant(new_user_id: int, data: dict, entry: dict) -> tuple[bool, str]:
+    """اجرایِ واقعیِ اعطای پاداشِ رفرال (ساختِ لینکِ VIP و ارسال) — یا خودکار یا بعد از تاییدِ ادمین."""
     referrer_id = entry["referrer_id"]
 
     try:
@@ -6667,6 +6730,7 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
         entry["last_error"] = str(result_msg)[:300]
         entry["failed_at"] = datetime.utcnow().isoformat()
         entry.pop("resolved", None)
+        entry.pop("awaiting_admin", None)
         await save_referrals(data)
         if NOTIFY_CHAT_ID_INT:
             try:
@@ -6678,18 +6742,63 @@ async def _credit_referral_if_pending(new_user_id: int) -> None:
                         f"🆕 عضوِ جدید: <code>{new_user_id}</code>\n"
                         f"❌ خطا: <code>{html_escape(str(result_msg)[:200])}</code>\n\n"
                         "می‌توانید از «🎁 اهدای پاداش VIP» در پنلِ ادمین به‌صورتِ دستی برایِ معرف ثبت کنید، "
-                        "یا از «💎 VIP ← 🎁 پاداش‌هایِ رفرالِ معلق» این مورد را دنبال و تسویه کنید."
+                        "یا از «📥 این‌باکسِ ادمین ← پاداش‌هایِ رفرال» این مورد را دنبال و تسویه کنید."
                     ),
                 )
             except Exception as notify_err:
                 logger.error("اطلاع‌رسانیِ شکستِ پاداشِ ریفرال به ادمین ممکن نشد: %s", notify_err)
-        return
+        return False, result_msg
 
     entry["credited"] = True
     entry.pop("last_error", None)
     entry.pop("failed_at", None)
     entry.pop("resolved", None)
+    entry.pop("awaiting_admin", None)
     await save_referrals(data)
+    return True, result_msg
+
+@dp.callback_query(F.data.startswith("refapprove:grant:"))
+async def cb_refapprove_grant(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    new_user_id_str = callback.data.split(":")[2]
+    data = load_referrals()
+    entry = data.get(new_user_id_str)
+    if not entry:
+        await callback.answer("این مورد پیدا نشد (شاید قبلاً حذف شده).", show_alert=True)
+        return
+    if entry.get("credited"):
+        await callback.answer("قبلاً تایید و ارسال شده.", show_alert=True)
+        return
+
+    await callback.answer("⏳ در حال فعال‌سازی و ارسال...")
+    ok, result_msg = await _execute_referral_grant(int(new_user_id_str), data, entry)
+    suffix = "\n\n✅ <b>تایید شد و پاداش برایِ معرف ارسال شد.</b>" if ok else f"\n\n❌ ارسال ناموفق بود: {html_escape(str(result_msg)[:200])}"
+    try:
+        await callback.message.edit_text(callback.message.html_text + suffix, reply_markup=None)
+    except Exception:
+        await callback.message.answer(suffix)
+
+@dp.callback_query(F.data.startswith("refapprove:reject:"))
+async def cb_refapprove_reject(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    new_user_id_str = callback.data.split(":")[2]
+    data = load_referrals()
+    entry = data.get(new_user_id_str)
+    if entry:
+        entry["resolved"] = True
+        entry["resolved_at"] = datetime.utcnow().isoformat()
+        entry["resolved_by"] = callback.from_user.id
+        entry.pop("awaiting_admin", None)
+        await save_referrals(data)
+    await callback.answer("رد شد؛ پاداشی ارسال نشد.")
+    try:
+        await callback.message.edit_text(callback.message.html_text + "\n\n❌ <b>رد شد؛ پاداشی برایِ معرف ارسال نشد.</b>", reply_markup=None)
+    except Exception:
+        pass
 
 def count_referrals(user_id: int, data: dict | None = None) -> dict:
     """تعدادِ کل و تعدادِ پاداش‌گرفته‌ی معرفی‌هایِ یک کاربر (به‌عنوانِ معرف)."""
@@ -6704,13 +6813,14 @@ def count_referrals(user_id: int, data: dict | None = None) -> dict:
     return {"total": total, "credited": credited}
 
 def pending_referral_reward_entries(data: dict | None = None) -> list[tuple[str, dict]]:
-    """معرفی‌هایی که تلاش برایِ اعطای پاداششان شکست خورده و هنوز دستی تسویه نشده‌اند."""
+    """معرفی‌هایی که یا در انتظارِ تاییدِ دستیِ ادمین‌اند یا تلاش برایِ اعطای پاداششان شکست خورده و هنوز تسویه نشده."""
     data = data if data is not None else load_referrals()
     pending = [
         (new_user_id, entry) for new_user_id, entry in data.items()
-        if entry.get("last_error") and not entry.get("credited") and not entry.get("resolved")
+        if not entry.get("credited") and not entry.get("resolved")
+        and (entry.get("last_error") or entry.get("awaiting_admin"))
     ]
-    pending.sort(key=lambda pair: pair[1].get("failed_at", ""), reverse=True)
+    pending.sort(key=lambda pair: pair[1].get("awaiting_since") or pair[1].get("failed_at", ""), reverse=True)
     return pending
 
 REFERRAL_PENDING_PAGE_SIZE = 5
@@ -6720,8 +6830,8 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
 
     if not pending:
         text = (
-            "🎁 <b>پاداش‌هایِ رفرالِ ناموفق</b>\n\n"
-            "✅ در حال حاضر هیچ پاداشِ رفرالِ ناموفقی وجود ندارد."
+            "🎁 <b>پاداش‌هایِ رفرال (نیازمندِ بررسی)</b>\n\n"
+            "✅ در حال حاضر هیچ موردی در انتظار نیست."
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 بازگشت", callback_data="admin:inbox", style="primary")]
@@ -6733,9 +6843,7 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
     page_items = pending[page * REFERRAL_PENDING_PAGE_SIZE: (page + 1) * REFERRAL_PENDING_PAGE_SIZE]
 
     lines = [
-        f"⚠️ <b>پاداش‌هایِ رفرالِ ناموفق</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
-        f"این یعنی هنگامِ معرفیِ این کاربر، تلاش برایِ فعال‌کردنِ خودکارِ پاداشِ VIP برایِ معرف با خطا مواجه شده "
-        f"و باید دستی بررسی و تسویه شود.\n",
+        f"🎁 <b>پاداش‌هایِ رفرال (نیازمندِ بررسی)</b> ({to_persian_num(page + 1)}/{to_persian_num(total_pages)})\n",
         f"مجموع: {to_persian_num(len(pending))} مورد\n",
     ]
     rows = []
@@ -6743,23 +6851,41 @@ async def render_referral_pending_page(page: int) -> tuple[str, InlineKeyboardMa
         referrer_id = entry.get("referrer_id")
         referrer_name = await _display_name_for(referrer_id) if referrer_id else "نامشخص"
         new_user_name = await _display_name_for(int(new_user_id))
-        failed_at = entry.get("failed_at", "")
-        failed_jalali = ""
+        is_awaiting = bool(entry.get("awaiting_admin"))
+
+        if is_awaiting:
+            when_raw = entry.get("awaiting_since", "")
+            when_label = "🕐 در انتظارِ تاییدِ شما از"
+        else:
+            when_raw = entry.get("failed_at", "")
+            when_label = "🕐 خطا در"
+        when_jalali = ""
         try:
-            failed_jalali = format_jalali_datetime(datetime.fromisoformat(failed_at))
+            when_jalali = format_jalali_datetime(datetime.fromisoformat(when_raw))
         except (ValueError, TypeError):
             pass
+
+        status_line = (
+            "⏳ در انتظارِ تاییدِ دستیِ شما برایِ ارسالِ پاداش\n" if is_awaiting
+            else f"❌ خطایِ اعطایِ خودکار: <code>{html_escape(entry.get('last_error', ''))}</code>\n"
+        )
         lines.append(
             f"👤 معرف: {html_escape(referrer_name)} (<code>{referrer_id}</code>)\n"
             f"🆕 عضوِ جدید: {html_escape(new_user_name)} (<code>{new_user_id}</code>)\n"
-            f"🕐 {failed_jalali}\n"
-            f"❌ خطا: <code>{html_escape(entry.get('last_error', ''))}</code>\n"
+            f"{when_label} {when_jalali}\n"
+            f"{status_line}"
         )
-        rows.append([InlineKeyboardButton(
-            text=f"✅ تسویه شد — {referrer_name}",
-            callback_data=f"refpending:resolve:{page}:{new_user_id}",
-            style="success",
-        )])
+        if is_awaiting:
+            rows.append([
+                InlineKeyboardButton(text="✅ تایید و ارسال", callback_data=f"refapprove:grant:{new_user_id}", style="success"),
+                InlineKeyboardButton(text="❌ رد کردن", callback_data=f"refapprove:reject:{new_user_id}", style="danger"),
+            ])
+        else:
+            rows.append([InlineKeyboardButton(
+                text=f"✅ تسویه شد — {referrer_name}",
+                callback_data=f"refpending:resolve:{page}:{new_user_id}",
+                style="success",
+            )])
 
     text = "\n".join(lines)
 
