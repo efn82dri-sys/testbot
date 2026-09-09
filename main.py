@@ -25,6 +25,7 @@ import pytz
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -86,6 +87,7 @@ DATA_FILE.parent.mkdir(exist_ok=True)
 STATS_FILE = Path(__file__).parent / "data" / "stats.json"
 VERIFIED_FILE = Path(__file__).parent / "data" / "verified_humans.json"
 FUNNEL_USERS_FILE = Path(__file__).parent / "data" / "funnel_users.json"
+BLOCKED_USERS_FILE = Path(__file__).parent / "data" / "blocked_users.json"
 ATTENDANCE_FILE = Path(__file__).parent / "data" / "attendance.json"
 BOT_STATE_FILE = Path(__file__).parent / "data" / "bot_state.json"
 MENU_CONFIG_FILE = Path(__file__).parent / "data" / "menu_config.json"
@@ -519,6 +521,48 @@ async def mark_funnel_entry(user_id: int) -> None:
         users.add(user_id)
         FUNNEL_USERS_FILE.write_text(json.dumps(list(users)), encoding="utf-8")
 
+def load_blocked_users() -> set[int]:
+    if not BLOCKED_USERS_FILE.exists():
+        return set()
+    try:
+        return set(json.loads(BLOCKED_USERS_FILE.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return set()
+
+async def _save_blocked_users(users: set[int]) -> None:
+    async with _write_lock:
+        BLOCKED_USERS_FILE.parent.mkdir(exist_ok=True)
+        BLOCKED_USERS_FILE.write_text(json.dumps(list(users)), encoding="utf-8")
+
+async def _mark_user_blocked(user_id: int, blocked: bool) -> None:
+    """
+    وقتی ارسالِ پیام به کاربر با خطایِ «کاربر ربات را بلاک کرده» مواجه می‌شود (blocked=True)،
+    یا وقتی کاربر دوباره /start می‌زند و معلوم می‌شود دیگر بلاک نیست (blocked=False)،
+    این را هم در لیستِ سراسریِ بلاک‌شده‌ها (برایِ فیلترکردنِ مخاطبِ پیامِ همگانی) و هم — اگر تاپیک
+    داشته باشد — رویِ نشانِ 🚫 کنارِ اسمِ تاپیک/کارتِ پین‌شده‌اش به‌روز می‌کند.
+    """
+    blocked_users = load_blocked_users()
+    changed = False
+    if blocked and user_id not in blocked_users:
+        blocked_users.add(user_id)
+        changed = True
+    elif not blocked and user_id in blocked_users:
+        blocked_users.discard(user_id)
+        changed = True
+    if changed:
+        await _save_blocked_users(blocked_users)
+
+    data = _load_support_topics()
+    if str(user_id) in data["user_to_thread"]:
+        meta = data["user_meta"].setdefault(str(user_id), {})
+        if bool(meta.get("bot_blocked")) != blocked:
+            meta["bot_blocked"] = blocked
+            await _save_support_topics(data)
+            try:
+                await _update_pinned_card(user_id)
+            except Exception:
+                pass
+
 def collect_form_user_ids() -> set[int]:
     user_ids: set[int] = set()
     if not DATA_FILE.exists():
@@ -744,6 +788,8 @@ async def build_stats_text() -> str:
 
     stats = load_stats()
     funnel_count = len(load_funnel_users())
+    blocked_count = len(load_blocked_users())
+    live_audience = funnel_count - blocked_count
     verified_count = len(load_verified())
     form_joined_count = stats.get("form_completed_and_joined", 0)
 
@@ -758,6 +804,8 @@ async def build_stats_text() -> str:
         f"2️⃣ تاییدِ عدمِ ربات‌بودن: <b>{to_persian_num(verified_count)}</b> ({verified_rate:.0f}٪)\n"
         f"3️⃣ فرمِ تکمیل‌شده + ورود به گروه: <b>{to_persian_num(form_joined_count)}</b> ({joined_rate:.0f}٪)\n\n"
         f"📝 کل فرم‌های ثبت‌شده (شامل موارد تأییدنشده): <b>{to_persian_num(form_count)}</b>\n\n"
+        f"🚫 بلاک‌کرده‌های ربات (از میانِ همون {to_persian_num(funnel_count)} نفر): <b>{to_persian_num(blocked_count)}</b>\n"
+        f"📣 مخاطبِ زنده‌ی پیامِ همگانی همین الان: <b>{to_persian_num(live_audience)}</b> نفر\n\n"
         "<i>این آمار از زمانی که دروازه‌ی الکترونیکی نصب شده، ثبت می‌شود.</i>"
     )
 
@@ -1598,7 +1646,7 @@ def _topic_link_for_user(user_id: int, data: dict | None = None) -> str | None:
     return f"https://t.me/c/{internal_id}/{thread_id}"
 
 def _topic_display_name(meta: dict, user_id: int, status: str | None = None) -> str:
-    """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت (+ ایموجیِ طلایی در صورت داشتنش) + نام + یوزرنیم/آیدی."""
+    """نام تاپیک را از روی متادیتای کاربر می‌سازد: ایموجیِ وضعیت (+ ایموجیِ طلایی/بلاک در صورت وجود) + نام + یوزرنیم/آیدی."""
     status = status or meta.get("status", "new")
     display_name = meta.get("name") or f"کاربر {user_id}"
     username = meta.get("username")
@@ -1606,6 +1654,8 @@ def _topic_display_name(meta: dict, user_id: int, status: str | None = None) -> 
     emoji = STATUS_EMOJI.get(status, "🆕")
     if meta.get("is_gold"):
         emoji += "🥇"
+    if meta.get("bot_blocked"):
+        emoji += "🚫"
     return f"{emoji} {display_name} ({username_part})"[:128]
 
 async def _append_history(user_id: int, text: str) -> None:
@@ -1674,6 +1724,7 @@ def _build_card_text(user_id: int) -> str:
     status_emoji = STATUS_EMOJI.get(status, "🆕")
     status_label = STATUS_LABEL_FA.get(status, status)
     gold_line = "🥇 کاربرِ طلایی: بله\n" if meta.get("is_gold") else ""
+    blocked_line = "🚫 <b>ربات را بلاک کرده — تا وقتی خودش دوباره استارت نزند، پیام‌رسانی/لینک بهش ممکن نیست</b>\n" if meta.get("bot_blocked") else ""
 
     score, score_label = _compute_engagement_score(user_id, meta)
     score_line = f"📊 امتیازِ تعامل: {to_persian_num(score)}/۱۰۰ — {score_label}\n"
@@ -1693,6 +1744,7 @@ def _build_card_text(user_id: int) -> str:
         f"{joined_line}"
         f"📌 وضعیت: {status_emoji} {status_label}\n"
         f"{gold_line}"
+        f"{blocked_line}"
         f"{vip_line}\n"
         f"{score_line}"
         f"{followup_line}"
@@ -2166,6 +2218,11 @@ async def handle_start(message: Message, command: CommandObject):
     user = message.from_user
     await mark_funnel_entry(user_id)
     await send_with_action(message.chat.id, "typing", 0.5)
+
+    # اگه کاربر قبلاً به‌عنوانِ بلاک‌کرده علامت خورده بود، رسیدنِ همین /start یعنی دیگه بلاک نیست
+    # (تلگرام با فرستادنِ /start به یک ربات، اون رو برایِ همون ربات خودکار آن‌بلاک می‌کنه)
+    if user_id in load_blocked_users():
+        await _mark_user_blocked(user_id, False)
 
     # لاگ اولین استارت (اگر قبلاً استارت نزده باشد)
     # تشخیص: اگر کاربر در کش کاربران نباشد و در فایل funnle نباشد، یعنی اولین بار
@@ -2821,10 +2878,11 @@ async def handle_broadcast(message: Message, state: FSMContext):
     # پیامِ بعدیِ ادمین با bot.copy_message ارسال می‌شود که عیناً و با تمامِ استایل‌ها
     # (بولد، ایتالیک، کوتیشن، لینک، اسپویلر، کد و...) و حتی رسانه، بدون هیچ تغییری کپی می‌شود.
     await state.set_state(BroadcastStates.waiting_for_text)
-    audience_count = len(load_funnel_users())
+    audience_count = len(load_funnel_users() - load_blocked_users())
     await message.answer(
         f"📢 <b>ارسال پیام همگانی</b>\n\n"
-        f"این پیام برای همه‌ی کسانی که ربات را استارت زده‌اند ارسال می‌شود ({to_persian_num(audience_count)} نفر).\n\n"
+        f"این پیام برای مخاطبِ زنده (کسانی که ربات را استارت زده‌اند و بلاکش نکرده‌اند) ارسال می‌شود "
+        f"({to_persian_num(audience_count)} نفر).\n\n"
         "حالا پیامِ خودتان را دقیقاً با همان استایلی که می‌خواهید به دستِ کاربر برسد بفرستید "
         "(بولد، کوتیشن، لینک، عکس، فایل و... همه حفظ می‌شود).\n\n"
         "برای انصراف، دستور /cancel را بفرستید."
@@ -2995,10 +3053,11 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "broadcast":
         await state.set_state(BroadcastStates.waiting_for_text)
-        audience_count = len(load_funnel_users())
+        audience_count = len(load_funnel_users() - load_blocked_users())
         await callback.message.edit_text(
             f"📢 <b>ارسال پیام همگانی</b>\n\n"
-            f"این پیام برای همه‌ی کسانی که ربات را استارت زده‌اند ارسال می‌شود ({to_persian_num(audience_count)} نفر).\n\n"
+            f"این پیام برای مخاطبِ زنده (کسانی که ربات را استارت زده‌اند و بلاکش نکرده‌اند) ارسال می‌شود "
+            f"({to_persian_num(audience_count)} نفر).\n\n"
             "حالا می‌توانید یک پیام متنی، عکس، سند، ویدئو یا هر نوع محتوای دیگری را بفرستید.\n\n"
             "برای انصراف، دستور /cancel را بفرستید.",
             reply_markup=admin_back_keyboard(),
@@ -3320,10 +3379,12 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
         return
 
     await callback.answer("⏳ در حال ارسال...")
-    user_ids = load_funnel_users()
-    sent, failed = 0, 0
+    all_user_ids = load_funnel_users()
+    already_blocked = load_blocked_users()
+    target_ids = all_user_ids - already_blocked
+    sent, newly_blocked, other_failed = 0, 0, 0
 
-    for uid in user_ids:
+    for uid in target_ids:
         try:
             await bot.copy_message(
                 chat_id=uid,
@@ -3331,14 +3392,23 @@ async def cb_broadcast_confirm(callback: CallbackQuery, state: FSMContext):
                 message_id=message_id,
             )
             sent += 1
+        except TelegramForbiddenError:
+            # یعنی کاربر ربات رو بلاک کرده (یا اکانتش دیگه فعال نیست) — از این به بعد تویِ
+            # شمارشِ مخاطب/پیام‌همگانی حساب نمی‌شه، تا وقتی خودش دوباره /start بزنه.
+            newly_blocked += 1
+            await _mark_user_blocked(uid, True)
         except Exception:
-            failed += 1
+            other_failed += 1
         await asyncio.sleep(0.05)
 
+    skipped_blocked = len(already_blocked & all_user_ids)
     await callback.message.edit_text(
-        f"✅ ارسال همگانی تمام شد.\n"
+        f"✅ ارسال همگانی تمام شد.\n\n"
         f"موفق: <b>{to_persian_num(sent)}</b>\n"
-        f"ناموفق: <b>{to_persian_num(failed)}</b>",
+        f"بلاک‌شده (تازه شناسایی شد): <b>{to_persian_num(newly_blocked)}</b>\n"
+        f"رد شده (از قبل بلاک‌شده بود، اصلاً امتحان نشد): <b>{to_persian_num(skipped_blocked)}</b>\n"
+        f"ناموفقِ دیگر: <b>{to_persian_num(other_failed)}</b>\n\n"
+        f"مخاطبِ واقعی/زنده‌ی شما الان <b>{to_persian_num(len(all_user_ids) - len(already_blocked) - newly_blocked)}</b> نفره.",
         reply_markup=admin_back_keyboard(),
     )
 
