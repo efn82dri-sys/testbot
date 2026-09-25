@@ -4936,7 +4936,8 @@ async def render_vip_page(index: int):
     if total > 1:
         rows.append([InlineKeyboardButton(text="📋 فهرست کامل دسته‌بندی‌ها", callback_data="vip:list", style="primary")])
 
-    rows.append([InlineKeyboardButton(text="💎 خرید اشتراک کامل", callback_data="vip:buy_subscription", style="success")])
+    rows.append([InlineKeyboardButton(text="💎 مقایسه پلن‌ها و خرید", callback_data="vip:plans", style="success")])
+    rows.append([InlineKeyboardButton(text="🧾 سفارش‌های من و رسیدها", callback_data="vip:orders", style="primary")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به پنل اصلی", callback_data="menu:back", style="danger")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -5002,46 +5003,83 @@ async def cb_vip_nav(callback: CallbackQuery):
     await show_vip_page(callback, caption, keyboard, image_id)
     await callback.answer()
 
-# ---------- انتخاب مدت اشتراک ----------
+# ---------- فروشگاه VIP و مقایسه پلن‌ها ----------
 class VipSubscriptionStates(StatesGroup):
     choosing_duration = State()
     waiting_for_receipt = State()
+
+def _vip_plan_details(months: int, prices: dict, discount: int) -> dict:
+    base_price = int(prices.get(str(months), 0) or 0)
+    final_price = int(base_price * (1 - discount / 100)) if discount > 0 else base_price
+    monthly_price = int(final_price / months) if months else final_price
+    return {
+        "months": months,
+        "base_price": base_price,
+        "price": final_price,
+        "monthly_price": monthly_price,
+        "saving": max(0, base_price - final_price),
+    }
+
+def _vip_plan_label(plan: dict, *, recommended: bool = False) -> str:
+    badge = " ⭐ پیشنهادِ حرفه‌ای" if recommended else ""
+    return (
+        f"{to_persian_num(plan['months'])} ماهه{badge}\n"
+        f"💰 {format_toman(plan['price'])}\n"
+        f"📅 ماهانه حدود {format_toman(plan['monthly_price'])}"
+    )
+
+async def render_vip_plan_comparison() -> tuple[str, InlineKeyboardMarkup]:
+    settings = load_vip_global_settings()
+    prices = settings.get("prices", {})
+    discount = int(settings.get("discount_percent", 0) or 0)
+    plans = [_vip_plan_details(months, prices, discount) for months in (3, 6, 12)]
+    active_plan = next((p for p in plans if p["months"] == 6), plans[0])
+
+    lines = [
+        "💎 <b>فروشگاه VIP رواق</b>",
+        "",
+        "یک اشتراک، دسترسی به تمامِ کتابخانه و تاپیک‌های VIP.",
+        "پلن‌ها را بر اساس مدت و هزینهٔ ماهانه مقایسه کنید:",
+        "",
+    ]
+    for plan in plans:
+        label = _vip_plan_label(plan, recommended=plan["months"] == active_plan["months"])
+        lines.append(f"<b>{label.split(chr(10))[0]}</b>")
+        lines.append("\n".join(label.split(chr(10))[1:]))
+        if plan["saving"]:
+            lines.append(f"🎁 صرفه‌جویی: {format_toman(plan['saving'])}")
+        lines.append("")
+
+    if discount > 0:
+        lines.append(f"🏷 تخفیف فعلی: <b>{to_persian_num(discount)}٪</b>")
+    lines.extend([
+        "",
+        "✅ شامل: آموزش‌های ویدئویی، آرشیو پلاگین و فمیلی، متریال، پروژه و تاپیک‌های تخصصی.",
+        "🔐 بعد از بررسی رسید، لینک ورود اختصاصی برایتان صادر می‌شود.",
+    ])
+
+    rows = []
+    for plan in plans:
+        title = f"انتخاب {to_persian_num(plan['months'])} ماهه"
+        if plan["months"] == active_plan["months"]:
+            title = f"⭐ {title}"
+        rows.append([InlineKeyboardButton(text=title, callback_data=f"vip:duration:{plan['months']}", style="success" if plan["months"] == active_plan["months"] else "primary")])
+    rows.append([InlineKeyboardButton(text="🧾 سفارش‌های من و رسیدها", callback_data="vip:orders", style="primary")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به فروشگاه", callback_data="vip:open", style="primary")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data == "vip:plans")
+async def cb_vip_plans(callback: CallbackQuery):
+    text, keyboard = await render_vip_plan_comparison()
+    await show_text_panel(callback, text, keyboard)
+    await callback.answer()
 
 @dp.callback_query(F.data == "vip:buy_subscription")
 async def cb_vip_buy_subscription(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     try:
-        settings = load_vip_global_settings()
-        prices = settings.get("prices", {})
-        discount = settings.get("discount_percent", 0)
-        
-        text = "💎 <b>انتخاب مدت اشتراک VIP</b>\n\n"
-        for months in (3, 6, 12):
-            price = prices.get(str(months), 0)
-            if discount > 0:
-                final_price = int(price * (1 - discount / 100))
-                text += (
-                    f"▫️ {to_persian_num(months)} ماهه: "
-                    f"<s>{format_toman(price)}</s> → {format_toman(final_price)} "
-                    f"(تخفیف {to_persian_num(discount)}%)\n"
-                )
-            else:
-                text += f"▫️ {to_persian_num(months)} ماهه: {format_toman(price)}\n"
-        
-        text += "\nلطفاً یکی از گزینه‌های بالا را انتخاب کنید."
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=f"{to_persian_num(12)} ماهه", callback_data="vip:duration:12", style="primary"),
-                    InlineKeyboardButton(text=f"{to_persian_num(6)} ماهه", callback_data="vip:duration:6", style="primary"),
-                    InlineKeyboardButton(text=f"{to_persian_num(3)} ماهه", callback_data="vip:duration:3", style="primary"),
-                ],
-                [InlineKeyboardButton(text="❌ انصراف", callback_data="vip:cancel_payment", style="danger")],
-            ]
-        )
-        await callback.message.delete()
-        await callback.message.answer(text, reply_markup=keyboard)
+        text, keyboard = await render_vip_plan_comparison()
+        await show_text_panel(callback, text, keyboard)
         await state.set_state(VipSubscriptionStates.choosing_duration)
         await callback.answer()
     except Exception as e:
@@ -5079,7 +5117,7 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
         f"<code>{_format_card_number(VIP_CARD_NUMBER)}</code>\n"
         f"👤 به نام: {html_escape(VIP_CARD_HOLDER)}\n\n"
         "(برای کپی‌کردنِ شماره‌کارت، روی دکمه‌ی زیر بزنید)\n\n"
-        "📸 پس از واریز، عکسِ فیش یا رسیدِ پرداخت را همین‌جا ارسال کنید.\n"
+        "📸 پس از واریز، عکس، فایل تصویری یا PDF فیشِ پرداخت را همین‌جا ارسال کنید.\n"
         "پس از تاییدِ ادمین، لینکِ ورود به گروهِ VIP برایتان ارسال می‌شود."
     )
     keyboard = InlineKeyboardMarkup(
@@ -5093,6 +5131,58 @@ async def cb_vip_duration_chosen(callback: CallbackQuery, state: FSMContext):
         ]
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+def _payment_status_label(status: str) -> str:
+    return {
+        "pending": "⏳ در انتظار بررسی",
+        "approved": "✅ تأیید شده",
+        "rejected": "❌ رد شده",
+    }.get(status, "ℹ️ نامشخص")
+
+def _payment_date_label(value: str | None) -> str:
+    if not value:
+        return "-"
+    try:
+        return format_jalali_datetime(datetime.fromisoformat(value))
+    except (TypeError, ValueError):
+        return value[:16]
+
+async def render_user_vip_orders(user_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    payments = load_vip_payments()
+    orders = [p for p in payments.values() if p.get("user_id") == user_id]
+    orders.sort(key=lambda p: p.get("requested_at", ""), reverse=True)
+    if not orders:
+        text = (
+            "🧾 <b>سفارش‌هایِ VIP من</b>\n\n"
+            "هنوز سفارشی ثبت نکرده‌اید.\n"
+            "یک پلن را مقایسه کنید و بعد از پرداخت، رسیدتان را همین‌جا بفرستید."
+        )
+    else:
+        lines = ["🧾 <b>سفارش‌هایِ VIP من</b>", ""]
+        for order in orders[:10]:
+            lines.extend([
+                f"🔖 <code>{html_escape(order.get('id', '-'))}</code>",
+                f"🗓 پلن: <b>{to_persian_num(order.get('months', '-'))} ماهه</b> — {format_toman(order.get('price', 0))}",
+                f"📌 وضعیت: <b>{_payment_status_label(order.get('status', ''))}</b>",
+                f"🕒 ثبت رسید: {_payment_date_label(order.get('requested_at'))}",
+            ])
+            if order.get("status") == "approved":
+                lines.append(f"🎟 دسترسی تا: <b>{_payment_date_label(order.get('access_end'))}</b>")
+            if order.get("status") == "rejected":
+                lines.append("برای اصلاح، یک رسید خوانا و مطابق مبلغ پلن ارسال کنید.")
+            lines.append("")
+        text = "\n".join(lines).rstrip()
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💎 مقایسه پلن‌ها و خرید", callback_data="vip:plans", style="success")],
+        [InlineKeyboardButton(text="🔙 بازگشت به VIP", callback_data="vip:open", style="primary")],
+    ])
+    return text, keyboard
+
+@dp.callback_query(F.data == "vip:orders")
+async def cb_vip_orders(callback: CallbackQuery):
+    text, keyboard = await render_user_vip_orders(callback.from_user.id)
+    await show_text_panel(callback, text, keyboard)
     await callback.answer()
 
 @dp.callback_query(F.data == "vip:cancel_payment")
@@ -5175,13 +5265,21 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         return
 
     photo_file_id = None
+    receipt_file_id = None
+    receipt_kind = None
     if message.photo:
         photo_file_id = message.photo[-1].file_id
+        receipt_file_id = photo_file_id
+        receipt_kind = "photo"
     elif message.document and (message.document.mime_type or "").startswith("image/"):
-        photo_file_id = message.document.file_id
+        receipt_file_id = message.document.file_id
+        receipt_kind = "document"
+    elif message.document and message.document.mime_type == "application/pdf":
+        receipt_file_id = message.document.file_id
+        receipt_kind = "pdf"
 
-    if not photo_file_id:
-        await message.answer("لطفاً فقط عکسِ فیش یا رسیدِ پرداخت را ارسال کنید.")
+    if not receipt_file_id:
+        await message.answer("لطفاً عکس، فایل تصویری یا PDF فیشِ پرداخت را ارسال کنید.")
         return
 
     data = await state.get_data()
@@ -5204,6 +5302,8 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
         "months": months,
         "price": price,
         "photo_file_id": photo_file_id,
+        "receipt_file_id": receipt_file_id,
+        "receipt_kind": receipt_kind,
         "status": "pending",
         "requested_at": datetime.utcnow().isoformat(),
         "admin_messages": [],
@@ -5235,12 +5335,20 @@ async def handle_vip_receipt(message: Message, state: FSMContext):
     )
     for admin_id in ADMIN_IDS:
         try:
-            sent = await bot.send_photo(
-                chat_id=admin_id,
-                photo=photo_file_id,
-                caption=caption,
-                reply_markup=vip_admin_decision_keyboard(payment_id),
-            )
+            if receipt_kind == "photo":
+                sent = await bot.send_photo(
+                    chat_id=admin_id,
+                    photo=receipt_file_id,
+                    caption=caption,
+                    reply_markup=vip_admin_decision_keyboard(payment_id),
+                )
+            else:
+                sent = await bot.send_document(
+                    chat_id=admin_id,
+                    document=receipt_file_id,
+                    caption=caption,
+                    reply_markup=vip_admin_decision_keyboard(payment_id),
+                )
             payment_record["admin_messages"].append({"chat_id": admin_id, "message_id": sent.message_id})
         except Exception as e:
             logger.warning("ارسالِ درخواستِ پرداخت به ادمین %s ممکن نشد: %s", admin_id, e)
@@ -5365,6 +5473,10 @@ async def cb_vip_admin_decision(callback: CallbackQuery):
         payment["status"] = "approved"
         payment["decided_by"] = callback.from_user.id
         payment["decided_at"] = now.isoformat()
+        payment["approved_at"] = now.isoformat()
+        payment["access_start"] = start.isoformat()
+        payment["access_end"] = end.isoformat()
+        payment["receipt_number"] = f"R-{payment_id.replace('pay_', '').upper()}"
         payments[payment_id] = payment
         await save_vip_payments(payments)
 
@@ -7424,6 +7536,10 @@ async def _apply_vip_payment_decision(payment_id: str, action: str, admin_id: in
         payment["status"] = "approved"
         payment["decided_by"] = admin_id
         payment["decided_at"] = now.isoformat()
+        payment["approved_at"] = now.isoformat()
+        payment["access_start"] = start.isoformat()
+        payment["access_end"] = end.isoformat()
+        payment["receipt_number"] = payment.get("receipt_number") or f"R-{payment_id.replace('pay_', '').upper()}"
         payments[payment_id] = payment
         await save_vip_payments(payments)
 
