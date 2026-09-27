@@ -113,7 +113,7 @@ PALETTE_ACCESS_IDS: set[int] = {
     if x.strip().lstrip("-").isdigit()
 }
 PALETTE_START_PAYLOAD = (
-    os.environ.get("PALETTE_START_PAYLOAD", "rz-pal-x7k9m2").strip().lower() or "rz-pal-x7k9m2"
+    os.environ.get("PALETTE_START_PAYLOAD", "palette").strip().lower() or "palette"
 )
 PALETTE_ACCESS_FILE = Path(__file__).parent / "data" / "palette_access.json"
 
@@ -2293,14 +2293,13 @@ async def handle_start(message: Message, command: CommandObject):
 
     args = (command.args or "").strip()
 
-    # ---- لینکِ مستقیمِ پالت (خارج از VIP و خارج از عضویتِ گروه) ----
+    # ---- لینکِ مستقیمِ پالت (خارج از VIP و خارج از عضویتِ گروه، همگانی) ----
     # https://t.me/<BOT_USERNAME>?start=<PALETTE_START_PAYLOAD>
-    # اگه کاربر مجاز باشه → دکمه‌ی شیشه‌ای می‌ره براش. اگه نباشه، هیچ ردی نشون
-    # داده نمی‌شه و به مسیرِ عادیِ /start ادامه می‌ده (تا اصلاً معلوم نشه چی بوده).
+    # هر کسی این لینک رو داشته باشه دکمه‌ی شیشه‌ای رو می‌گیره — بدون محدودیتِ آیدی.
+    # جایی به‌جز همین لینک (منو، دستورات، پنل ادمین) نشونش نمی‌دیم.
     if args.lower() == PALETTE_START_PAYLOAD:
-        if is_palette_authorized(user_id):
-            await send_palette_glass_button(message.chat.id)
-            return
+        await send_palette_glass_button(message.chat.id)
+        return
 
     if args.startswith("ref_"):
         ref_id_str = args[len("ref_"):]
