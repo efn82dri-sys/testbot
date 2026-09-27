@@ -345,30 +345,18 @@ except ValueError:
     BACKUP_CHAT_ID = NOTIFY_CHAT_ID_INT
 DATA_DIR = DATA_FILE.parent
 
-# پوشه‌ی ریشه‌ی پروژه — برای اینکه آرشیوِ بکاپ بتونه چند پوشه‌ی جداگانه رو
-# با مسیرِ نسبیِ درست نگه داره و دقیقاً سرِ جایِ خودشون بازیابی بشن.
-BASE_DIR = Path(__file__).parent
-
-# همه‌ی پوشه‌هایی که باید بکاپ/ریستور بشن: هم دیتایِ اصلیِ ربات، هم دیتایِ
-# مینی‌اپ‌هایِ پرامپت و پالت (که قبلاً توی بکاپ نبودن و با هر دیپلویِ رندر
-# ریست می‌شدن، چون پوشه‌شون جدا از DATA_DIR بود).
-BACKUP_DIRS = [DATA_DIR, PROMPTS_DATA_FILE.parent, PALETTES_DATA_FILE.parent]
-
 BOT_USERNAME: str | None = None  # در on_startup مقداردهی می‌شود
 
 # ==============================================================
-#  بکاپِ دستیِ پوشه‌های دیتا روی تلگرام
+#  بکاپِ دستیِ پوشه‌ی data روی تلگرام
 # ==============================================================
 
 def _zip_data_dir() -> BytesIO:
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for target_dir in BACKUP_DIRS:
-            if not target_dir.exists():
-                continue
-            for file_path in target_dir.rglob("*"):
-                if file_path.is_file():
-                    zf.write(file_path, arcname=str(file_path.relative_to(BASE_DIR)))
+        for file_path in DATA_DIR.rglob("*"):
+            if file_path.is_file():
+                zf.write(file_path, arcname=str(file_path.relative_to(DATA_DIR)))
     buf.seek(0)
     return buf
 
@@ -385,8 +373,8 @@ async def backup_data_dir_to_telegram() -> tuple[bool, str]:
         msg = "BACKUP_CHAT_ID تنظیم نشده — گرفتنِ بکاپ ممکن نیست."
         logger.warning(msg)
         return False, msg
-    if not any(d.exists() and any(f.is_file() for f in d.rglob("*")) for d in BACKUP_DIRS):
-        msg = "پوشه‌های دیتا خالی هستند — چیزی برای بکاپ‌گیری وجود ندارد."
+    if not DATA_DIR.exists() or not any(f.is_file() for f in DATA_DIR.rglob("*")):
+        msg = "پوشه‌ی data خالی است — چیزی برای بکاپ‌گیری وجود ندارد."
         logger.info(msg)
         return False, msg
     try:
@@ -411,15 +399,14 @@ async def backup_data_dir_to_telegram() -> tuple[bool, str]:
         return False, msg
 
 def _clear_data_dir_files() -> None:
-    for target_dir in BACKUP_DIRS:
-        if not target_dir.exists():
-            continue
-        for file_path in target_dir.rglob("*"):
-            if file_path.is_file():
-                try:
-                    file_path.unlink()
-                except Exception as e:
-                    logger.warning(f"حذفِ فایلِ محلیِ {file_path} قبل از بازیابی ناموفق بود: {e}")
+    if not DATA_DIR.exists():
+        return
+    for file_path in DATA_DIR.rglob("*"):
+        if file_path.is_file():
+            try:
+                file_path.unlink()
+            except Exception as e:
+                logger.warning(f"حذفِ فایلِ محلیِ {file_path} قبل از بازیابی ناموفق بود: {e}")
 
 async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str]:
     if not BACKUP_CHAT_ID:
@@ -427,7 +414,7 @@ async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str
         logger.info(msg)
         return False, msg
 
-    has_local_data = any(d.exists() and any(f.is_file() for f in d.rglob("*")) for d in BACKUP_DIRS)
+    has_local_data = DATA_DIR.exists() and any(f.is_file() for f in DATA_DIR.rglob("*"))
     if has_local_data and not force:
         logger.info(
             "دیتای محلی از قبل موجود است؛ برای اطمینان همچنان تلاش می‌کنیم آخرین بکاپِ تلگرام را بخوانیم "
@@ -470,19 +457,14 @@ async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str
         return False, msg
 
     try:
-        for target_dir in BACKUP_DIRS:
-            target_dir.mkdir(parents=True, exist_ok=True)
+        DATA_DIR.mkdir(exist_ok=True)
         with zipfile.ZipFile(file_bytes) as zf:
             bad_file = zf.testzip()
             if bad_file:
                 raise zipfile.BadZipFile(f"فایلِ خراب در آرشیو: {bad_file}")
             _clear_data_dir_files()
-            zf.extractall(BASE_DIR)
-        restored_files = [
-            str(p.relative_to(BASE_DIR))
-            for d in BACKUP_DIRS if d.exists()
-            for p in d.rglob("*") if p.is_file()
-        ]
+            zf.extractall(DATA_DIR)
+        restored_files = [str(p.relative_to(DATA_DIR)) for p in DATA_DIR.rglob("*") if p.is_file()]
         msg = f"دیتا با موفقیت از بکاپِ تلگرام بازیابی شد ({len(restored_files)} فایل)."
         logger.info(msg)
         return True, msg
@@ -788,9 +770,6 @@ async def save_palettes_data(palettes: list[dict]) -> None:
     async with _write_lock:
         PALETTES_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         PALETTES_DATA_FILE.write_text(json.dumps(palettes, ensure_ascii=False, indent=2), encoding="utf-8")
-    # هر تغییری در پالت‌ها بلافاصله در پس‌زمینه به بکاپِ تلگرام هم می‌ره، تا
-    # لازم نباشه ادمین بعدِ هر تغییر یادش بمونه دکمه‌ی «بکاپ دستی» رو بزنه.
-    asyncio.create_task(backup_data_dir_to_telegram())
 
 def load_prompts_data() -> list[dict]:
     if not PROMPTS_DATA_FILE.exists():
@@ -805,9 +784,6 @@ async def save_prompts_data(prompts: list[dict]) -> None:
     async with _write_lock:
         PROMPTS_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         PROMPTS_DATA_FILE.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
-    # هر تغییری در پرامپت‌ها بلافاصله در پس‌زمینه به بکاپِ تلگرام هم می‌ره، تا
-    # لازم نباشه ادمین بعدِ هر تغییر یادش بمونه دکمه‌ی «بکاپ دستی» رو بزنه.
-    asyncio.create_task(backup_data_dir_to_telegram())
 
 def fit_image_16_9(raw_bytes: bytes) -> bytes:
     """هر عکسی با هر ابعادی رو کراپِ مرکزی می‌کنه به نسبتِ ثابتِ ۱۶:۹ (بدونِ کش‌شدگی) و JPEG خروجی می‌ده."""
