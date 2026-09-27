@@ -96,6 +96,9 @@ PENDING_JOIN_FILE = Path(__file__).parent / "data" / "pending_join_requests.json
 SUPPORT_TOPICS_FILE = Path(__file__).parent / "data" / "support_topics.json"
 QUICK_REPLIES_FILE = Path(__file__).parent / "data" / "quick_replies.json"
 
+# ---------- Mini App مستقل: پالت‌های رنگی ----------
+PALETTE_DIR = Path(__file__).parent / "palette-app"
+
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
 CAFE_TOPIC_THREAD_ID = 95  # آیدی تاپیک «کافه معماری»
@@ -2289,6 +2292,16 @@ async def handle_vip_command(message: Message):
         await message.answer("برای دسترسی به گروهِ VIP، ابتدا با /start عضوِ رواق شوید.")
         return
     await open_vip_panel(message.chat.id)
+
+@dp.message(Command("palette"))
+async def handle_palette_command(message: Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🎨 باز کردن پالت رنگ",
+            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/palettes"),
+        )
+    ]])
+    await message.answer("پالت‌های رنگی اختصاصی رواق را اینجا ببین 👇", reply_markup=kb)
 
 # ==============================================================
 #  درخواستِ عضویت و پذیرشِ قوانین
@@ -7609,6 +7622,10 @@ loadData();
 async def handle_miniapp_page(request: web.Request) -> web.Response:
     return web.Response(text=MINIAPP_HTML, content_type="text/html")
 
+async def handle_palette_page(request: web.Request) -> web.Response:
+    html_path = PALETTE_DIR / "index.html"
+    return web.Response(text=html_path.read_text(encoding="utf-8"), content_type="text/html")
+
 async def handle_miniapp_data(request: web.Request) -> web.Response:
     admin_id = _miniapp_admin_id(request)
     if not admin_id:
@@ -7768,6 +7785,8 @@ def create_app() -> web.Application:
     app.router.add_get("/miniapp", handle_miniapp_page)
     app.router.add_get("/miniapp/api/data", handle_miniapp_data)
     app.router.add_post("/miniapp/api/action", handle_miniapp_action)
+    app.router.add_get("/palettes", handle_palette_page)
+    app.router.add_static("/palettes/", path=PALETTE_DIR, name="palette_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
