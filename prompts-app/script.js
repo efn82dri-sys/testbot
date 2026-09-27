@@ -1,5 +1,5 @@
 /* ============================================================
-   رواق — Mini App prompts / logic
+   رواق — Mini App prompts / logic [IMPROVED]
    ============================================================ */
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -16,6 +16,7 @@ const STORAGE = {
   THEME:  'ravaq.prompts.theme',
   FAVS:   'ravaq.prompts.favs',
   FILTER: 'ravaq.prompts.filter',
+  TAGS:   'ravaq.prompts.tags',
 };
 const DATA_URL = '/prompts/data/prompts.json';
 
@@ -88,6 +89,7 @@ const state = {
   query: '',
   favsOnly: false,
   favs: new Set(JSON.parse(localStorage.getItem(STORAGE.FAVS) || '[]')),
+  selectedTags: new Set(JSON.parse(localStorage.getItem(STORAGE.TAGS) || '[]')),
 };
 
 /* ---------- Theme ---------- */
@@ -156,7 +158,17 @@ function matchesQuery(p, q) {
   const group = GROUP_MAP[p.group];
   if (p.title.toLowerCase().includes(lq)) return true;
   if ((p.text || '').toLowerCase().includes(lq)) return true;
+  if ((p.note || '').toLowerCase().includes(lq)) return true;
   if (group && group.name.toLowerCase().includes(lq)) return true;
+  return false;
+}
+
+function matchesTags(p) {
+  if (state.selectedTags.size === 0) return true;
+  const pTags = new Set((p.tags || []).map(t => t.toLowerCase()));
+  for (let tag of state.selectedTags) {
+    if (pTags.has(tag.toLowerCase())) return true;
+  }
   return false;
 }
 
@@ -164,6 +176,7 @@ function visiblePrompts() {
   return state.prompts.filter(p => {
     if (state.favsOnly && !isFav(p.id)) return false;
     if (state.filter && p.group !== state.filter) return false;
+    if (!matchesTags(p)) return false;
     if (!matchesQuery(p, state.query)) return false;
     return true;
   });
@@ -173,14 +186,33 @@ function visiblePrompts() {
 const ICONS = {
   copy: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   share:'<svg viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>',
+  download:'<svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
   heart:'<svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
   check:'<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
   empty:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/></svg>',
 };
 
+function downloadPromptFile(p) {
+  const content = p.text;
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${p.title.replace(/\s+/g, '-')}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  haptic.success();
+  showToast(`فایلِ #${p.title} دانلود شد`);
+}
+
 function renderCard(p) {
   const fav = isFav(p.id);
   const group = GROUP_MAP[p.group] || { emoji: '🔖', name: '' };
+  const tags = (p.tags || []).map(t => `<span class="pr-tag">${escapeHtml(t)}</span>`).join('');
+  const hasNote = !!p.note && p.note.trim().length > 0;
+  
   return `
     <article class="pr" data-id="${p.id}">
       <header class="pr-head">
@@ -192,12 +224,15 @@ function renderCard(p) {
           ${ICONS.heart}
         </button>
       </header>
+      ${tags ? `<div class="pr-tags">${tags}</div>` : ''}
+      ${hasNote ? `<div class="pr-note" dir="auto">${escapeHtml(p.note)}</div>` : ''}
       <div class="pr-image-wrap">
         <img src="${p.image}" alt="${escapeHtml(p.title)}" loading="lazy">
       </div>
       <p class="pr-text" dir="auto">${escapeHtml(p.text)}</p>
       <div class="pr-actions">
         <button type="button" class="act act-primary" data-act="copy-prompt" data-id="${p.id}">${ICONS.copy}<span>کپی پرامپت</span></button>
+        <button type="button" class="act" data-act="download" data-id="${p.id}">${ICONS.download}<span>دانلود</span></button>
         <button type="button" class="act" data-act="share" data-id="${p.id}">${ICONS.share}<span>اشتراک</span></button>
       </div>
     </article>
@@ -221,7 +256,7 @@ function render() {
 
   if (!items.length) {
     const isFavView = state.favsOnly;
-    const isSearch = !!state.query || !!state.filter;
+    const isSearch = !!state.query || !!state.filter || state.selectedTags.size > 0;
     let msg, hint, showReset = false;
     if (isFavView && !isSearch) {
       msg = 'هنوز پرامپتی را نشان نکردی';
@@ -255,10 +290,13 @@ function resetAllFilters() {
   state.query = '';
   state.filter = '';
   state.favsOnly = false;
+  state.selectedTags.clear();
   const search = $('#search');
   if (search) search.value = '';
   localStorage.removeItem(STORAGE.FILTER);
+  localStorage.removeItem(STORAGE.TAGS);
   renderChips();
+  renderTagChips();
   updateFavCount();
   render();
 }
@@ -281,12 +319,37 @@ function observeCards() {
   cards.forEach(c => cardObserver.observe(c));
 }
 
-/* ---------- Chips ---------- */
+/* ---------- Chips (Group filters) ---------- */
 function renderChips() {
   const wrap = $('#chips');
   const all = [{ id: '', label: 'همه' }, ...GROUPS.map(g => ({ id: g.id, label: `${g.emoji} ${g.name}` }))];
   wrap.innerHTML = all.map(t => `
     <button type="button" class="chip ${state.filter === t.id ? 'active' : ''}" data-tag="${t.id}" role="tab" aria-selected="${state.filter === t.id}">${t.label}</button>
+  `).join('');
+}
+
+/* ---------- Tag Chips ---------- */
+function getAllTags() {
+  const tags = new Set();
+  state.prompts.forEach(p => {
+    (p.tags || []).forEach(t => tags.add(t));
+  });
+  return Array.from(tags).sort();
+}
+
+function renderTagChips() {
+  const wrap = $('#tagChips');
+  if (!wrap) return;
+  
+  const allTags = getAllTags();
+  if (allTags.length === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+  
+  wrap.style.display = 'flex';
+  wrap.innerHTML = allTags.map(t => `
+    <button type="button" class="chip tag-chip ${state.selectedTags.has(t) ? 'active' : ''}" data-tag="${t}" role="tab" aria-selected="${state.selectedTags.has(t)}">${escapeHtml(t)}</button>
   `).join('');
 }
 
@@ -343,7 +406,7 @@ function bindEvents() {
   });
 
   $('#chips').addEventListener('click', (e) => {
-    const chip = e.target.closest('.chip');
+    const chip = e.target.closest('.chip:not(.tag-chip)');
     if (!chip) return;
     const tag = chip.dataset.tag;
     state.filter = tag;
@@ -352,6 +415,24 @@ function bindEvents() {
     render();
     haptic.select();
   });
+
+  const tagChips = $('#tagChips');
+  if (tagChips) {
+    tagChips.addEventListener('click', (e) => {
+      const chip = e.target.closest('.tag-chip');
+      if (!chip) return;
+      const tag = chip.dataset.tag;
+      if (state.selectedTags.has(tag)) {
+        state.selectedTags.delete(tag);
+      } else {
+        state.selectedTags.add(tag);
+      }
+      localStorage.setItem(STORAGE.TAGS, JSON.stringify([...state.selectedTags]));
+      renderTagChips();
+      render();
+      haptic.select();
+    });
+  }
 
   $('#list').addEventListener('click', async (e) => {
     // Favorite
@@ -392,6 +473,8 @@ function bindEvents() {
       } else {
         showToast('کپی نشد — دستی امتحان کن');
       }
+    } else if (action === 'download') {
+      downloadPromptFile(p);
     } else if (action === 'share') {
       const text = `#${p.title} — رواق\n\n${p.text}`;
       if (navigator.share) {
@@ -439,6 +522,8 @@ async function loadPrompts() {
         group: p.group,
         title: String(p.title),
         text: String(p.text),
+        note: p.note ? String(p.note) : '',
+        tags: Array.isArray(p.tags) ? p.tags.map(t => String(t)) : [],
         image: `/prompts/${p.image}`,
       }));
 
@@ -450,6 +535,7 @@ async function loadPrompts() {
     $('#countPill').textContent = `${toPersian(state.prompts.length)} پرامپت`;
 
     renderChips();
+    renderTagChips();
     render();
   } catch (err) {
     console.error(err);
