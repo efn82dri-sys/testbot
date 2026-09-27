@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 import zipfile
 import hashlib
@@ -98,6 +99,7 @@ QUICK_REPLIES_FILE = Path(__file__).parent / "data" / "quick_replies.json"
 
 # ---------- Mini App مستقل: پالت‌های رنگی ----------
 PALETTE_DIR = Path(__file__).parent / "palette-app"
+PALETTES_DATA_FILE = PALETTE_DIR / "data" / "palettes.json"
 
 # ---------- دسترسیِ محدودِ پالت (کاملاً جدا از VIP) ----------
 # آیدیِ عددیِ کاربرانِ مجاز از دو منبع خونده می‌شه:
@@ -708,6 +710,20 @@ async def save_vip_categories(categories: list[dict]) -> None:
         VIP_CATEGORIES_FILE.parent.mkdir(exist_ok=True)
         VIP_CATEGORIES_FILE.write_text(json.dumps(categories, ensure_ascii=False, indent=2), encoding="utf-8")
 
+def load_palettes_data() -> list[dict]:
+    if not PALETTES_DATA_FILE.exists():
+        return []
+    try:
+        data = json.loads(PALETTES_DATA_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+async def save_palettes_data(palettes: list[dict]) -> None:
+    async with _write_lock:
+        PALETTES_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PALETTES_DATA_FILE.write_text(json.dumps(palettes, ensure_ascii=False, indent=2), encoding="utf-8")
+
 def get_vip_category(cat_id: str) -> dict | None:
     for cat in load_vip_categories():
         if cat["id"] == cat_id:
@@ -1168,6 +1184,7 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="⚙️ بکاپ و سیستم", callback_data="admin:cat_backup", style="primary"),
+                InlineKeyboardButton(text="🎨 پالت‌ها", callback_data="admin:cat_palette", style="primary"),
             ],
             [
                 InlineKeyboardButton(text="❌ بستن", callback_data="admin:close", style="danger"),
@@ -1279,6 +1296,31 @@ def admin_messaging_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")],
         ]
     )
+
+def render_palette_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
+    palettes = load_palettes_data()
+    if palettes:
+        text = (
+            "🎨 <b>مدیریتِ پالت‌هایِ رنگی</b>\n\n"
+            f"تعداد فعلی: {to_persian_num(len(palettes))} پالت — همینی‌ست که توی مینی‌اپ نشون داده می‌شه.\n\n"
+            "با «➕ افزودن» یه پالتِ تازه اضافه کن، یا با لمسِ 🗑 جلویِ هرکدوم اون رو حذف کن."
+        )
+    else:
+        text = (
+            "🎨 <b>مدیریتِ پالت‌هایِ رنگی</b>\n\n"
+            "هنوز هیچ پالتی اضافه نشده.\n"
+            "با «➕ افزودن» اولین پالت رو بساز."
+        )
+    rows = []
+    for p in palettes:
+        rows.append([InlineKeyboardButton(
+            text=f"🗑 {p.get('name', p.get('id', ''))}",
+            callback_data=f"paladmin:del:{p.get('id')}",
+            style="danger",
+        )])
+    rows.append([InlineKeyboardButton(text="➕ افزودنِ پالتِ تازه", callback_data="paladmin:add", style="success")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 def admin_users_keyboard() -> InlineKeyboardMarkup:
     # نکته: جست‌وجو/پروفایلِ کاربر عمداً اینجا تکرار نشده — همان دکمه‌ی «🔍 جست‌وجویِ سریعِ کاربر»
@@ -3009,6 +3051,12 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
         )
         return
 
+    if action == "cat_palette":
+        await callback.answer()
+        text, keyboard = render_palette_admin_menu()
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        return
+
     if action == "cat_users":
         await callback.answer()
         await callback.message.edit_text(
@@ -3744,6 +3792,149 @@ async def cb_quickreply_send(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+
+# ==============================================================
+#  مدیریتِ پالت‌هایِ رنگیِ مینی‌اپ (افزودن/حذف بدون نیاز به کدنویسی)
+# ==============================================================
+
+class PaletteManageStates(StatesGroup):
+    waiting_name = State()
+    waiting_desc = State()
+    waiting_tags = State()
+    waiting_colors = State()
+
+@dp.callback_query(F.data == "paladmin:add")
+async def cb_palette_add(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(PaletteManageStates.waiting_name)
+    await callback.message.edit_text(
+        "🎨 <b>افزودنِ پالتِ تازه</b>\n\n"
+        "اسمِ پالت رو بفرست (مثلاً «آبی دریایی آرامش‌بخش»):\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("paladmin:del:"))
+async def cb_palette_delete(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    pal_id = callback.data.split(":", 2)[2]
+    palettes = load_palettes_data()
+    remaining = [p for p in palettes if p.get("id") != pal_id]
+    if len(remaining) == len(palettes):
+        await callback.answer("این پالت دیگر یافت نشد.", show_alert=True)
+        return
+    await save_palettes_data(remaining)
+    await callback.answer("🗑 حذف شد.")
+    text, keyboard = render_palette_admin_menu()
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+@dp.message(PaletteManageStates.waiting_name)
+async def palette_name_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    name = (message.text or "").strip()
+    if not name or name.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await state.update_data(name=name)
+    await state.set_state(PaletteManageStates.waiting_desc)
+    await message.answer(
+        f"✅ اسم: <b>{html_escape(name)}</b>\n\n"
+        "حالا یه توضیحِ کوتاه (یکی دو خط) برایِ این پالت بفرست:\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(PaletteManageStates.waiting_desc)
+async def palette_desc_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    desc = (message.text or "").strip()
+    if not desc or desc.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await state.update_data(desc=desc)
+    await state.set_state(PaletteManageStates.waiting_tags)
+    await message.answer(
+        "🏷 حالا برچسب‌ها رو با کاما جدا کن، مثلاً:\n"
+        "<code>نشیمن, مدرن, چوبی</code>\n\n"
+        "اگه نمی‌خوای برچسبی بذاری، فقط یک خط‌تیره (-) بفرست.\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(PaletteManageStates.waiting_tags)
+async def palette_tags_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    tags = [] if raw == "-" else [t.strip() for t in raw.split(",") if t.strip()]
+    await state.update_data(tags=tags)
+    await state.set_state(PaletteManageStates.waiting_colors)
+    await message.answer(
+        "🎨 حالا کدهایِ رنگ (هگز) رو بفرست، با کاما یا فاصله جدا کن (بینِ ۲ تا ۸ تا)، مثلاً:\n"
+        "<code>#2B2118, #5C4A3A, #A68A64, #D9C7A8, #F5EFE3</code>\n\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(PaletteManageStates.waiting_colors)
+async def palette_colors_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+
+    colors: list[str] = []
+    for part in re.split(r"[,\s]+", raw):
+        part = part.strip()
+        if not part:
+            continue
+        if not part.startswith("#"):
+            part = "#" + part
+        if re.fullmatch(r"#[0-9A-Fa-f]{6}", part):
+            colors.append(part.upper())
+
+    if len(colors) < 2:
+        await message.answer(
+            "❌ حداقل باید ۲ کدِ رنگِ معتبر (مثلِ <code>#A68A64</code>) بفرستی. دوباره امتحان کن:"
+        )
+        return
+    colors = colors[:8]
+
+    data = await state.get_data()
+    name = data.get("name", "")
+    desc = data.get("desc", "")
+    tags = data.get("tags", [])
+
+    palettes = load_palettes_data()
+    palettes.append({
+        "id": f"p-{str(uuid.uuid4())[:8]}",
+        "name": name,
+        "desc": desc,
+        "tags": tags,
+        "colors": colors,
+    })
+    await save_palettes_data(palettes)
+    await state.clear()
+
+    await message.answer(
+        f"✅ پالتِ «{html_escape(name)}» با {to_persian_num(len(colors))} رنگ اضافه شد.\n"
+        "همین الان توی مینی‌اپ در دسترسه — نیازی به ری‌استارتِ ربات نیست."
+    )
+    text, keyboard = render_palette_admin_menu()
+    await message.answer(text, reply_markup=keyboard)
 
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
