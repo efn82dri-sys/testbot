@@ -23,6 +23,7 @@ from urllib.parse import quote, parse_qsl
 
 import jdatetime
 import pytz
+from PIL import Image, ImageOps
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
@@ -118,6 +119,52 @@ PALETTE_START_PAYLOAD = (
     os.environ.get("PALETTE_START_PAYLOAD", "palette").strip().lower() or "palette"
 )
 PALETTE_ACCESS_FILE = Path(__file__).parent / "data" / "palette_access.json"
+
+# ---------- Mini App مستقل: پرامپت‌های معماری ----------
+# کاملاً مستقل از مینی‌اپِ پالت — پوشه، دیتا و پی‌لودِ خودش را دارد.
+# دسترسی دقیقاً مثلِ پالت: لینکِ مخفی، بدونِ محدودیتِ آیدی.
+#   https://t.me/<BOT_USERNAME>?start=<PROMPTS_START_PAYLOAD>
+PROMPTS_DIR = Path(__file__).parent / "prompts-app"
+PROMPTS_DATA_FILE = PROMPTS_DIR / "data" / "prompts.json"
+PROMPTS_IMAGES_DIR = PROMPTS_DIR / "data" / "images"
+PROMPTS_START_PAYLOAD = (
+    os.environ.get("PROMPTS_START_PAYLOAD", "prompts").strip().lower() or "prompts"
+)
+PROMPT_IMAGE_SIZE = (1280, 720)  # نسبتِ ثابتِ ۱۶:۹ برایِ همه‌یِ پیش‌نمایش‌ها
+
+# دسته‌بندی‌ها و عنوان‌هایِ (هشتگ‌هایِ) ثابتِ پرامپت‌ها — از طریقِ دکمه انتخاب می‌شوند، نه تایپِ آزاد
+PROMPT_GROUPS: list[dict] = [
+    {
+        "id": "docs",
+        "emoji": "📐",
+        "name": "مدارک و خطوط فنی",
+        "titles": ["پلان", "اسکچ", "سکشن", "ایزومتریک", "سایت"],
+    },
+    {
+        "id": "ideation",
+        "emoji": "📊",
+        "name": "آنالیز و ایده‌پردازی",
+        "titles": ["دیاگرام", "تحلیل", "مودبرد", "پالت"],
+    },
+    {
+        "id": "render",
+        "emoji": "📸",
+        "name": "رندر و فضاسازی",
+        "titles": ["داخلی", "خارجی", "دیتیل"],
+    },
+    {
+        "id": "output",
+        "emoji": "🎬",
+        "name": "ارائه و خروجی نهایی",
+        "titles": ["شیت_بندی", "انیمیشن", "ماکت", "کاراکتر"],
+    },
+]
+
+def get_prompt_group(gid: str) -> dict | None:
+    for g in PROMPT_GROUPS:
+        if g["id"] == gid:
+            return g
+    return None
 
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
@@ -724,6 +771,47 @@ async def save_palettes_data(palettes: list[dict]) -> None:
         PALETTES_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
         PALETTES_DATA_FILE.write_text(json.dumps(palettes, ensure_ascii=False, indent=2), encoding="utf-8")
 
+def load_prompts_data() -> list[dict]:
+    if not PROMPTS_DATA_FILE.exists():
+        return []
+    try:
+        data = json.loads(PROMPTS_DATA_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+async def save_prompts_data(prompts: list[dict]) -> None:
+    async with _write_lock:
+        PROMPTS_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PROMPTS_DATA_FILE.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def fit_image_16_9(raw_bytes: bytes) -> bytes:
+    """هر عکسی با هر ابعادی رو کراپِ مرکزی می‌کنه به نسبتِ ثابتِ ۱۶:۹ (بدونِ کش‌شدگی) و JPEG خروجی می‌ده."""
+    img = Image.open(BytesIO(raw_bytes))
+    img = ImageOps.exif_transpose(img)  # رعایتِ چرخشِ ذخیره‌شده در متادیتایِ عکس‌هایِ موبایل
+    img = img.convert("RGB")
+
+    target_w, target_h = PROMPT_IMAGE_SIZE
+    target_ratio = target_w / target_h
+    src_w, src_h = img.size
+    src_ratio = src_w / src_h
+
+    if src_ratio > target_ratio:
+        # عکس نسبت به هدف خیلی «پهن»‌تره → از چپ و راست کراپ می‌کنیم
+        new_w = max(1, round(src_h * target_ratio))
+        x0 = (src_w - new_w) // 2
+        img = img.crop((x0, 0, x0 + new_w, src_h))
+    else:
+        # عکس نسبت به هدف خیلی «بلندتر»ه → از بالا و پایین کراپ می‌کنیم
+        new_h = max(1, round(src_w / target_ratio))
+        y0 = (src_h - new_h) // 2
+        img = img.crop((0, y0, src_w, y0 + new_h))
+
+    img = img.resize((target_w, target_h), Image.LANCZOS)
+    out = BytesIO()
+    img.save(out, format="JPEG", quality=87, optimize=True)
+    return out.getvalue()
+
 def get_vip_category(cat_id: str) -> dict | None:
     for cat in load_vip_categories():
         if cat["id"] == cat_id:
@@ -1184,7 +1272,10 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="⚙️ بکاپ و سیستم", callback_data="admin:cat_backup", style="primary"),
+            ],
+            [
                 InlineKeyboardButton(text="🎨 پالت‌ها", callback_data="admin:cat_palette", style="primary"),
+                InlineKeyboardButton(text="📐 پرامپت‌ها", callback_data="admin:cat_prompts", style="primary"),
             ],
             [
                 InlineKeyboardButton(text="❌ بستن", callback_data="admin:close", style="danger"),
@@ -1319,6 +1410,33 @@ def render_palette_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
             style="danger",
         )])
     rows.append([InlineKeyboardButton(text="➕ افزودنِ پالتِ تازه", callback_data="paladmin:add", style="success")])
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+def render_prompts_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
+    prompts = load_prompts_data()
+    if prompts:
+        text = (
+            "📐 <b>مدیریتِ پرامپت‌هایِ معماری</b>\n\n"
+            f"تعداد فعلی: {to_persian_num(len(prompts))} پرامپت — همینی‌ست که توی مینی‌اپ نشون داده می‌شه.\n\n"
+            "با «➕ افزودن» یه پرامپتِ تازه اضافه کن، یا با لمسِ 🗑 جلویِ هرکدوم اون رو حذف کن."
+        )
+    else:
+        text = (
+            "📐 <b>مدیریتِ پرامپت‌هایِ معماری</b>\n\n"
+            "هنوز هیچ پرامپتی اضافه نشده.\n"
+            "با «➕ افزودن» اولین پرامپت رو بساز."
+        )
+    rows = []
+    for p in prompts:
+        group = get_prompt_group(p.get("group", "")) or {}
+        emoji = group.get("emoji", "🔖")
+        rows.append([InlineKeyboardButton(
+            text=f"🗑 {emoji} #{p.get('title', '')}",
+            callback_data=f"prmadmin:del:{p.get('id')}",
+            style="danger",
+        )])
+    rows.append([InlineKeyboardButton(text="➕ افزودنِ پرامپتِ تازه", callback_data="prmadmin:add", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -2315,6 +2433,24 @@ async def send_palette_glass_button(chat_id: int) -> None:
     except Exception as e:
         logger.warning("ارسالِ دکمه‌یِ پالت به %s ممکن نشد: %s", chat_id, e)
 
+async def send_prompts_glass_button(chat_id: int) -> None:
+    """دکمه‌ی شیشه‌ایِ وب‌اپِ پرامپت‌هایِ معماری رو برای کاربر می‌فرسته."""
+    text = (
+        "📐 <b>پرامپت‌هایِ معماری</b>\n\n"
+        "مجموعه‌ای از پرامپت‌هایِ آماده برایِ مدارک، آنالیز، رندر و ارائه.\n"
+        "روی هر پرامپت بزن تا کاملش کپی بشه."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="📐 باز کردنِ پرامپت‌ها",
+            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/prompts"),
+        )
+    ]])
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb)
+    except Exception as e:
+        logger.warning("ارسالِ دکمه‌یِ پرامپت به %s ممکن نشد: %s", chat_id, e)
+
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
@@ -2341,6 +2477,12 @@ async def handle_start(message: Message, command: CommandObject):
     # جایی به‌جز همین لینک (منو، دستورات، پنل ادمین) نشونش نمی‌دیم.
     if args.lower() == PALETTE_START_PAYLOAD:
         await send_palette_glass_button(message.chat.id)
+        return
+
+    # ---- لینکِ مستقیمِ پرامپت‌هایِ معماری (کاملاً مستقلِ پالت، همون الگو) ----
+    # https://t.me/<BOT_USERNAME>?start=<PROMPTS_START_PAYLOAD>
+    if args.lower() == PROMPTS_START_PAYLOAD:
+        await send_prompts_glass_button(message.chat.id)
         return
 
     if args.startswith("ref_"):
@@ -3054,6 +3196,12 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
     if action == "cat_palette":
         await callback.answer()
         text, keyboard = render_palette_admin_menu()
+        await callback.message.edit_text(text, reply_markup=keyboard)
+        return
+
+    if action == "cat_prompts":
+        await callback.answer()
+        text, keyboard = render_prompts_admin_menu()
         await callback.message.edit_text(text, reply_markup=keyboard)
         return
 
@@ -3935,6 +4083,187 @@ async def palette_colors_received(message: Message, state: FSMContext):
     )
     text, keyboard = render_palette_admin_menu()
     await message.answer(text, reply_markup=keyboard)
+
+# ==============================================================
+#  مدیریتِ پرامپت‌هایِ معماریِ مینی‌اپ (افزودن/حذف بدون نیاز به کدنویسی)
+# ==============================================================
+
+class PromptManageStates(StatesGroup):
+    choosing_group = State()
+    choosing_title = State()
+    waiting_text = State()
+    waiting_photo = State()
+
+def _prompt_group_keyboard() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"{g['emoji']} {g['name']}", callback_data=f"prmadmin:g:{g['id']}")]
+        for g in PROMPT_GROUPS
+    ]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def _prompt_title_keyboard(group: dict) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"🔹 #{t}", callback_data=f"prmadmin:t:{idx}")]
+        for idx, t in enumerate(group["titles"])
+    ]
+    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+@dp.callback_query(F.data == "prmadmin:add")
+async def cb_prompt_add(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(PromptManageStates.choosing_group)
+    await callback.message.edit_text(
+        "📐 <b>افزودنِ پرامپتِ تازه</b>\n\nاول گروه رو انتخاب کن:",
+        reply_markup=_prompt_group_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(PromptManageStates.choosing_group, F.data.startswith("prmadmin:g:"))
+async def cb_prompt_group_chosen(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    gid = callback.data.split(":", 2)[2]
+    group = get_prompt_group(gid)
+    if not group:
+        await callback.answer("گروه نامعتبر است.", show_alert=True)
+        return
+    await state.update_data(group=gid)
+    await state.set_state(PromptManageStates.choosing_title)
+    await callback.message.edit_text(
+        f"✅ گروه: <b>{group['emoji']} {group['name']}</b>\n\nحالا عنوان (هشتگ) رو انتخاب کن:",
+        reply_markup=_prompt_title_keyboard(group),
+    )
+    await callback.answer()
+
+@dp.callback_query(PromptManageStates.choosing_title, F.data.startswith("prmadmin:t:"))
+async def cb_prompt_title_chosen(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    data = await state.get_data()
+    group = get_prompt_group(data.get("group", ""))
+    if not group:
+        await callback.answer("خطا رخ داد، دوباره تلاش کن.", show_alert=True)
+        await state.clear()
+        return
+    try:
+        idx = int(callback.data.split(":", 2)[2])
+        title = group["titles"][idx]
+    except (ValueError, IndexError):
+        await callback.answer("عنوان نامعتبر است.", show_alert=True)
+        return
+    await state.update_data(title=title)
+    await state.set_state(PromptManageStates.waiting_text)
+    await callback.message.edit_text(
+        f"✅ عنوان: <b>#{title}</b>\n\n"
+        "حالا متنِ کاملِ پرامپت رو بفرست:\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.message(PromptManageStates.waiting_text)
+async def prompt_text_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    text = (message.text or "").strip()
+    if not text or text.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await state.update_data(text=text)
+    await state.set_state(PromptManageStates.waiting_photo)
+    await message.answer(
+        "🖼 حالا یک عکس برایِ پیش‌نمایش بفرست (هر ابعادی باشه مشکلی نیست، خودم به ۱۶:۹ تبدیلش می‌کنم):\n"
+        "(برای لغو، /cancel بفرستید)"
+    )
+
+@dp.message(PromptManageStates.waiting_photo, F.photo)
+async def prompt_photo_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    data = await state.get_data()
+    group_id = data.get("group", "")
+    title = data.get("title", "")
+    prompt_text = data.get("text", "")
+    group = get_prompt_group(group_id)
+    if not group or not title or not prompt_text:
+        await state.clear()
+        await message.answer("خطا رخ داد، از اول شروع کن.", reply_markup=admin_panel_keyboard())
+        return
+
+    try:
+        file_bytes_io = await bot.download(message.photo[-1].file_id)
+        raw_bytes = file_bytes_io.read()
+        fitted = fit_image_16_9(raw_bytes)
+    except Exception as e:
+        logger.error("پردازشِ عکسِ پرامپت ناموفق بود: %s", e, exc_info=True)
+        await message.answer("❌ پردازشِ عکس ناموفق بود. یه عکسِ دیگه امتحان کن یا /cancel بزن.")
+        return
+
+    prompt_id = f"pr-{str(uuid.uuid4())[:8]}"
+    PROMPTS_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    image_path = PROMPTS_IMAGES_DIR / f"{prompt_id}.jpg"
+    image_path.write_bytes(fitted)
+
+    prompts = load_prompts_data()
+    prompts.append({
+        "id": prompt_id,
+        "group": group_id,
+        "title": title,
+        "text": prompt_text,
+        "image": f"data/images/{prompt_id}.jpg",
+    })
+    await save_prompts_data(prompts)
+    await state.clear()
+
+    await message.answer(
+        f"✅ پرامپتِ «#{html_escape(title)}» به گروهِ «{group['emoji']} {group['name']}» اضافه شد.\n"
+        "همین الان توی مینی‌اپ در دسترسه — نیازی به ری‌استارتِ ربات نیست."
+    )
+    text, keyboard = render_prompts_admin_menu()
+    await message.answer(text, reply_markup=keyboard)
+
+@dp.message(PromptManageStates.waiting_photo)
+async def prompt_photo_missing(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await message.answer("❗️ لطفاً یک عکس بفرست (نه متن یا فایلِ دیگه).")
+
+@dp.callback_query(F.data.startswith("prmadmin:del:"))
+async def cb_prompt_delete(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    prompt_id = callback.data.split(":", 2)[2]
+    prompts = load_prompts_data()
+    target = next((p for p in prompts if p.get("id") == prompt_id), None)
+    if target is None:
+        await callback.answer("این پرامپت دیگر یافت نشد.", show_alert=True)
+        return
+    remaining = [p for p in prompts if p.get("id") != prompt_id]
+    await save_prompts_data(remaining)
+
+    image_rel = target.get("image", "")
+    if image_rel:
+        try:
+            (PROMPTS_DIR / image_rel).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    await callback.answer("🗑 حذف شد.")
+    text, keyboard = render_prompts_admin_menu()
+    await callback.message.edit_text(text, reply_markup=keyboard)
 
 @dp.message(F.chat.type == "private", StateFilter(None))
 async def handle_generic_member_message(message: Message):
@@ -7875,6 +8204,10 @@ async def handle_palette_page(request: web.Request) -> web.Response:
     html_path = PALETTE_DIR / "index.html"
     return web.Response(text=html_path.read_text(encoding="utf-8"), content_type="text/html")
 
+async def handle_prompts_page(request: web.Request) -> web.Response:
+    html_path = PROMPTS_DIR / "index.html"
+    return web.Response(text=html_path.read_text(encoding="utf-8"), content_type="text/html")
+
 async def handle_miniapp_data(request: web.Request) -> web.Response:
     admin_id = _miniapp_admin_id(request)
     if not admin_id:
@@ -7987,6 +8320,10 @@ async def on_startup(app: web.Application):
         "🔗 لینکِ مستقیمِ پالت: https://t.me/%s?start=%s  | تعداد کاربرانِ مجاز در env: %d",
         BOT_USERNAME, PALETTE_START_PAYLOAD, len(PALETTE_ACCESS_IDS),
     )
+    logger.info(
+        "🔗 لینکِ مستقیمِ پرامپت‌ها: https://t.me/%s?start=%s",
+        BOT_USERNAME, PROMPTS_START_PAYLOAD,
+    )
 
     # جداسازیِ اسکوپِ دستورات: /admin فقط برایِ چت‌هایِ خصوصیِ خودِ ادمین‌ها ثبت می‌شود،
     # نه برایِ همه‌ی کاربرها — تا کاربرِ عادی حتی سرنخی از وجودِ پنلِ ادمین در لیستِ
@@ -8042,6 +8379,8 @@ def create_app() -> web.Application:
     app.router.add_post("/miniapp/api/action", handle_miniapp_action)
     app.router.add_get("/palettes", handle_palette_page)
     app.router.add_static("/palettes/", path=PALETTE_DIR, name="palette_assets")
+    app.router.add_get("/prompts", handle_prompts_page)
+    app.router.add_static("/prompts/", path=PROMPTS_DIR, name="prompts_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
