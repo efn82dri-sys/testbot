@@ -1457,6 +1457,7 @@ def render_palette_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
             style="danger",
         )])
     rows.append([InlineKeyboardButton(text="➕ افزودنِ پالتِ تازه", callback_data="paladmin:add", style="success")])
+    rows.append([InlineKeyboardButton(text="📥 جایگزینیِ کاملِ لیست از فایلِ JSON", callback_data="paladmin:import", style="primary")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -3997,6 +3998,73 @@ class PaletteManageStates(StatesGroup):
     waiting_desc = State()
     waiting_tags = State()
     waiting_colors = State()
+    waiting_import_file = State()
+
+@dp.callback_query(F.data == "paladmin:import")
+async def cb_palette_import(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(PaletteManageStates.waiting_import_file)
+    await callback.message.edit_text(
+        "📥 <b>جایگزینیِ کاملِ لیستِ پالت‌ها</b>\n\n"
+        "فایلِ <code>palettes.json</code> رو به‌صورتِ داکیومنت (نه متن) بفرست.\n\n"
+        "⚠️ توجه: این کار کلِ لیستِ فعلیِ پالت‌ها رو با محتوایِ همین فایل جایگزین می‌کنه "
+        "(هرچی الان توی مینی‌اپه پاک و با این فایل عوض می‌شه).\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.message(PaletteManageStates.waiting_import_file, F.document)
+async def palette_import_file_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    doc = message.document
+    if not (doc.file_name or "").lower().endswith(".json"):
+        await message.answer("❌ فایل باید پسوندِ .json داشته باشه. دوباره امتحان کن یا /cancel بزن.")
+        return
+    try:
+        file_bytes_io = await bot.download(doc.file_id)
+        raw = file_bytes_io.read().decode("utf-8")
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        await message.answer(f"❌ فایل یک JSON معتبر نیست: {e}\nدوباره امتحان کن یا /cancel بزن.")
+        return
+    except Exception as e:
+        logger.error("دانلودِ فایلِ ایمپورتِ پالت ناموفق بود: %s", e, exc_info=True)
+        await message.answer("❌ دانلودِ فایل ناموفق بود. دوباره امتحان کن یا /cancel بزن.")
+        return
+
+    if not isinstance(parsed, list) or not all(
+        isinstance(p, dict) and p.get("id") and p.get("name") and isinstance(p.get("colors"), list)
+        for p in parsed
+    ):
+        await message.answer(
+            "❌ ساختارِ فایل درست نیست — باید یک لیست از پالت‌ها باشه که هرکدوم حداقل "
+            "id، name و colors داشته باشه. دوباره امتحان کن یا /cancel بزن."
+        )
+        return
+
+    await save_palettes_data(parsed)
+    await state.clear()
+    await message.answer(
+        f"✅ لیستِ پالت‌ها با {to_persian_num(len(parsed))} پالت از فایل جایگزین شد.\n"
+        "همین الان توی مینی‌اپ در دسترسه و بکاپِ تلگرام هم به‌صورتِ خودکار به‌روز شد."
+    )
+    text, keyboard = render_palette_admin_menu()
+    await message.answer(text, reply_markup=keyboard)
+
+@dp.message(PaletteManageStates.waiting_import_file)
+async def palette_import_file_missing(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await message.answer("❗️ لطفاً فایلِ JSON رو به‌صورتِ داکیومنت بفرست (نه متن یا عکس).")
 
 @dp.callback_query(F.data == "paladmin:add")
 async def cb_palette_add(callback: CallbackQuery, state: FSMContext):
