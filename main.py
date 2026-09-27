@@ -99,6 +99,24 @@ QUICK_REPLIES_FILE = Path(__file__).parent / "data" / "quick_replies.json"
 # ---------- Mini App مستقل: پالت‌های رنگی ----------
 PALETTE_DIR = Path(__file__).parent / "palette-app"
 
+# ---------- دسترسیِ محدودِ پالت (کاملاً جدا از VIP) ----------
+# آیدیِ عددیِ کاربرانِ مجاز از دو منبع خونده می‌شه:
+#   1) env var  PALETTE_ACCESS_IDS  (لیستِ کاما-جدا)         — برای بوت‌استرپ
+#   2) فایلِ    data/palette_access.json  (لیستِ JSONِ عددی) — برای افزودن/حذف در زمانِ اجرا
+#
+# لینکِ مستقیم به این شکل ساخته می‌شه (خودت دستی به کاربرِ خاص می‌دی):
+#   https://t.me/<BOT_USERNAME>?start=<PALETTE_START_PAYLOAD>
+#
+# این ماژول هیچ جای دیگه‌ای از ربات (منو، پنلِ ادمین، لیستِ دستورات) ظاهر نمی‌شه.
+PALETTE_ACCESS_IDS: set[int] = {
+    int(x) for x in os.environ.get("PALETTE_ACCESS_IDS", "").replace(" ", "").split(",")
+    if x.strip().lstrip("-").isdigit()
+}
+PALETTE_START_PAYLOAD = (
+    os.environ.get("PALETTE_START_PAYLOAD", "rz-pal-x7k9m2").strip().lower() or "rz-pal-x7k9m2"
+)
+PALETTE_ACCESS_FILE = Path(__file__).parent / "data" / "palette_access.json"
+
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
 CAFE_TOPIC_THREAD_ID = 95  # آیدی تاپیک «کافه معماری»
@@ -1867,7 +1885,7 @@ async def _set_user_gold(user_id: int, is_gold: bool = True) -> None:
 
 def _pinned_card_keyboard(user_id: int) -> InlineKeyboardMarkup:
     # tg://user?id=... مستقیم پیوی همان کاربر را باز می‌کند — نیازی به دانستنِ یوزرنیم نیست و
-    # با همان آیدیِ عددی که رویِ کارت هست کار می‌کند.
+    # با همان آیدیِ عددی که روی کارت هست کار می‌کند.
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="👤 نمایشِ پروفایل (بازکردنِ پیوی)", url=f"tg://user?id={user_id}"),
     ]])
@@ -2214,6 +2232,47 @@ async def handle_reply_kb_contact(message: Message, state: FSMContext):
         "(برای لغو، /cancel بفرستید)"
     )
 
+# ==============================================================
+#  پالت رنگی — دسترسیِ محدود (خارج از VIP، خارج از منوها)
+# ==============================================================
+
+def load_palette_access_ids() -> set[int]:
+    """آیدی‌های مجاز = env var + فایل (اگه وجود داشته باشه)."""
+    ids = set(PALETTE_ACCESS_IDS)
+    if PALETTE_ACCESS_FILE.exists():
+        try:
+            data = json.loads(PALETTE_ACCESS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                for x in data:
+                    try:
+                        ids.add(int(x))
+                    except (ValueError, TypeError):
+                        continue
+        except (json.JSONDecodeError, OSError):
+            pass
+    return ids
+
+def is_palette_authorized(user_id: int) -> bool:
+    return is_admin(user_id) or user_id in load_palette_access_ids()
+
+async def send_palette_glass_button(chat_id: int) -> None:
+    """دکمه‌ی شیشه‌ایِ وب‌اپِ پالت‌ها رو برای کاربر می‌فرسته."""
+    text = (
+        "🎨 <b>پالت‌هایِ رنگی</b>\n\n"
+        "یک مجموعه‌یِ اختصاصی از ترکیب‌های رنگ برای فضای داخلی.\n"
+        "روی هر رنگ بزن تا کدِ هگز کپی بشه؛ پالت‌ها رو هم می‌تونی ذخیره کنی."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🎨 باز کردنِ پالت‌ها",
+            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/palettes"),
+        )
+    ]])
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb)
+    except Exception as e:
+        logger.warning("ارسالِ دکمه‌یِ پالت به %s ممکن نشد: %s", chat_id, e)
+
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
@@ -2233,6 +2292,16 @@ async def handle_start(message: Message, command: CommandObject):
         await log_activity(user, "🆕 کاربر برای اولین بار ربات را استارت زد")
 
     args = (command.args or "").strip()
+
+    # ---- لینکِ مستقیمِ پالت (خارج از VIP و خارج از عضویتِ گروه) ----
+    # https://t.me/<BOT_USERNAME>?start=<PALETTE_START_PAYLOAD>
+    # اگه کاربر مجاز باشه → دکمه‌ی شیشه‌ای می‌ره براش. اگه نباشه، هیچ ردی نشون
+    # داده نمی‌شه و به مسیرِ عادیِ /start ادامه می‌ده (تا اصلاً معلوم نشه چی بوده).
+    if args.lower() == PALETTE_START_PAYLOAD:
+        if is_palette_authorized(user_id):
+            await send_palette_glass_button(message.chat.id)
+            return
+
     if args.startswith("ref_"):
         ref_id_str = args[len("ref_"):]
         if ref_id_str.isdigit():
@@ -2292,16 +2361,6 @@ async def handle_vip_command(message: Message):
         await message.answer("برای دسترسی به گروهِ VIP، ابتدا با /start عضوِ رواق شوید.")
         return
     await open_vip_panel(message.chat.id)
-
-@dp.message(Command("palette"))
-async def handle_palette_command(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="🎨 باز کردن پالت رنگ",
-            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/palettes"),
-        )
-    ]])
-    await message.answer("پالت‌های رنگی اختصاصی رواق را اینجا ببین 👇", reply_markup=kb)
 
 # ==============================================================
 #  درخواستِ عضویت و پذیرشِ قوانین
@@ -2721,7 +2780,7 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
     if became_member:
         # این آپدیت با هر نوع عضویتی صادر می‌شود — چه با تاییدِ درخواستِ عضویت از داخلِ ربات،
         # چه با تاییدِ دستیِ ادمین از داخلِ خودِ گروه، چه با افزودنِ مستقیم. پس همینجا از لیستِ
-        # «درخواست‌هایِ عضویتِ معلق» هم پاکش می‌کنیم تا آن باکس هیچ‌وقت با واقعیتِ گروه ناهماهنگ نشود.
+        # «درخواست‌هایِ عضویتِ معلق» هم پاکش می‌کنیم تا آن باکس هیچ‌وقت با واقعیتِ گروه ناهماهنگ نباشد.
         await _untrack_pending_join(user.id)
         await increment_stat("total_joined")
         await notify_new_member(user)
@@ -7732,6 +7791,12 @@ async def on_startup(app: web.Application):
     global BOT_USERNAME
     me = await bot.get_me()
     BOT_USERNAME = me.username
+
+    # لاگِ لینکِ مخفیِ پالت (فقط برای خودت — هیچ جایی به کاربر نشون داده نمی‌شه)
+    logger.info(
+        "🔗 لینکِ مستقیمِ پالت: https://t.me/%s?start=%s  | تعداد کاربرانِ مجاز در env: %d",
+        BOT_USERNAME, PALETTE_START_PAYLOAD, len(PALETTE_ACCESS_IDS),
+    )
 
     # جداسازیِ اسکوپِ دستورات: /admin فقط برایِ چت‌هایِ خصوصیِ خودِ ادمین‌ها ثبت می‌شود،
     # نه برایِ همه‌ی کاربرها — تا کاربرِ عادی حتی سرنخی از وجودِ پنلِ ادمین در لیستِ
