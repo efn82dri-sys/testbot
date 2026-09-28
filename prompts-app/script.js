@@ -74,7 +74,7 @@ function showToast(msg) {
 
 
 /* ---------- عنوان‌ها (هشتگ‌ها بدونِ #) ---------- */
-const TITLES = ['پلان','اسکچ','سکشن','ایزومتریک','سایت','دیاگرام','تحلیل','مودبرد','پالت','داخلی','خارجی','دیتیل','شیت_بندی','انیمیشن','ماکت','کاراکتر'];
+let TITLES = ['پلان','اسکچ','سکشن','ایزومتریک','سایت','دیاگرام','تحلیل','مودبرد','پالت','داخلی','خارجی','دیتیل','شیت_بندی','انیمیشن','ماکت','کاراکتر'];
 const label = t => String(t).replace(/_/g, ' ');
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LONG_LIMIT = 3900; // بلندتر از این در یک پیامِ تلگرام جا نمی‌شود
@@ -145,6 +145,9 @@ const ICONS = {
   file: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>',
   empty: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/></svg>',
   x: '<svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>',
+  chevL: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+  chevR: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
 };
 const numOf = p => toPersian(String(state.prompts.indexOf(p) + 1).padStart(2, '0'));
 
@@ -160,17 +163,147 @@ function renderIndex() {
     ? `<button type="button" class="chip active" id="clearTag">${esc(label(state.filter))}${ICONS.x}</button>` : '';
 }
 
+/* ---------- اسلایدرِ رسانه: کارت (۱۶:۹) و شیت (ابعادِ اصلی) ---------- */
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SWIPED_KEY = 'ravaq.prompts.swiped';
+try { if (localStorage.getItem(SWIPED_KEY)) document.documentElement.classList.add('swiped'); } catch (e) {}
+const mediaUrl = m => m.key ? `/prompts/m/${m.key}` : `/prompts/${m.src}`;
+const trackSign = t => (getComputedStyle(t).direction === 'rtl' ? -1 : 1);
+const trackIndex = t => Math.max(0, Math.round(Math.abs(t.scrollLeft) / (t.clientWidth || 1)));
+
+function slidesHtml(media, mode) {
+  return media.map(m => {
+    const ar = m.w && m.h ? `${m.w} / ${m.h}` : '16 / 9';
+    const lab = m.label ? `<span class="mv-pill mv-label">${esc(m.label)}</span>` : '';
+    let inner;
+    if (m.type === 'video') {
+      const poster = mode === 'card' ? m.poster : (m.poster_full || m.poster);
+      inner = `<video muted loop playsinline preload="none" ${mode === 'sheet' ? 'controls' : ''} ${poster ? `poster="/prompts/${esc(poster)}"` : ''} data-src="${esc(mediaUrl(m))}"></video>
+        <span class="mv-pill mv-vid">${ICONS.play}<span>ویدیو</span></span>`;
+    } else {
+      const src = mode === 'card' ? (m.thumb || mediaUrl(m)) : mediaUrl(m);
+      inner = `<img src="${esc(mode === 'card' && m.thumb ? '/prompts/' + m.thumb : src)}" alt="" decoding="async" draggable="false" ${mode === 'card' ? 'loading="lazy"' : ''}>`;
+    }
+    return `<div class="mv-slide" style="--ar:${ar}">${inner}${lab}</div>`;
+  }).join('');
+}
+
+function sliderHtml(p, mode) {
+  const media = p.media, n = media.length;
+  if (!n) return `<div class="mv mv-${mode}"><div class="mv-empty"><span>${esc(label(p.title))}</span></div></div>`;
+  const multi = n > 1;
+  return `<div class="mv mv-${mode}" data-n="${n}">
+    <div class="mv-track">${slidesHtml(media, mode)}</div>
+    ${multi ? `<span class="mv-pill mv-count" dir="ltr">${toPersian(1)} / ${toPersian(n)}</span>
+      <span class="mv-dots" aria-hidden="true">${media.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</span>
+      <span class="mv-pill mv-hint" aria-hidden="true"><span class="ch">${ICONS.chevL}${ICONS.chevL}</span><span>ورق بزن</span></span>` : ''}
+    ${multi && mode === 'sheet' ? `<button type="button" class="mv-nav mv-prev" data-gl="prev" aria-label="قبلی">${ICONS.chevR}</button><button type="button" class="mv-nav mv-next" data-gl="next" aria-label="بعدی">${ICONS.chevL}</button>` : ''}
+  </div>`;
+}
+
+function markSwiped() {
+  if (document.documentElement.classList.contains('swiped')) return;
+  document.documentElement.classList.add('swiped');
+  try { localStorage.setItem(SWIPED_KEY, '1'); } catch (e) {}
+}
+
+function goTo(t, i) {
+  const n = t.children.length;
+  i = Math.max(0, Math.min(n - 1, i));
+  t.scrollTo({ left: trackSign(t) * i * t.clientWidth, behavior: REDUCED ? 'auto' : 'smooth' });
+}
+
+/* ارتفاعِ اسلایدرِ شیت = ارتفاعِ اسلایدِ فعال (هر رسانه نسبتِ خودش را دارد) */
+function syncHeight(t, i) {
+  const s = t.children[i];
+  if (s) t.style.height = s.offsetHeight + 'px';
+}
+
+/* حرکتِ «تمایل به اسلاید»: اسلایدِ بعدی کمی سرک می‌کشد و با فنر برمی‌گردد */
+function nudge(t) {
+  if (REDUCED || t._nudged || t.children.length < 2 || Math.abs(t.scrollLeft) > 4) return;
+  t._nudged = true; t._nudge = true; t._cancel = false;
+  const sign = trackSign(t), max = t.clientWidth * 0.17, D1 = 520, D2 = 780, t0 = performance.now();
+  const easeOut = x => 1 - Math.pow(1 - x, 3);
+  t.classList.add('nudging');
+  const end = () => { t._nudge = false; t.classList.remove('nudging'); };
+  (function step(now) {
+    if (t._cancel) return end();
+    const k = now - t0;
+    let x;
+    if (k < D1) x = easeOut(k / D1) * max;
+    else if (k < D1 + D2) { const u = (k - D1) / D2; x = max * (1 - easeOut(u)) + Math.sin(u * Math.PI * 2) * max * 0.06 * (1 - u); }
+    else { t.scrollLeft = 0; return end(); }
+    t.scrollLeft = sign * Math.max(0, x);
+    requestAnimationFrame(step);
+  })(t0);
+}
+
+const vidObs = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(e => {
+  const v = e.target;
+  const allowed = !state.open || v.closest('#sd');
+  if (e.isIntersecting && e.intersectionRatio >= 0.6 && allowed) {
+    if (!v.getAttribute('src') && v.dataset.src) { v.src = v.dataset.src; v.preload = 'metadata'; }
+    const pr = v.play(); if (pr && pr.catch) pr.catch(() => {});
+  } else v.pause();
+}), { threshold: [0, 0.6] }) : null;
+
+const nudgeObs = 'IntersectionObserver' in window ? new IntersectionObserver(entries => entries.forEach(e => {
+  if (!e.isIntersecting) return;
+  nudgeObs.unobserve(e.target);
+  setTimeout(() => nudge(e.target), 380 + Math.random() * 320);
+}), { threshold: 0.8 }) : null;
+
+function wireSliders(root) {
+  $$('.mv-track', root).forEach(t => {
+    if (t._wired) return;
+    t._wired = true;
+    const mv = t.closest('.mv'), n = Number(mv.dataset.n) || 0;
+    $$('video', t).forEach(v => vidObs && vidObs.observe(v));
+    if (n < 2) return;
+    const isSheet = mv.classList.contains('mv-sheet');
+    const dots = $$('.mv-dots i', mv), counter = $('.mv-count', mv);
+    const prev = $('.mv-prev', mv), next = $('.mv-next', mv);
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const i = Math.min(n - 1, trackIndex(t));
+      dots.forEach((d, k) => d.classList.toggle('on', k === i));
+      if (counter) counter.textContent = `${toPersian(i + 1)} / ${toPersian(n)}`;
+      if (prev) prev.disabled = i === 0;
+      if (next) next.disabled = i === n - 1;
+      if (isSheet) syncHeight(t, i);
+    };
+    t.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+      if (!t._nudge && Math.abs(t.scrollLeft) > 10) markSwiped();
+    }, { passive: true });
+    t.addEventListener('touchstart', () => { t._cancel = true; }, { passive: true });
+    t.addEventListener('pointerdown', () => { t._cancel = true; });
+    t.addEventListener('wheel', () => { t._cancel = true; }, { passive: true });
+    update();
+    if (!isSheet && nudgeObs) nudgeObs.observe(t);
+  });
+}
+
+function resumeCardVideos() {
+  if (!vidObs) return;
+  $$('#list video').forEach(v => { vidObs.unobserve(v); vidObs.observe(v); });
+}
+
 function renderCard(p, i) {
   const fav = isFav(p.id);
   const snip = p.text.replace(/\s+/g, ' ').slice(0, 150);
   return `
   <article class="pr" data-id="${esc(p.id)}" data-idx="${i}" tabindex="0" role="button" aria-label="باز کردن پرامپت ${esc(label(p.title))}">
-    <div class="pr-thumb">${p.image ? `<img src="/prompts/${esc(p.image)}" alt="" loading="lazy" decoding="async">` : ''}</div>
-    <div class="pr-body">
-      <div class="pr-meta"><span class="pr-tag">${esc(label(p.title))}</span><span class="pr-no">${numOf(p)}</span>${p.note ? '<i class="pr-note-dot" title="توضیح دارد"></i>' : ''}</div>
-      <p class="pr-snip" dir="auto">${esc(snip)}</p>
+    ${sliderHtml(p, 'card')}
+    <div class="pr-row">
+      <div class="pr-body">
+        <div class="pr-meta"><span class="pr-tag">${esc(label(p.title))}</span><span class="pr-no">${numOf(p)}</span>${p.note ? '<i class="pr-note-dot" title="توضیح دارد"></i>' : ''}</div>
+        <p class="pr-snip" dir="auto">${esc(snip)}</p>
+      </div>
+      <button type="button" class="pal-fav ${fav ? 'is-fav' : ''}" data-fav="${esc(p.id)}" aria-label="علاقه‌مندی" aria-pressed="${fav}">${ICONS.heart}</button>
     </div>
-    <button type="button" class="pal-fav ${fav ? 'is-fav' : ''}" data-fav="${esc(p.id)}" aria-label="علاقه‌مندی" aria-pressed="${fav}">${ICONS.heart}</button>
   </article>`;
 }
 
@@ -188,6 +321,7 @@ function render() {
   }
   list.innerHTML = items.map(renderCard).join('');
   observeCards();
+  wireSliders(list);
 }
 
 function resetAll() {
@@ -215,10 +349,11 @@ function openSheet(id) {
   const p = state.prompts.find(x => x.id === id); if (!p) return;
   state.open = id;
   const long = p.text.length > LONG_LIMIT, fav = isFav(id);
+  $$('#list video').forEach(v => v.pause());
   $('#sdPanel').innerHTML = `
     <div class="sd-grab"></div>
     <div class="sd-scroll">
-      ${p.image ? `<img class="sd-img" src="/prompts/${esc(p.image)}" alt="">` : ''}
+      ${p.media.length ? sliderHtml(p, 'sheet') : ''}
       <div class="sd-head"><span class="pr-tag">${esc(label(p.title))}</span><span class="pr-no">${numOf(p)}</span><span class="sd-count">${toPersian(p.text.length.toLocaleString('en'))} کاراکتر</span></div>
       ${p.note ? `<div class="sd-note"><b>توضیح</b>${esc(p.note).replace(/\n/g, '<br>')}</div>` : ''}
       <pre class="sd-text" dir="auto">${esc(p.text)}</pre>
@@ -230,7 +365,16 @@ function openSheet(id) {
     </div>`;
   const sd = $('#sd'); sd.hidden = false; document.body.classList.add('locked');
   requestAnimationFrame(() => sd.classList.add('open'));
+  const track = $('#sdPanel .mv-track');
+  if (track) {
+    wireSliders($('#sdPanel'));
+    requestAnimationFrame(() => {
+      syncHeight(track, 0);
+      if (track.children.length > 1) setTimeout(() => { if (state.open === id) nudge(track); }, 800);
+    });
+  }
   if (tg?.BackButton) { try { tg.BackButton.show(); tg.BackButton.onClick(closeSheet); } catch (e) {} }
+  try { tg?.disableVerticalSwipes?.(); } catch (e) {}
   haptic.light();
 }
 function closeSheet() {
@@ -238,7 +382,8 @@ function closeSheet() {
   state.open = null;
   const sd = $('#sd'); sd.classList.remove('open'); document.body.classList.remove('locked');
   if (tg?.BackButton) { try { tg.BackButton.hide(); tg.BackButton.offClick(closeSheet); } catch (e) {} }
-  setTimeout(() => { if (!state.open) sd.hidden = true; }, 300);
+  try { tg?.enableVerticalSwipes?.(); } catch (e) {}
+  setTimeout(() => { if (!state.open) { sd.hidden = true; $('#sdPanel').innerHTML = ''; resumeCardVideos(); } }, 320);
 }
 
 async function sendFile(p) {
@@ -300,6 +445,13 @@ function bindEvents() {
 
   $('#sdScrim').addEventListener('click', closeSheet);
   $('#sdPanel').addEventListener('click', async e => {
+    const gl = e.target.closest('[data-gl]');
+    if (gl) {
+      const t = $('#sdPanel .mv-track'); if (!t) return;
+      t._cancel = true;
+      goTo(t, trackIndex(t) + (gl.dataset.gl === 'next' ? 1 : -1)); haptic.select();
+      return;
+    }
     const b = e.target.closest('[data-sd]'); if (!b) return;
     const p = state.prompts.find(x => x.id === state.open); if (!p) return;
     if (b.dataset.sd === 'copy') {
@@ -319,6 +471,14 @@ function bindEvents() {
 }
 
 /* ---------- Data ---------- */
+async function loadTitles() {
+  try {
+    const r = await fetch('/prompts/data/titles.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (Array.isArray(d) && d.length) TITLES = d.map(String);
+  } catch (e) { /* از لیستِ پیش‌فرض استفاده می‌شود */ }
+}
 async function loadPrompts() {
   const list = $('#list');
   list.innerHTML = '<div class="skel"></div><div class="skel"></div>';
@@ -327,9 +487,21 @@ async function loadPrompts() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error('bad');
+    await loadTitles();
+    const okPath = v => (typeof v === 'string' && /^data\/[\w\-./]+$/.test(v)) ? v : '';
+    const normMedia = p => {
+      const raw = Array.isArray(p.media) && p.media.length ? p.media : (p.image ? [{ type: 'image', src: p.image, thumb: p.image }] : []);
+      return raw.map(m => ({
+        type: m.type === 'video' ? 'video' : 'image',
+        key: /^[0-9a-f]{20}$/.test(m.key || '') ? m.key : '',
+        src: okPath(m.src), thumb: okPath(m.thumb) || okPath(m.src),
+        poster: okPath(m.poster), poster_full: okPath(m.poster_full) || okPath(m.poster),
+        w: Number(m.w) || 0, h: Number(m.h) || 0, label: String(m.label || '').slice(0, 24),
+      })).filter(m => m.key || m.src);
+    };
     state.prompts = data.map((p, i) => ({
       id: String(p.id || `p${i}`), title: String(p.title || ''), text: String(p.text || ''),
-      note: String(p.note || '').trim(), image: p.image || '',
+      note: String(p.note || '').trim(), media: normMedia(p),
     })).filter(p => p.text && p.title);
     if (state.filter && !state.prompts.some(p => p.title === state.filter)) { state.filter = ''; localStorage.removeItem(STORAGE.FILTER); }
     renderIndex();
@@ -345,5 +517,12 @@ async function loadPrompts() {
   }
 }
 
-function boot() { initTheme(); updateFavCount(); bindEvents(); loadPrompts(); }
+function boot() {
+  initTheme(); updateFavCount(); bindEvents(); loadPrompts();
+  let rz = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => $$('.mv-sheet .mv-track').forEach(t => syncHeight(t, trackIndex(t))), 120);
+  });
+}
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
