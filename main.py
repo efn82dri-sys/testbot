@@ -132,39 +132,13 @@ PROMPTS_START_PAYLOAD = (
 )
 PROMPT_IMAGE_SIZE = (1280, 720)  # نسبتِ ثابتِ ۱۶:۹ برایِ همه‌یِ پیش‌نمایش‌ها
 
-# دسته‌بندی‌ها و عنوان‌هایِ (هشتگ‌هایِ) ثابتِ پرامپت‌ها — از طریقِ دکمه انتخاب می‌شوند، نه تایپِ آزاد
-PROMPT_GROUPS: list[dict] = [
-    {
-        "id": "docs",
-        "emoji": "📐",
-        "name": "مدارک و خطوط فنی",
-        "titles": ["پلان", "اسکچ", "سکشن", "ایزومتریک", "سایت"],
-    },
-    {
-        "id": "ideation",
-        "emoji": "📊",
-        "name": "آنالیز و ایده‌پردازی",
-        "titles": ["دیاگرام", "تحلیل", "مودبرد", "پالت"],
-    },
-    {
-        "id": "render",
-        "emoji": "📸",
-        "name": "رندر و فضاسازی",
-        "titles": ["داخلی", "خارجی", "دیتیل"],
-    },
-    {
-        "id": "output",
-        "emoji": "🎬",
-        "name": "ارائه و خروجی نهایی",
-        "titles": ["شیت_بندی", "انیمیشن", "ماکت", "کاراکتر"],
-    },
+# عنوان‌هایِ (هشتگ‌هایِ) ثابتِ پرامپت‌ها — همان‌ها دسته‌بندیِ مینی‌اپ‌اند (بدونِ #، «_» در نمایش فاصله می‌شود)
+PROMPT_TITLES: list[str] = [
+    "پلان", "اسکچ", "سکشن", "ایزومتریک", "سایت", "دیاگرام", "تحلیل", "مودبرد",
+    "پالت", "داخلی", "خارجی", "دیتیل", "شیت_بندی", "انیمیشن", "ماکت", "کاراکتر",
 ]
-
-def get_prompt_group(gid: str) -> dict | None:
-    for g in PROMPT_GROUPS:
-        if g["id"] == gid:
-            return g
-    return None
+PROMPT_TEXT_FILE_MAX = 1_000_000  # حداکثرِ حجمِ فایلِ txt برایِ متنِ پرامپت (بایت)
+_prompt_send_last: dict[int, float] = {}  # ضدِ اسپمِ دکمه‌یِ «دریافتِ فایل»
 
 # ---------- دیتای آنبوردینگ ----------
 ONBOARDING_FILE = Path(__file__).parent / "data" / "onboarding.json"
@@ -1467,7 +1441,7 @@ def render_prompts_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
         text = (
             "📐 <b>مدیریتِ پرامپت‌هایِ معماری</b>\n\n"
             f"تعداد فعلی: {to_persian_num(len(prompts))} پرامپت — همینی‌ست که توی مینی‌اپ نشون داده می‌شه.\n\n"
-            "با «➕ افزودن» یه پرامپتِ تازه اضافه کن، یا با لمسِ 🗑 جلویِ هرکدوم اون رو حذف کن."
+            "با «➕ افزودن» یه پرامپتِ تازه اضافه کن، یا روی هرکدوم بزن تا متن/توضیحش رو عوض کنی یا حذفش کنی."
         )
     else:
         text = (
@@ -1477,12 +1451,11 @@ def render_prompts_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
         )
     rows = []
     for p in prompts:
-        group = get_prompt_group(p.get("group", "")) or {}
-        emoji = group.get("emoji", "🔖")
+        snippet = re.sub(r"\s+", " ", p.get("text", ""))[:22]
+        note_mark = " 📝" if p.get("note") else ""
         rows.append([InlineKeyboardButton(
-            text=f"🗑 {emoji} #{p.get('title', '')}",
-            callback_data=f"prmadmin:del:{p.get('id')}",
-            style="danger",
+            text=f"✏️ #{p.get('title', '')}{note_mark} — {snippet}",
+            callback_data=f"prmadmin:open:{p.get('id')}",
         )])
     rows.append([InlineKeyboardButton(text="➕ افزودنِ پرامپتِ تازه", callback_data="prmadmin:add", style="success")])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
@@ -4204,54 +4177,66 @@ async def palette_colors_received(message: Message, state: FSMContext):
 # ==============================================================
 
 class PromptManageStates(StatesGroup):
-    choosing_group = State()
     choosing_title = State()
     waiting_text = State()
+    waiting_note = State()
     waiting_photo = State()
+    editing_text = State()
+    editing_note = State()
 
-def _prompt_group_keyboard() -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"{g['emoji']} {g['name']}", callback_data=f"prmadmin:g:{g['id']}")]
-        for g in PROMPT_GROUPS
-    ]
+def _prompt_title_keyboard() -> InlineKeyboardMarkup:
+    rows, row = [], []
+    for idx, t in enumerate(PROMPT_TITLES):
+        row.append(InlineKeyboardButton(text=f"#{t}", callback_data=f"prmadmin:t:{idx}"))
+        if len(row) == 3:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def _prompt_title_keyboard(group: dict) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"🔹 #{t}", callback_data=f"prmadmin:t:{idx}")]
-        for idx, t in enumerate(group["titles"])
-    ]
-    rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def _prompt_skip_note_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="⏭ بدونِ توضیح", callback_data="prmadmin:skipnote", style="primary"),
+    ]])
+
+async def _extract_prompt_text(message: Message) -> tuple[str | None, str | None]:
+    """متنِ پرامپت رو از پیام یا فایلِ txt درمیاره. خروجی: (متن, پیامِ خطا)."""
+    doc = message.document
+    if doc is not None:
+        name = (doc.file_name or "").lower()
+        if not (name.endswith(".txt") or (doc.mime_type or "").startswith("text/")):
+            return None, "❗️ فقط فایلِ متنی (.txt) قبول می‌شه."
+        if doc.file_size and doc.file_size > PROMPT_TEXT_FILE_MAX:
+            return None, "❗️ فایل خیلی بزرگه (حداکثر ۱ مگابایت)."
+        try:
+            buf = await bot.download(doc.file_id)
+            raw = buf.read()
+        except Exception as e:
+            logger.error("دانلودِ فایلِ متنِ پرامپت ناموفق بود: %s", e, exc_info=True)
+            return None, "❌ خوندنِ فایل ناموفق بود. دوباره امتحان کن."
+        text = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n").strip()
+    else:
+        text = (message.text or "").strip()
+    if not text:
+        return None, "❗️ متنِ خالی قبول نیست."
+    return text, None
+
+_LONG_TEXT_HINT = (
+    "\n\n⚠️ این متن نزدیکِ محدودیتِ ۴۰۹۶ کاراکترِ تلگرامه؛ اگه پرامپتت بلندتر بوده، تلگرام اون رو "
+    "تیکه‌تیکه می‌کنه و فقط بخشی‌ش این‌جا رسیده. در این صورت متنِ کامل رو به‌صورتِ فایلِ .txt بفرست."
+)
 
 @dp.callback_query(F.data == "prmadmin:add")
 async def cb_prompt_add(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
-    await state.set_state(PromptManageStates.choosing_group)
-    await callback.message.edit_text(
-        "📐 <b>افزودنِ پرامپتِ تازه</b>\n\nاول گروه رو انتخاب کن:",
-        reply_markup=_prompt_group_keyboard(),
-    )
-    await callback.answer()
-
-@dp.callback_query(PromptManageStates.choosing_group, F.data.startswith("prmadmin:g:"))
-async def cb_prompt_group_chosen(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
-        return
-    gid = callback.data.split(":", 2)[2]
-    group = get_prompt_group(gid)
-    if not group:
-        await callback.answer("گروه نامعتبر است.", show_alert=True)
-        return
-    await state.update_data(group=gid)
+    await state.clear()
     await state.set_state(PromptManageStates.choosing_title)
     await callback.message.edit_text(
-        f"✅ گروه: <b>{group['emoji']} {group['name']}</b>\n\nحالا عنوان (هشتگ) رو انتخاب کن:",
-        reply_markup=_prompt_title_keyboard(group),
+        "📐 <b>افزودنِ پرامپتِ تازه</b>\n\nعنوان (هشتگ) رو انتخاب کن:",
+        reply_markup=_prompt_title_keyboard(),
     )
     await callback.answer()
 
@@ -4260,15 +4245,8 @@ async def cb_prompt_title_chosen(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
         return
-    data = await state.get_data()
-    group = get_prompt_group(data.get("group", ""))
-    if not group:
-        await callback.answer("خطا رخ داد، دوباره تلاش کن.", show_alert=True)
-        await state.clear()
-        return
     try:
-        idx = int(callback.data.split(":", 2)[2])
-        title = group["titles"][idx]
+        title = PROMPT_TITLES[int(callback.data.split(":", 2)[2])]
     except (ValueError, IndexError):
         await callback.answer("عنوان نامعتبر است.", show_alert=True)
         return
@@ -4277,6 +4255,8 @@ async def cb_prompt_title_chosen(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"✅ عنوان: <b>#{title}</b>\n\n"
         "حالا متنِ کاملِ پرامپت رو بفرست:\n"
+        "• پیامِ متنی، یا\n"
+        "• فایلِ <b>.txt</b> (برایِ پرامپت‌هایِ بلند — بهترین روش)\n\n"
         "(برای لغو، /cancel بفرستید)",
         reply_markup=admin_back_keyboard(),
     )
@@ -4286,36 +4266,70 @@ async def cb_prompt_title_chosen(callback: CallbackQuery, state: FSMContext):
 async def prompt_text_received(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    text = (message.text or "").strip()
-    if not text or text.startswith("/"):
+    if (message.text or "").strip().startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
+    text, err = await _extract_prompt_text(message)
+    if err:
+        await message.answer(err)
+        return
     await state.update_data(text=text)
-    await state.set_state(PromptManageStates.waiting_photo)
+    await state.set_state(PromptManageStates.waiting_note)
+    warn = _LONG_TEXT_HINT if message.document is None and len(text) >= 3900 else ""
     await message.answer(
+        f"✅ متن دریافت شد ({to_persian_num(len(text))} کاراکتر).{warn}\n\n"
+        "📝 اگه این پرامپت نیاز به <b>توضیح</b> داره (مثلاً چه عکسی باید ضمیمه بشه)، همین‌جا بنویس؛ "
+        "وگرنه «بدونِ توضیح» رو بزن.",
+        reply_markup=_prompt_skip_note_keyboard(),
+    )
+
+async def _ask_prompt_photo(target: Message, state: FSMContext):
+    await state.set_state(PromptManageStates.waiting_photo)
+    await target.answer(
         "🖼 حالا یک عکس برایِ پیش‌نمایش بفرست (هر ابعادی باشه مشکلی نیست، خودم به ۱۶:۹ تبدیلش می‌کنم):\n"
         "(برای لغو، /cancel بفرستید)"
     )
+
+@dp.callback_query(PromptManageStates.waiting_note, F.data == "prmadmin:skipnote")
+async def cb_prompt_skip_note(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.update_data(note="")
+    await callback.answer()
+    await _ask_prompt_photo(callback.message, state)
+
+@dp.message(PromptManageStates.waiting_note)
+async def prompt_note_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    note = (message.text or "").strip()
+    if note.startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    if not note:
+        await message.answer("❗️ توضیح رو به‌صورتِ متن بفرست، یا «بدونِ توضیح» رو بزن.", reply_markup=_prompt_skip_note_keyboard())
+        return
+    await state.update_data(note=note[:1500])
+    await _ask_prompt_photo(message, state)
 
 @dp.message(PromptManageStates.waiting_photo, F.photo)
 async def prompt_photo_received(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     data = await state.get_data()
-    group_id = data.get("group", "")
     title = data.get("title", "")
     prompt_text = data.get("text", "")
-    group = get_prompt_group(group_id)
-    if not group or not title or not prompt_text:
+    if title not in PROMPT_TITLES or not prompt_text:
         await state.clear()
         await message.answer("خطا رخ داد، از اول شروع کن.", reply_markup=admin_panel_keyboard())
         return
 
     try:
         file_bytes_io = await bot.download(message.photo[-1].file_id)
-        raw_bytes = file_bytes_io.read()
-        fitted = fit_image_16_9(raw_bytes)
+        fitted = fit_image_16_9(file_bytes_io.read())
     except Exception as e:
         logger.error("پردازشِ عکسِ پرامپت ناموفق بود: %s", e, exc_info=True)
         await message.answer("❌ پردازشِ عکس ناموفق بود. یه عکسِ دیگه امتحان کن یا /cancel بزن.")
@@ -4323,22 +4337,21 @@ async def prompt_photo_received(message: Message, state: FSMContext):
 
     prompt_id = f"pr-{str(uuid.uuid4())[:8]}"
     PROMPTS_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    image_path = PROMPTS_IMAGES_DIR / f"{prompt_id}.jpg"
-    image_path.write_bytes(fitted)
+    (PROMPTS_IMAGES_DIR / f"{prompt_id}.jpg").write_bytes(fitted)
 
     prompts = load_prompts_data()
     prompts.append({
         "id": prompt_id,
-        "group": group_id,
         "title": title,
         "text": prompt_text,
+        "note": data.get("note", ""),
         "image": f"data/images/{prompt_id}.jpg",
     })
     await save_prompts_data(prompts)
     await state.clear()
 
     await message.answer(
-        f"✅ پرامپتِ «#{html_escape(title)}» به گروهِ «{group['emoji']} {group['name']}» اضافه شد.\n"
+        f"✅ پرامپتِ «#{html_escape(title)}» اضافه شد.\n"
         "همین الان توی مینی‌اپ در دسترسه — نیازی به ری‌استارتِ ربات نیست."
     )
     text, keyboard = render_prompts_admin_menu()
@@ -4348,12 +4361,110 @@ async def prompt_photo_received(message: Message, state: FSMContext):
 async def prompt_photo_missing(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
+    if (message.text or "").strip().startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    await message.answer("❗️ لطفاً یک عکس بفرست (نه متن یا فایلِ دیگه).")
+
+# ---------- مشاهده / جایگزینیِ متن و توضیح / حذفِ یک پرامپت ----------
+def _prompt_manage_view(p: dict) -> tuple[str, InlineKeyboardMarkup]:
+    note = p.get("note", "")
+    text = (
+        f"📐 <b>#{html_escape(p.get('title', ''))}</b>\n"
+        f"طولِ متن: {to_persian_num(len(p.get('text', '')))} کاراکتر\n\n"
+        f"📝 توضیح: {html_escape(note) if note else '— ندارد —'}\n\n"
+        f"<blockquote expandable>{html_escape(p.get('text', '')[:700])}"
+        f"{'…' if len(p.get('text', '')) > 700 else ''}</blockquote>"
+    )
+    pid = p.get("id")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📄 جایگزینیِ متن (پیام یا فایلِ txt)", callback_data=f"prmadmin:retext:{pid}", style="primary")],
+        [InlineKeyboardButton(text="📝 ویرایش/افزودنِ توضیح", callback_data=f"prmadmin:renote:{pid}", style="primary")],
+        [InlineKeyboardButton(text="🗑 حذفِ پرامپت", callback_data=f"prmadmin:del:{pid}", style="danger")],
+        [InlineKeyboardButton(text="🔙 بازگشت به لیست", callback_data="admin:cat_prompts", style="primary")],
+    ])
+    return text, kb
+
+@dp.callback_query(F.data.startswith("prmadmin:open:"))
+async def cb_prompt_open(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.clear()
+    p = next((x for x in load_prompts_data() if x.get("id") == callback.data.split(":", 2)[2]), None)
+    if not p:
+        await callback.answer("این پرامپت دیگر یافت نشد.", show_alert=True)
+        return
+    text, kb = _prompt_manage_view(p)
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("prmadmin:retext:"))
+async def cb_prompt_retext(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(PromptManageStates.editing_text)
+    await state.update_data(edit_id=callback.data.split(":", 2)[2])
+    await callback.message.answer(
+        "📄 متنِ جدیدِ کامل رو بفرست (پیام یا فایلِ <b>.txt</b>) — جایگزینِ متنِ فعلی می‌شه.\n(برای لغو، /cancel)"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("prmadmin:renote:"))
+async def cb_prompt_renote(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    await state.set_state(PromptManageStates.editing_note)
+    await state.update_data(edit_id=callback.data.split(":", 2)[2])
+    await callback.message.answer(
+        "📝 توضیحِ جدید رو بفرست. برایِ پاک‌کردنِ توضیح فقط <code>-</code> بفرست.\n(برای لغو، /cancel)"
+    )
+    await callback.answer()
+
+async def _finish_prompt_edit(message: Message, state: FSMContext, field: str, value: str):
+    data = await state.get_data()
+    prompts = load_prompts_data()
+    target = next((x for x in prompts if x.get("id") == data.get("edit_id")), None)
+    await state.clear()
+    if target is None:
+        await message.answer("این پرامپت دیگر یافت نشد.", reply_markup=admin_panel_keyboard())
+        return
+    target[field] = value
+    await save_prompts_data(prompts)
+    await message.answer("✅ ذخیره شد — همین الان توی مینی‌اپ اعمال شده.")
+    text, kb = _prompt_manage_view(target)
+    await message.answer(text, reply_markup=kb)
+
+@dp.message(PromptManageStates.editing_text)
+async def prompt_edit_text_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    if (message.text or "").strip().startswith("/"):
+        await state.clear()
+        await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
+        return
+    text, err = await _extract_prompt_text(message)
+    if err:
+        await message.answer(err)
+        return
+    await _finish_prompt_edit(message, state, "text", text)
+
+@dp.message(PromptManageStates.editing_note)
+async def prompt_edit_note_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
     raw = (message.text or "").strip()
     if raw.startswith("/"):
         await state.clear()
         await message.answer("لغو شد.", reply_markup=admin_panel_keyboard())
         return
-    await message.answer("❗️ لطفاً یک عکس بفرست (نه متن یا فایلِ دیگه).")
+    if not raw:
+        await message.answer("❗️ توضیح رو به‌صورتِ متن بفرست (یا - برایِ پاک‌کردن).")
+        return
+    await _finish_prompt_edit(message, state, "note", "" if raw == "-" else raw[:1500])
 
 @dp.callback_query(F.data.startswith("prmadmin:del:"))
 async def cb_prompt_delete(callback: CallbackQuery):
@@ -8323,6 +8434,39 @@ async def handle_prompts_page(request: web.Request) -> web.Response:
     html_path = PROMPTS_DIR / "index.html"
     return web.Response(text=html_path.read_text(encoding="utf-8"), content_type="text/html")
 
+async def handle_prompt_send(request: web.Request) -> web.Response:
+    """متنِ کاملِ یک پرامپت رو به‌صورتِ فایلِ .txt توی چتِ خودِ کاربر می‌فرسته (بدونِ محدودیتِ ۴۰۹۶ کاراکتر)."""
+    parsed = _validate_webapp_init_data(request.headers.get("X-Telegram-Init-Data", ""))
+    if not parsed:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    try:
+        user_id = int(json.loads(parsed.get("user", "{}")).get("id"))
+        body = await request.json()
+        prompt_id = str(body.get("id", ""))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return web.json_response({"error": "bad_request"}, status=400)
+
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _prompt_send_last.get(user_id, 0) < 3:
+        return web.json_response({"error": "too_many"}, status=429)
+    _prompt_send_last[user_id] = now
+
+    p = next((x for x in load_prompts_data() if x.get("id") == prompt_id), None)
+    if not p or not p.get("text"):
+        return web.json_response({"error": "not_found"}, status=404)
+
+    title = str(p.get("title", "prompt"))
+    try:
+        await bot.send_document(
+            chat_id=user_id,
+            document=BufferedInputFile(("\ufeff" + p["text"]).encode("utf-8"), filename=f"{title}_{prompt_id}.txt"),
+            caption=f"📐 پرامپتِ <b>#{html_escape(title)}</b> — متنِ کامل داخلِ فایله.",
+        )
+    except Exception as e:
+        logger.warning("ارسالِ فایلِ پرامپت به %s ممکن نشد: %s", user_id, e)
+        return web.json_response({"error": "send_failed"}, status=502)
+    return web.json_response({"ok": True})
+
 async def handle_miniapp_data(request: web.Request) -> web.Response:
     admin_id = _miniapp_admin_id(request)
     if not admin_id:
@@ -8495,6 +8639,7 @@ def create_app() -> web.Application:
     app.router.add_get("/palettes", handle_palette_page)
     app.router.add_static("/palettes/", path=PALETTE_DIR, name="palette_assets")
     app.router.add_get("/prompts", handle_prompts_page)
+    app.router.add_post("/prompts/api/send", handle_prompt_send)
     app.router.add_static("/prompts/", path=PROMPTS_DIR, name="prompts_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
