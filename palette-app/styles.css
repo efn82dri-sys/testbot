@@ -1,5 +1,5 @@
 /* ============================================================
-   رواق — Mini App palettes
+   رواق — Mini App palettes / styles
    ============================================================ */
 
 :root {
@@ -9,7 +9,7 @@
   --dur-base: 260ms;
   --dur-slow: 480ms;
 
-  /* Dark (default) */
+  /* ---------- Dark (default) ---------- */
   --bg: #0C0E10;
   --bg-elev: #14171B;
   --bg-sunk: #08090B;
@@ -18,8 +18,8 @@
   --line: rgba(255,255,255,.09);
   --line-soft: rgba(255,255,255,.05);
   --ink: #F0EDE6;
-  --ink-dim: #9BA0A6;
-  --ink-faint: #5A5F66;
+  --ink-dim: #A4A9B0;
+  --ink-faint: #6B7079;
   --accent: #6FE3C4;
   --accent-deep: #2C9E82;
   --accent-ink: #06231C;
@@ -27,48 +27,53 @@
   --shadow-md: 0 14px 34px -18px rgba(0,0,0,.7);
   --shadow-lg: 0 30px 60px -30px rgba(0,0,0,.8);
   --danger: #FF6B6B;
+  color-scheme: dark;
 }
 
+/* ---------- Light (خودکار از سیستم) ---------- */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #F2EEE8;
+    --bg: #F4F1EC;
     --bg-elev: #FFFFFF;
-    --bg-sunk: #E9E4DC;
-    --glass: rgba(255,255,255,.72);
-    --glass-strong: rgba(255,255,255,.92);
-    --line: rgba(20,23,20,.09);
-    --line-soft: rgba(20,23,20,.05);
-    --ink: #1A1714;
-    --ink-dim: #6B6459;
-    --ink-faint: #9A9285;
-    --accent: #0F8F72;
-    --accent-deep: #0A6E58;
+    --bg-sunk: #E8E3DA;
+    --glass: rgba(255,255,255,.86);
+    --glass-strong: #FFFFFF;
+    --line: rgba(28,24,18,.13);
+    --line-soft: rgba(28,24,18,.07);
+    --ink: #17140F;
+    --ink-dim: #524A3E;
+    --ink-faint: #6E6659;
+    --accent: #0A7A60;
+    --accent-deep: #055C46;
     --accent-ink: #FFFFFF;
-    --shadow-sm: 0 4px 14px -8px rgba(60,45,25,.14);
-    --shadow-md: 0 18px 38px -22px rgba(60,45,25,.22);
-    --shadow-lg: 0 30px 60px -30px rgba(60,45,25,.28);
-    --danger: #D94A4A;
+    --shadow-sm: 0 2px 8px -4px rgba(60,45,25,.10);
+    --shadow-md: 0 12px 28px -18px rgba(60,45,25,.22);
+    --shadow-lg: 0 24px 48px -28px rgba(60,45,25,.28);
+    --danger: #C43D3D;
+    color-scheme: light;
   }
 }
 
+/* ---------- Light (دستی) ---------- */
 :root[data-theme="light"] {
-  --bg: #F2EEE8;
+  --bg: #F4F1EC;
   --bg-elev: #FFFFFF;
-  --bg-sunk: #E9E4DC;
-  --glass: rgba(255,255,255,.72);
-  --glass-strong: rgba(255,255,255,.92);
-  --line: rgba(20,23,20,.09);
-  --line-soft: rgba(20,23,20,.05);
-  --ink: #1A1714;
-  --ink-dim: #6B6459;
-  --ink-faint: #9A9285;
-  --accent: #0F8F72;
-  --accent-deep: #0A6E58;
+  --bg-sunk: #E8E3DA;
+  --glass: rgba(255,255,255,.86);
+  --glass-strong: #FFFFFF;
+  --line: rgba(28,24,18,.13);
+  --line-soft: rgba(28,24,18,.07);
+  --ink: #17140F;
+  --ink-dim: #524A3E;
+  --ink-faint: #6E6659;
+  --accent: #0A7A60;
+  --accent-deep: #055C46;
   --accent-ink: #FFFFFF;
-  --shadow-sm: 0 4px 14px -8px rgba(60,45,25,.14);
-  --shadow-md: 0 18px 38px -22px rgba(60,45,25,.22);
-  --shadow-lg: 0 30px 60px -30px rgba(60,45,25,.28);
-  --danger: #D94A4A;
+  --shadow-sm: 0 2px 8px -4px rgba(60,45,25,.10);
+  --shadow-md: 0 12px 28px -18px rgba(60,45,25,.22);
+  --shadow-lg: 0 24px 48px -28px rgba(60,45,25,.28);
+  --danger: #C43D3D;
+  color-scheme: light;
 }
 
 /* ---------- Reset ---------- */
@@ -115,10 +120,11 @@ button { cursor: pointer; border: none; background: none; }
   background-size: 3px 3px;
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .orb { opacity: .22; }
-  :root:not([data-theme="dark"]) .grain { opacity: .05; }
+  :root:not([data-theme="dark"]) .orb { opacity: .20; }
+  :root:not([data-theme="dark"]) .grain { opacity: .06; }
 }
-:root[data-theme="light"] .orb { opacity: .22; }
+:root[data-theme="light"] .orb { opacity: .20; }
+:root[data-theme="light"] .grain { opacity: .06; }
 
 @keyframes float {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
@@ -130,7 +136,7 @@ button { cursor: pointer; border: none; background: none; }
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(env(safe-area-inset-top, 0px) + 12px) 20px 12px;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   border-bottom: 1px solid var(--line-soft);
@@ -171,7 +177,11 @@ button { cursor: pointer; border: none; background: none; }
 .icon-btn:hover { color: var(--ink); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .icon-btn:active { transform: scale(.9); }
 .icon-btn svg { width: 18px; height: 18px; transition: transform var(--dur-base) var(--ease); }
-.icon-btn[aria-pressed="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, var(--glass)); }
+.icon-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--glass));
+}
 .icon-btn[aria-pressed="true"] svg { fill: var(--accent); }
 
 #themeBtn .ic-sun,
@@ -260,10 +270,17 @@ button { cursor: pointer; border: none; background: none; }
 .filters {
   position: sticky; top: 62px; z-index: 30;
   padding: 8px 0 14px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 70%, transparent) 70%, transparent 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 78%, transparent) 70%,
+    transparent 100%
+  );
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
+
+/* ---------- Search box (FIXED) ---------- */
 .search-wrap {
   position: relative;
   display: flex; align-items: center;
@@ -272,7 +289,11 @@ button { cursor: pointer; border: none; background: none; }
   border-radius: 14px;
   padding: 0 14px;
   height: 46px;
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  overflow: hidden;               /* ← گوشههای input رو با radius والد کراپ میکنه */
+  isolation: isolate;
+  transition: border-color var(--dur-fast) var(--ease),
+              box-shadow   var(--dur-fast) var(--ease),
+              background   var(--dur-fast) var(--ease);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -286,23 +307,53 @@ button { cursor: pointer; border: none; background: none; }
   transition: color var(--dur-fast) var(--ease);
 }
 .search-wrap:focus-within > svg { color: var(--accent); }
+
 #search {
   flex: 1; min-width: 0;
-  background: transparent; border: 0; outline: 0;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  border-radius: 0;
   padding: 0 10px;
   font-size: 14px;
+  line-height: 1;
   color: var(--ink);
+  -webkit-appearance: none;        /* ← حذف استایل پیشفرض iOS searchfield */
+  appearance: none;
+  box-shadow: none;                /* ← حذف سایهٔ داخلی Safari */
 }
 #search::placeholder { color: var(--ink-faint); }
-#search::-webkit-search-cancel-button { display: none; }
+#search::-webkit-search-decoration,
+#search::-webkit-search-cancel-button,
+#search::-webkit-search-results-button,
+#search::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+/* اتوفیلِ مرورگر نباید پسزمینهٔ آبی/زرد بندازه */
+#search:-webkit-autofill,
+#search:-webkit-autofill:hover,
+#search:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px transparent inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 .search-clear {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 28px; height: 28px;
+  border-radius: 50%;
   color: var(--ink-faint);
-  transition: transform var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease),
+              color     var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
 }
-.search-clear:hover { color: var(--ink); transform: scale(1.1); }
-.search-clear svg { width: 12px; height: 12px; }
+.search-clear:hover { color: var(--ink); background: var(--glass); }
+.search-clear:active { transform: scale(.9); }
+.search-clear svg { width: 13px; height: 13px; }
 
 .chips {
   display: flex; gap: 6px; margin-top: 10px;
@@ -342,9 +393,7 @@ button { cursor: pointer; border: none; background: none; }
   border-bottom: 1px solid var(--line-soft);
   opacity: 0; transform: translateY(22px);
 }
-.pal.in-view {
-  animation: rise var(--dur-slow) var(--ease) forwards;
-}
+.pal.in-view { animation: rise var(--dur-slow) var(--ease) forwards; }
 .pal:last-of-type { border-bottom: 0; }
 
 @keyframes rise {
@@ -384,7 +433,11 @@ button { cursor: pointer; border: none; background: none; }
 .pal-fav:hover { color: var(--danger); }
 .pal-fav:active { transform: scale(.85); }
 .pal-fav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; }
-.pal-fav.is-fav { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: color-mix(in srgb, var(--danger) 10%, var(--glass)); }
+.pal-fav.is-fav {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--glass));
+}
 .pal-fav.is-fav svg { fill: currentColor; animation: heartPop var(--dur-base) var(--ease-spring); }
 @keyframes heartPop {
   0%   { transform: scale(1); }
@@ -401,10 +454,7 @@ button { cursor: pointer; border: none; background: none; }
 }
 
 /* ---------- Swatches ---------- */
-.swatches {
-  display: flex; gap: 8px;
-  margin-bottom: 14px;
-}
+.swatches { display: flex; gap: 8px; margin-bottom: 14px; }
 .sw {
   position: relative;
   flex: 1 1 0;
@@ -417,7 +467,9 @@ button { cursor: pointer; border: none; background: none; }
   overflow: hidden;
   background: var(--sw-bg);
   color: var(--sw-ink);
-  transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), flex var(--dur-base) var(--ease);
+  transition: transform var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease),
+              flex var(--dur-base) var(--ease);
   box-shadow: var(--shadow-sm);
   will-change: transform;
   isolation: isolate;
@@ -459,9 +511,7 @@ button { cursor: pointer; border: none; background: none; }
 .sw.copied .sw-check { opacity: 1; transform: scale(1); }
 
 /* ---------- Actions ---------- */
-.pal-actions {
-  display: flex; gap: 6px; flex-wrap: wrap;
-}
+.pal-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .act {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 12px;
