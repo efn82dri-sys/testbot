@@ -1,6 +1,6 @@
 /* ============================================================
-   رواق — استودیو چیدمان (نسخه ۳)
-   بازنویسی کامل: موتور رندر چندلایه، تحلیل زنده، Timeline
+   رواق — استودیو چیدمان (نسخه ۳.۱ — اصلاح‌شده)
+   رفع باگ: window.state + تداخل IDهای SVG در چند SVG هم‌زمان
    ============================================================ */
 (() => {
   'use strict';
@@ -20,10 +20,20 @@
     success(){ try { tg?.HapticFeedback?.notificationOccurred('success'); } catch (e) {} },
   };
 
+  // دسترسی مطمئن به state سراسری — چون در script.js با const تعریف شده و روی window نمی‌نشیند
+  function getGlobalState() {
+    if (typeof window !== 'undefined' && window.state) return window.state;
+    try {
+      // eslint-disable-next-line no-undef
+      if (typeof state !== 'undefined') return state;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function hexToRgb(h) {
-    const s = h.replace('#', '');
+    const s = String(h).replace('#', '');
     return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
   }
   function rgbToHex(r, g, b) {
@@ -51,7 +61,6 @@
     return mx === 0 ? 0 : (mx - mn) / mx;
   }
 
-  // HSV برای محاسبه‌ی زاویه‌ی چرخه‌ی رنگ
   function toHSV(hex) {
     const [r, g, b] = hexToRgb(hex).map(v => v / 255);
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
@@ -66,7 +75,6 @@
     return { h, s, v: mx };
   }
 
-  // فاصله‌ی رنگ (Delta E ساده‌ی CIE76 روی LAB)
   function toLAB(hex) {
     const [r, g, b] = hexToRgb(hex).map(v => v / 255).map(c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
     let X = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
@@ -81,7 +89,6 @@
     return Math.sqrt((A.L - B.L) ** 2 + (A.a - B.a) ** 2 + (A.b - B.b) ** 2);
   }
 
-  // کنتراست WCAG
   function contrast(a, b) {
     const la = relLum(a), lb = relLum(b);
     const hi = Math.max(la, lb), lo = Math.min(la, lb);
@@ -112,12 +119,8 @@
   };
 
   /* ============================================================
-     ۳) کتابخانه‌ی صحنه‌ها
-     هر لایه: id، نام، نقش (۶۰/۳۰/۱۰)، متریال، مسیر(ها) و ناحیه‌های AO
-     viewBox = 0 0 800 500
+     ۳) اتاق پایه (پرسپکتیو یک‌نقطه‌ای) — viewBox = 0 0 800 500
      ============================================================ */
-
-  // اتاق سه‌بعدیِ پایه — با پرسپکتیو یک‌نقطه‌ای
   const ROOM = {
     ceiling: 'M0,0 L800,0 L700,60 L100,60 Z',
     wallL:   'M0,0 L100,60 L100,340 L0,400 Z',
@@ -126,6 +129,9 @@
     floor:   'M0,400 L100,340 L700,340 L800,400 L800,500 L0,500 Z',
   };
 
+  /* ============================================================
+     ۴) کتابخانه‌ی صحنه‌ها
+     ============================================================ */
   const SCENES = {
     living: {
       name: 'نشیمنِ مدرن',
@@ -135,24 +141,16 @@
         { id: 'wall_l',   name: 'دیوارِ کناری', role: 'L2', mat: 'wall',   parts: [ROOM.wallL] },
         { id: 'wall_r',   name: 'دیوارِ کناری', role: 'L2', mat: 'wall',   parts: [ROOM.wallR] },
         { id: 'wall_b',   name: 'دیوارِ اصلی',  role: 'L1', mat: 'wall',   parts: [ROOM.wallB] },
-        { id: 'floor',    name: 'کف پارکت',     role: 'M',  mat: 'wood',   parts: [ROOM.floor],
-          texture: 'wood-plank' },
-        { id: 'rug',      name: 'فرش',          role: 'L2', mat: 'rug',
-          parts: ['M180,420 L620,420 L660,470 L140,470 Z'] },
+        { id: 'floor',    name: 'کف پارکت',     role: 'M',  mat: 'wood',   parts: [ROOM.floor], texture: 'wood-plank' },
+        { id: 'rug',      name: 'فرش',          role: 'L2', mat: 'rug',    parts: ['M180,420 L620,420 L660,470 L140,470 Z'] },
         { id: 'sofa',     name: 'مبل',          role: 'D',  mat: 'fabric',
           parts: [
-            // پشت مبل
             'M200,270 Q200,255 215,255 L585,255 Q600,255 600,270 L600,320 L200,320 Z',
-            // نشیمن
             'M190,315 Q190,300 205,300 L595,300 Q610,300 610,315 L610,360 Q610,378 592,378 L208,378 Q190,378 190,360 Z',
-            // دسته‌ی چپ
             'M175,290 Q175,270 195,270 L205,270 L205,378 L175,378 Z',
-            // دسته‌ی راست
             'M625,290 Q625,270 605,270 L595,270 L595,378 L625,378 Z',
           ],
-          ao: [
-            'M200,320 L600,320 L600,335 L200,335 Z',
-          ],
+          ao: ['M200,320 L600,320 L600,335 L200,335 Z'],
         },
         { id: 'cushions', name: 'کوسن',         role: 'P',  mat: 'velvet',
           parts: [
@@ -178,7 +176,7 @@
           parts: ['M355,140 L445,140 L445,210 L355,210 Z'] },
         { id: 'plant',    name: 'گیاه',          role: 'P',  mat: 'plant',
           parts: [
-            'M650,360 L685,360 L680,395 L655,395 Z', // گلدان
+            'M650,360 L685,360 L680,395 L655,395 Z',
             'M665,360 Q655,335 645,325 Q665,340 667,355 Z',
             'M670,360 Q678,330 690,320 Q676,340 673,358 Z',
             'M668,360 Q670,335 668,320 Q665,338 665,355 Z',
@@ -192,22 +190,18 @@
         },
       ],
       aoShapes: [
-        // سایه‌ی محیطی گوشه‌ها
         { d: 'M100,60 L200,60 L200,340 L100,340 Z', opacity: 0.06, color: '#000' },
         { d: 'M600,60 L700,60 L700,340 L600,340 Z', opacity: 0.06, color: '#000' },
         { d: 'M100,60 L700,60 L700,140 L100,140 Z', opacity: 0.04, color: '#000' },
       ],
       shadows: [
-        // سایه‌ی زیر مبل
         { cx: 400, cy: 385, rx: 220, ry: 18, opacity: 0.30 },
         { cx: 400, cy: 448, rx: 170, ry: 10, opacity: 0.22 },
         { cx: 667, cy: 395, rx: 20, ry: 6, opacity: 0.25 },
       ],
       details: [
-        // لبه‌ی پنجره
         { d: 'M250,95 L550,95 L550,245 L250,245 Z', stroke: '#000', strokeOpacity: 0.15, fill: 'none', sw: 1.5 },
         { d: 'M400,95 L400,245 M250,170 L550,170', stroke: '#000', strokeOpacity: 0.12, fill: 'none', sw: 1 },
-        // خط زیر سقف
         { d: 'M100,60 L700,60', stroke: '#000', strokeOpacity: 0.10, fill: 'none', sw: 1 },
         { d: 'M100,340 L700,340', stroke: '#000', strokeOpacity: 0.12, fill: 'none', sw: 1 },
       ],
@@ -226,13 +220,9 @@
         { id: 'rug',     name: 'فرش',          role: 'L2', mat: 'rug',
           parts: ['M140,410 L660,410 L690,470 L110,470 Z'] },
         { id: 'bed',     name: 'تخت',          role: 'M',  mat: 'fabric',
-          parts: [
-            'M180,300 Q180,285 195,285 L605,285 Q620,285 620,300 L620,375 L180,375 Z',
-          ] },
+          parts: ['M180,300 Q180,285 195,285 L605,285 Q620,285 620,300 L620,375 L180,375 Z'] },
         { id: 'bedding', name: 'روتختی',       role: 'L1', mat: 'fabric',
-          parts: [
-            'M180,300 L620,300 L620,340 L180,340 Z',
-          ] },
+          parts: ['M180,300 L620,300 L620,340 L180,340 Z'] },
         { id: 'headboard', name: 'تاجِ تخت',  role: 'K',  mat: 'velvet',
           parts: [
             'M200,180 L600,180 L600,300 L200,300 Z',
@@ -384,9 +374,7 @@
             'M615,345 L625,345 L625,405 L615,405 Z',
           ] },
         { id: 'shelf',   name: 'کتابخانه',       role: 'K',  mat: 'wood',
-          parts: [
-            'M620,90 L760,90 L760,340 L620,340 Z',
-          ] },
+          parts: ['M620,90 L760,90 L760,340 L620,340 Z'] },
         { id: 'books',   name: 'کتاب‌ها',        role: 'P',  mat: 'fabric',
           parts: [
             'M635,130 L735,130 L735,175 L635,175 Z',
@@ -439,9 +427,7 @@
           parts: ['M0,0 L800,0 L800,110 L0,110 Z'] },
         { id: 'floor',   name: 'کف',             role: 'K',  mat: 'tile', parts: ['M0,340 L800,340 L800,500 L0,500 Z'], texture: 'tile' },
         { id: 'counter', name: 'کانترِ چوبی',    role: 'M',  mat: 'wood',
-          parts: [
-            'M80,265 L720,265 L720,340 L80,340 Z',
-          ] },
+          parts: ['M80,265 L720,265 L720,340 L80,340 Z'] },
         { id: 'top',     name: 'سنگِ روی کانتر', role: 'L2', mat: 'marble',
           parts: ['M70,255 L730,255 L730,268 L70,268 Z'] },
         { id: 'shelf',   name: 'قفسه‌یِ بالا',    role: 'D',  mat: 'woodDark',
@@ -513,7 +499,7 @@
   };
 
   /* ============================================================
-     ۴) سناریوهای نور (با فیلتر رنگیِ گرم/سرد)
+     ۵) سناریوهای نور
      ============================================================ */
   const LIGHTS = {
     dawn:  { name: 'صبح',   icon: 'sunrise', tint: 'rgba(255, 210, 160, 0.10)', shadowTint: 'rgba(120, 90, 70, 0.20)',  warmth: 'warm' },
@@ -523,55 +509,60 @@
   };
 
   /* ============================================================
-     ۵) موتور رندر
+     ۶) موتور رندر — با پیشوند یگانه برای همه‌ی IDهای SVG
      ============================================================ */
+  let _svgUid = 0;
+
   function buildSVG(scene, asg, palette, lightKey, opts = {}) {
+    // پیشوند یگانه برای جلوگیری از تداخل IDها وقتی چند SVG هم‌زمان در DOM هستند
+    // (Timeline، Before/After، پیش‌نمایش…) — این باگ باعث می‌شد همه‌ی مینیاتورها
+    // یک رنگ ثابت داشته باشند و url(#grad-...) اشتباه رزولوشن شود.
+    const uid = `u${++_svgUid}`;
+    const id = (name) => `${uid}-${name}`;
+
     const light = LIGHTS[lightKey] || LIGHTS.day;
     const defs = [];
 
-    // فیلترهای مشترک
+    // ---------- فیلترها و پترن‌ها ----------
     defs.push(`
-      <filter id="blur-lg" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="${id('blur-lg')}" x="-30%" y="-30%" width="160%" height="160%">
         <feGaussianBlur stdDeviation="9"/>
       </filter>
-      <filter id="blur-md" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="${id('blur-md')}" x="-30%" y="-30%" width="160%" height="160%">
         <feGaussianBlur stdDeviation="4"/>
       </filter>
-      <filter id="blur-sm" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="${id('blur-sm')}" x="-30%" y="-30%" width="160%" height="160%">
         <feGaussianBlur stdDeviation="1.8"/>
       </filter>
-      <filter id="grain" x="0" y="0" width="100%" height="100%">
-        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4"/>
-        <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.06 0"/>
-        <feComposite in2="SourceGraphic" operator="over"/>
-      </filter>
-      <pattern id="wood-plank" x="0" y="0" width="140" height="24" patternUnits="userSpaceOnUse" patternTransform="skewX(-18)">
+      <pattern id="${id('wood-plank')}" x="0" y="0" width="140" height="24"
+               patternUnits="userSpaceOnUse" patternTransform="skewX(-18)">
         <rect width="140" height="24" fill="none"/>
         <path d="M0,23 L140,23" stroke="rgba(0,0,0,0.15)" stroke-width="0.8"/>
         <path d="M0,6 L140,6 M0,12 L140,12 M0,18 L140,18" stroke="rgba(0,0,0,0.05)" stroke-width="0.4"/>
       </pattern>
-      <pattern id="tile" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+      <pattern id="${id('tile')}" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
         <path d="M0,0 L60,0 L60,60 L0,60 Z" fill="none" stroke="rgba(0,0,0,0.14)" stroke-width="0.7"/>
       </pattern>
     `);
 
-    // ساخت گرادیان هایلایت هر لایه
+    // ---------- لایه‌ها ----------
     const layersHtml = [];
-    const sortedLayers = scene.layers;
 
-    for (const layer of sortedLayers) {
-      if (!asg[layer.id] && asg[layer.id] !== 0) continue;
+    for (const layer of scene.layers) {
+      if (asg[layer.id] === undefined || asg[layer.id] === null) continue;
       const colorRaw = palette[asg[layer.id]];
       if (!colorRaw) continue;
       const mat = MATERIALS[layer.mat] || MATERIALS.wall;
-      // تنظیم گرمی/سردی رنگ
+
+      // تنظیم گرمی/سردی رنگ بر اساس متریال
       const color = mat.warm > 0
         ? mixHex(colorRaw, '#F2C08A', mat.warm * 0.5)
         : mat.warm < 0
           ? mixHex(colorRaw, '#A8C0E0', -mat.warm * 0.4)
           : colorRaw;
 
-      const gradId = `grad-${layer.id}`;
+      // گرادیان هر لایه (یگانه)
+      const gradId = id(`grad-${layer.id}`);
       const topC = lighten(color, mat.hl * 0.55);
       const botC = darken(color, mat.hl * 0.35 + 0.06);
       defs.push(`
@@ -584,37 +575,36 @@
 
       const paths = layer.parts.map(d => `<path d="${d}" fill="url(#${gradId})"/>`).join('');
 
-      // هاله‌ی نور بالا (براقِ متریال‌های صاف)
+      // هایلایت شیشه‌ای برای متریال‌های صاف
       const isFlat = mat.rough < 0.5;
-      const sheen = isFlat
-        ? `<g pointer-events="none" opacity="${mat.hl}">
-             ${layer.parts.map(d => `<path d="${d}" fill="url(#sheen-${layer.id})"/>`).join('')}
-           </g>`
-        : '';
+      const sheenId = id(`sheen-${layer.id}`);
       if (isFlat) {
         defs.push(`
-          <linearGradient id="sheen-${layer.id}" x1="0" y1="0" x2="0.6" y2="1">
+          <linearGradient id="${sheenId}" x1="0" y1="0" x2="0.6" y2="1">
             <stop offset="0" stop-color="#FFF" stop-opacity="0.55"/>
             <stop offset="0.35" stop-color="#FFF" stop-opacity="0"/>
             <stop offset="1" stop-color="#FFF" stop-opacity="0"/>
           </linearGradient>
         `);
       }
+      const sheen = isFlat
+        ? `<g pointer-events="none" opacity="${mat.hl}">${layer.parts.map(d => `<path d="${d}" fill="url(#${sheenId})"/>`).join('')}</g>`
+        : '';
 
-      // ناحیه‌ی AO داخلی لایه
+      // AO داخل لایه
       const ao = layer.ao
         ? layer.ao.map(d => `<path d="${d}" fill="#000" opacity="0.18" pointer-events="none"/>`).join('')
         : '';
 
       // بافت
-      const texFill = layer.texture ? `url(#${layer.texture})` : 'none';
+      const texId = layer.texture ? id(layer.texture) : null;
       const tex = layer.texture
-        ? `<g pointer-events="none" opacity="0.55">${layer.parts.map(d => `<path d="${d}" fill="${texFill}"/>`).join('')}</g>`
+        ? `<g pointer-events="none" opacity="0.55">${layer.parts.map(d => `<path d="${d}" fill="url(#${texId})"/>`).join('')}</g>`
         : '';
 
-      // درخشش چراغ‌ها (Glow)
+      // درخشش چراغ‌ها
       const glow = layer.isGlow
-        ? `<g pointer-events="none" filter="url(#blur-md)" opacity="0.75">${layer.parts.map(d => `<path d="${d}" fill="${color}"/>`).join('')}</g>`
+        ? `<g pointer-events="none" filter="url(#${id('blur-md')})" opacity="0.75">${layer.parts.map(d => `<path d="${d}" fill="${color}"/>`).join('')}</g>`
         : '';
 
       const sel = opts.selected === layer.id ? ' sel' : '';
@@ -630,62 +620,56 @@
       `);
     }
 
-    // AO سراسری
+    // ---------- AO سراسری ----------
     const aoGlobal = (scene.aoShapes || []).map(s =>
       `<path d="${s.d}" fill="${s.color}" opacity="${s.opacity}" pointer-events="none"/>`
     ).join('');
 
-    // سایه‌های نرم
+    // ---------- سایه‌های نرم ----------
     const shadows = (scene.shadows || []).map(s =>
-      `<ellipse cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}" fill="#000" opacity="${s.opacity}" filter="url(#blur-lg)" pointer-events="none"/>`
+      `<ellipse cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}" fill="#000" opacity="${s.opacity}" filter="url(#${id('blur-lg')})" pointer-events="none"/>`
     ).join('');
 
-    // جزئیات (خطوط لبه)
+    // ---------- جزئیات (خطوط لبه) ----------
     const details = (scene.details || []).map(d =>
       `<path d="${d.d}" fill="${d.fill || 'none'}" stroke="${d.stroke || 'none'}" stroke-opacity="${d.strokeOpacity ?? 1}" stroke-width="${d.sw || 1}" pointer-events="none"/>`
     ).join('');
 
-    // پوشِ نور
-    const tint = light.tint;
-
-    // وینیت
+    // ---------- وینیت ----------
     defs.push(`
-      <radialGradient id="vignette" cx="0.5" cy="0.45" r="0.9">
+      <radialGradient id="${id('vignette')}" cx="0.5" cy="0.45" r="0.9">
         <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
         <stop offset="1" stop-color="#000" stop-opacity="0.22"/>
       </radialGradient>
     `);
 
+    // رنگ پس‌زمینه‌ی SVG (برای پرکردن لبه‌ها)
+    const bgFill = palette[asg.wall_b ?? asg.wall ?? asg.ceiling ?? 0] || '#222';
+
     return `<svg viewBox="0 0 800 500" xmlns="${NS}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${scene.name}">
       <defs>${defs.join('')}</defs>
-      <rect width="800" height="500" fill="${palette[asg.wall_b ?? asg.wall ?? 0] || '#222'}"/>
+      <rect width="800" height="500" fill="${bgFill}"/>
       <g class="stage-layer">
         ${layersHtml.join('')}
       </g>
       ${aoGlobal}
       ${shadows}
       ${details}
-      <rect width="800" height="500" fill="${tint}" pointer-events="none"/>
-      <rect width="800" height="500" fill="url(#vignette)" pointer-events="none"/>
+      <rect width="800" height="500" fill="${light.tint}" pointer-events="none"/>
+      <rect width="800" height="500" fill="url(#${id('vignette')})" pointer-events="none"/>
     </svg>`;
   }
 
   /* ============================================================
-     ۶) تحلیل زنده
+     ۷) تحلیل زنده
      ============================================================ */
   function computeAnalysis(scene, asg, palette) {
-    // LRV هر لایه
-    const surfaces = [];
     let totalArea = 0;
-    // وزن تقریبی سطوح بر اساس نقش (۶۰/۳۰/۱۰ هدف)
     const WEIGHTS = { L1: 1.0, L2: 0.6, M: 0.7, D: 0.5, K: 0.3, P: 0.15 };
-    const roleMap = { L1: 60, L2: 30, M: 20, D: 30, K: 10, P: 10 };
-    const roleTarget = { L1: 60, L2: 30, M: 0, D: 0, K: 0, P: 10 };
 
-    // جمع وزن هر لایه بر اساس نقش
     const roleTotals = { L1: 0, L2: 0, M: 0, D: 0, K: 0, P: 0 };
-    const colorRoleSum = {}; // hex → وزن کل
-    const roleColor = {}; // L1 → hex
+    const colorRoleSum = {};
+    const roleColor = {};
 
     for (const layer of scene.layers) {
       if (!layer.role) continue;
@@ -698,8 +682,6 @@
       if (!roleColor[layer.role]) roleColor[layer.role] = color;
     }
 
-    // ۶۰/۳۰/۱۰ بر اساس نقش‌ها (نه بر اساس رنگ‌ها — چون رنگ می‌تواند تکرار شود)
-    // برای هر نقش، هدف را نگه می‌داریم و رنگ غالب آن را برجسته می‌کنیم
     const roles = ['L1', 'L2', 'D', 'K', 'P', 'M'];
     const roleInfo = roles.map(r => {
       const sum = roleTotals[r] || 0;
@@ -707,11 +689,12 @@
       return { role: r, pct, color: roleColor[r] || null, weight: sum };
     }).filter(r => r.pct > 0.5);
 
-    // امتیاز هارمونی: چرخه‌ی رنگ
+    // هارمونی رنگ بر اساس چرخه‌ی HSV
     const uniqueColors = Object.keys(colorRoleSum);
     const hues = uniqueColors.map(c => toHSV(c).h).filter(h => !isNaN(h));
     let harmonyType = 'تک‌رنگ';
     let harmonyScore = 65;
+
     if (hues.length >= 2) {
       const diffs = [];
       for (let i = 0; i < hues.length; i++) {
@@ -728,43 +711,41 @@
       else if (avgDiff < 150){ harmonyType = 'سه‌گانه (Triadic)';        harmonyScore = 82; }
       else                   { harmonyType = 'مکمل (Complementary)';     harmonyScore = 74; }
     }
-    // پاداشِ تنوع LRV
+
     const lrvs = uniqueColors.map(lrv);
     const lrvRange = Math.max(...lrvs) - Math.min(...lrvs);
     if (lrvRange > 40) harmonyScore += 6;
     if (lrvRange < 15) harmonyScore -= 10;
     harmonyScore = clamp(harmonyScore, 0, 100);
 
-    // رتبه‌ی تعادل ۶۰/۳۰/۱۰
-    const l1Pct = roleTotals.L1 / totalArea * 100 || 0;
-    const l2Pct = roleTotals.L2 / totalArea * 100 || 0;
+    const l1Pct = totalArea ? (roleTotals.L1 / totalArea) * 100 : 0;
+    const l2Pct = totalArea ? (roleTotals.L2 / totalArea) * 100 : 0;
     const dev = Math.abs(l1Pct - 60) + Math.abs(l2Pct - 30);
     const balanceScore = clamp(100 - dev, 0, 100);
 
-    // هشدارها
     const warnings = [];
     const wallLrv = roleColor.L1 ? lrv(roleColor.L1) : 50;
     if (wallLrv < 25) warnings.push({ level: 'warn', text: 'LRV دیوارِ اصلی کمتر از ۲۵٪ است — برای فضاهایِ کوچک ممکن است تیره به‌نظر بیاید.' });
     if (wallLrv > 88) warnings.push({ level: 'warn', text: 'LRV دیوارِ اصلی بالای ۸۸٪ است — ممکن است در نورِ شدید شسته به‌نظر بیاید.' });
+
     const contrastWallFloor = roleColor.L1 && roleColor.M
       ? contrast(roleColor.L1, roleColor.M) : null;
     if (contrastWallFloor && contrastWallFloor < 1.3) {
       warnings.push({ level: 'info', text: 'کنتراستِ دیوار و کف کم است — فضا یکدست‌تر می‌شود.' });
     }
 
-    // کنتراست WCAG جفت‌های مهم
     const wcagPairs = [];
     if (roleColor.L1 && roleColor.M) wcagPairs.push({ a: roleColor.L1, b: roleColor.M, label: 'دیوار / کف' });
     if (roleColor.L1 && roleColor.D) wcagPairs.push({ a: roleColor.L1, b: roleColor.D, label: 'دیوار / مبل' });
 
-    // رنگ‌های آماری
     const colorStats = uniqueColors.map(hex => {
       const l = lrv(hex);
       const isLight = l > 60;
       const use = isLight ? 'رنگِ پایه' : 'رنگِ تأکیدی';
       const refMap = roleInfo.find(r => r.color === hex);
       return {
-        hex, lrv: l, share: (colorRoleSum[hex] / totalArea * 100),
+        hex, lrv: l,
+        share: totalArea ? (colorRoleSum[hex] / totalArea * 100) : 0,
         role: refMap ? refMap.role : 'M',
         usage: use,
       };
@@ -777,13 +758,12 @@
   }
 
   /* ============================================================
-     ۷) بُر هوشمند بر اساس تئوری رنگ
+     ۸) بُر هوشمند بر اساس تئوری رنگ
      ============================================================ */
   function smartShuffle(scene, palette, locked = {}) {
     const roles = scene.layers.filter(l => l.role && !locked[l.id]);
     if (!roles.length) return null;
 
-    // انتخاب استراتژی: نزدیک، آنالوگ، مکمل، سه‌گانه، تک‌رنگ
     const strategies = ['mono', 'analogous', 'complementary', 'triadic'];
     const strat = strategies[Math.floor(Math.random() * strategies.length)];
 
@@ -804,7 +784,6 @@
     }
 
     if (strat === 'mono') {
-      // از پایه + روشن/تیره‌تر
       idxs.push(nearestIdx(pHSV.h), nearestIdx((pHSV.h + 15) % 360));
     } else if (strat === 'analogous') {
       idxs.push(nearestIdx((pHSV.h + 30) % 360), nearestIdx((pHSV.h - 30 + 360) % 360));
@@ -815,9 +794,8 @@
     }
     while (idxs.length < palette.length) idxs.push(nearestIdx(pHSV.h));
 
-    // تخصیص بر اساس نقش
     const ROLE_MAP = {
-      L1: [idxs[3] ?? idxs[0], idxs[4] ?? idxs[0]],          // روشن‌ترین
+      L1: [idxs[3] ?? idxs[0], idxs[4] ?? idxs[0]],
       L2: [idxs[2] ?? idxs[0]],
       M:  [idxs[1] ?? idxs[0]],
       D:  [idxs[1] ?? idxs[0], idxs[2] ?? idxs[0]],
@@ -836,26 +814,25 @@
   }
 
   /* ============================================================
-     ۸) وضعیت
+     ۹) وضعیت
      ============================================================ */
   const st = {
     palette: null,
     sceneId: 'living',
-    asgByScene: {},       // { sceneId: { layerId: idx } }
+    asgByScene: {},
     lock: new Set(),
-    history: [],          // [{sceneId, asg}]
+    history: [],
     future: [],
-    selected: null,       // layerId
+    selected: null,
     light: 'day',
     before: false,
     splitX: 50,
-    mood: 'auto',
   };
 
-  let root, stageEl, defs;
+  let root, stageEl;
 
   /* ============================================================
-     ۹) HTML Shell
+     ۱۰) HTML Shell
      ============================================================ */
   function buildShell() {
     const el = document.createElement('div');
@@ -863,7 +840,6 @@
     el.hidden = true;
     el.innerHTML = `
       <div class="stu-panel" role="dialog" aria-modal="true" aria-label="استودیو چیدمان">
-        <!-- هدر -->
         <header class="stu-head">
           <div class="stu-title">
             <div class="stu-dot" aria-hidden="true"></div>
@@ -885,15 +861,11 @@
           </div>
         </header>
 
-        <!-- شبکه اصلی -->
         <div class="stu-grid">
-          <!-- ستون ۱: کانواس + صحنه‌ها -->
           <section class="stu-canvas-col">
             <div class="stu-scenes" id="stuScenes" role="tablist" aria-label="انتخاب صحنه"></div>
 
-            <div class="stu-stage" id="stuStage" aria-live="polite">
-              <!-- SVG این‌جا رندر می‌شود -->
-            </div>
+            <div class="stu-stage" id="stuStage" aria-live="polite"></div>
 
             <div class="stu-lights" id="stuLights" role="tablist" aria-label="سناریوی نور"></div>
 
@@ -918,7 +890,6 @@
             </div>
           </section>
 
-          <!-- ستون ۲: پالت و لایه‌ها + تحلیل -->
           <aside class="stu-side">
             <div class="stu-side-block">
               <div class="stu-side-head">
@@ -946,7 +917,6 @@
           </aside>
         </div>
 
-        <!-- نوار مقایسه‌ی قبل/بعد (وقتی فعال است) -->
         <div class="stu-compare-bar" id="stuCompareBar" hidden>
           <span>قبل</span>
           <input type="range" min="0" max="100" value="50" id="stuSplit" aria-label="مقایسه">
@@ -959,7 +929,7 @@
   }
 
   /* ============================================================
-     ۱۰) CSS (تزریق یک‌بار)
+     ۱۱) CSS
      ============================================================ */
   function injectCSS() {
     if (document.getElementById('stu-v3-css')) return;
@@ -992,7 +962,6 @@
     .stu-side{padding:16px;border-inline-start:1px solid var(--line-soft);display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto;background:color-mix(in srgb,var(--bg-sunk) 40%,transparent)}
     @media(max-width:900px){.stu-side{border-inline-start:0;border-top:1px solid var(--line-soft);max-height:45dvh}}
 
-    /* --- تب‌های صحنه --- */
     .stu-scenes{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
     .stu-scenes::-webkit-scrollbar{display:none}
     .stu-scene{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;border:1px solid var(--line-soft);background:var(--glass);color:var(--ink-dim);font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s var(--ease);white-space:nowrap}
@@ -1000,7 +969,6 @@
     .stu-scene.on{background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 8px 22px -12px var(--accent)}
     .stu-scene svg{width:14px;height:14px}
 
-    /* --- صحنه --- */
     .stu-stage{position:relative;border-radius:16px;overflow:hidden;background:var(--bg-sunk);box-shadow:inset 0 0 0 1px var(--line-soft),0 18px 40px -22px rgba(0,0,0,.55);aspect-ratio:8/5}
     .stu-stage svg{width:100%;height:100%;display:block}
     .stu-stage .ly{cursor:pointer;transition:opacity .2s var(--ease)}
@@ -1008,14 +976,12 @@
     .stu-stage .ly.sel{stroke:#fff;stroke-width:1.6;paint-order:stroke;stroke-dasharray:5 4;animation:selPulse 1.6s ease-in-out infinite}
     @keyframes selPulse{50%{stroke-opacity:.5}}
 
-    /* --- نور --- */
     .stu-lights{display:flex;gap:6px;background:var(--glass);border:1px solid var(--line-soft);border-radius:12px;padding:4px;width:fit-content}
     .stu-light{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:0;background:transparent;color:var(--ink-dim);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s var(--ease)}
     .stu-light:hover{color:var(--ink)}
     .stu-light.on{background:var(--bg-elev);color:var(--ink);box-shadow:var(--shadow-sm)}
     .stu-light svg{width:14px;height:14px}
 
-    /* --- Timeline --- */
     .stu-timeline{margin-top:2px}
     .stu-tl-inner{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;min-height:46px;align-items:center}
     .stu-tl-inner::-webkit-scrollbar{display:none}
@@ -1025,7 +991,6 @@
     .stu-tl-item svg{width:100%;height:100%;display:block}
     .stu-tl-empty{font-size:11.5px;color:var(--ink-faint);padding:14px 0}
 
-    /* --- اکشن‌ها --- */
     .stu-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
     .stu-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:11px;border:1px solid var(--line);background:var(--glass);color:var(--ink-dim);font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s var(--ease);min-height:40px}
     .stu-btn:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
@@ -1035,20 +1000,17 @@
     .stu-btn-primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
     .stu-btn-primary:hover{background:var(--accent);color:var(--accent-ink);filter:brightness(1.05)}
 
-    /* --- ساید --- */
     .stu-side-block{display:flex;flex-direction:column;gap:8px}
     .stu-side-grow{flex:1;min-height:0}
     .stu-side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.4px}
     .stu-hint-sm{font-size:11px;font-weight:500;color:var(--ink-faint);text-transform:none;letter-spacing:0}
 
-    /* --- پالت --- */
     .stu-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
     .stu-sw{position:relative;aspect-ratio:1;border-radius:10px;border:2px solid var(--line-soft);background:var(--c);cursor:pointer;overflow:hidden;transition:all .15s var(--ease)}
     .stu-sw:hover{transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(0,0,0,.5)}
     .stu-sw.on{border-color:var(--ink);box-shadow:0 0 0 3px var(--accent)}
     .stu-sw .stu-sw-label{position:absolute;inset:auto 0 3px 0;text-align:center;font-size:9px;font-weight:800;color:var(--ink);mix-blend-mode:difference;letter-spacing:.3px;font-variant-numeric:tabular-nums}
 
-    /* --- لایه‌ها --- */
     .stu-layers{display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:260px;padding-inline-end:4px}
     .stu-layer{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid transparent;background:transparent;cursor:pointer;transition:all .12s var(--ease);font-size:12.5px}
     .stu-layer:hover{background:var(--glass)}
@@ -1061,7 +1023,6 @@
     .stu-layer button.locked{color:var(--accent-text)}
     .stu-layer button svg{width:13px;height:13px}
 
-    /* --- تحلیل --- */
     .stu-analysis{display:flex;flex-direction:column;gap:10px}
     .stu-an-row{display:flex;flex-direction:column;gap:5px}
     .stu-an-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-dim);font-weight:600}
@@ -1075,7 +1036,6 @@
     .stu-swatches{display:flex;gap:4px;flex-wrap:wrap}
     .stu-swatch-chip{width:22px;height:22px;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
 
-    /* --- Compare Bar --- */
     .stu-compare-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line-soft);background:var(--glass);font-size:12px;font-weight:600;color:var(--ink-dim)}
     .stu-compare-bar input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:var(--line);outline:none}
     .stu-compare-bar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 2px 8px -2px rgba(0,0,0,.4)}
@@ -1093,7 +1053,7 @@
   }
 
   /* ============================================================
-     ۱۱) رندر UI
+     ۱۲) آیکون‌ها
      ============================================================ */
   const ICONS = {
     sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -1113,10 +1073,18 @@
   };
   const SCENE_ICON = { living: 'home', bedroom: 'bed', kitchen: 'kitchen', bathroom: 'bath', office: 'office', cafe: 'cafe' };
 
+  function toPersianNum(n) {
+    return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  }
+
+  /* ============================================================
+     ۱۳) تخصیص پیش‌فرض نقش‌ها
+     ============================================================ */
   function ensureAssignment(sceneId) {
     const scene = SCENES[sceneId];
-    if (!scene) return null;
+    if (!scene || !st.palette) return null;
     if (st.asgByScene[sceneId]) return st.asgByScene[sceneId];
+
     const auto = {};
     const pool = st.palette.colors;
     for (const layer of scene.layers) {
@@ -1128,9 +1096,14 @@
     return auto;
   }
 
+  /* ============================================================
+     ۱۴) رندر UI
+     ============================================================ */
   function renderStage() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) return;
+
     stageEl.innerHTML = buildSVG(scene, asg, st.palette.colors, st.light, { selected: st.selected });
 
     // اتصال کلیک روی لایه‌ها
@@ -1145,11 +1118,6 @@
         updateSelHint();
       });
     });
-
-    // حالت قبل/بعد
-    if (st.before) {
-      stageEl.style.setProperty('--split', st.splitX + '%');
-    }
   }
 
   function renderScenes() {
@@ -1175,6 +1143,7 @@
   function renderPalette() {
     const wrap = $('#stuPalette', root);
     const asg = ensureAssignment(st.sceneId);
+    if (!asg) { wrap.innerHTML = ''; return; }
     const currentIdx = st.selected ? asg[st.selected] : -1;
     wrap.innerHTML = st.palette.colors.map((hex, i) => `
       <button type="button" class="stu-sw ${i === currentIdx ? 'on' : ''}" data-pick="${i}" style="--c:${hex}" aria-label="رنگ ${hex}">
@@ -1187,6 +1156,8 @@
     const wrap = $('#stuLayers', root);
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) return;
+
     wrap.innerHTML = scene.layers.filter(l => l.role).map(l => {
       const hex = st.palette.colors[asg[l.id]] || '#888';
       const locked = st.lock.has(l.id);
@@ -1201,6 +1172,7 @@
         </div>
       `;
     }).join('');
+
     $('#stuLayerCount', root).textContent = `${scene.layers.filter(l => l.role).length} لایه`;
   }
 
@@ -1208,18 +1180,16 @@
     const wrap = $('#stuAnalysis', root);
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) { wrap.innerHTML = ''; return; }
+
     const an = computeAnalysis(scene, asg, st.palette.colors);
 
     const l1 = an.roleInfo.find(r => r.role === 'L1')?.pct || 0;
     const l2 = an.roleInfo.find(r => r.role === 'L2')?.pct || 0;
     const accent = an.roleInfo.find(r => r.role === 'P')?.pct || 0;
 
-    const mainSwatch = an.colorStats[0];
-    const darkSwatch = an.colorStats[an.colorStats.length - 1];
-
     let html = '';
 
-    // ۶۰/۳۰/۱۰
     html += `
       <div class="stu-an-row">
         <div class="stu-an-label"><span>نسبتِ سطوح (هدف ۶۰/۳۰/۱۰)</span><span>${Math.round(l1 + l2 + accent)}٪</span></div>
@@ -1236,7 +1206,6 @@
       </div>
     `;
 
-    // امتیازها
     html += `
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <span class="stu-an-pill">هماهنگی <b>${toPersianNum(an.harmonyScore)}٪</b></span>
@@ -1245,14 +1214,12 @@
       </div>
     `;
 
-    // سواچ‌های اصلی
     html += `<div class="stu-swatches">`;
     for (const c of an.colorStats.slice(0, 6)) {
       html += `<div class="stu-swatch-chip" style="background:${c.hex}" title="${c.hex} — LRV ${c.lrv}"></div>`;
     }
     html += `</div>`;
 
-    // هشدارها
     if (an.warnings.length) {
       for (const w of an.warnings.slice(0, 3)) {
         const cls = w.level === 'warn' ? '' : 'info';
@@ -1272,6 +1239,7 @@
       inner.innerHTML = `<span class="stu-tl-empty">با اولین تغییر رنگ، تاریخچه اینجا ظاهر می‌شود.</span>`;
       return;
     }
+    // هر مینیاتور با پیشوند یگانه رندر می‌شود تا با SVG اصلی تداخل ID نداشته باشد
     inner.innerHTML = st.history.map((h, i) => {
       const scene = SCENES[h.sceneId];
       const mini = buildSVG(scene, h.asg, st.palette.colors, st.light);
@@ -1294,6 +1262,7 @@
   }
 
   function renderAll() {
+    if (!st.palette) return;
     renderScenes();
     renderStage();
     renderLights();
@@ -1302,26 +1271,24 @@
     renderAnalysis();
     renderTimeline();
     updateSelHint();
+
     const nameEl = $('#stuName', root);
     const metaEl = $('#stuMeta', root);
     if (nameEl) nameEl.textContent = st.palette.name;
     if (metaEl) metaEl.textContent = SCENES[st.sceneId].name + ' — ' + SCENES[st.sceneId].subtitle;
+
     const undoBtn = $('[data-a=undo]', root);
     const redoBtn = $('[data-a=redo]', root);
     if (undoBtn) undoBtn.disabled = !st.history.length;
     if (redoBtn) redoBtn.disabled = !st.future.length;
   }
 
-  function toPersianNum(n) {
-    return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
-  }
-
   /* ============================================================
-     ۱۲) عملیات
+     ۱۵) عملیات
      ============================================================ */
   function pushHistory() {
     const sceneId = st.sceneId;
-    const asg = JSON.parse(JSON.stringify(st.asgByScene[sceneId]));
+    const asg = JSON.parse(JSON.stringify(st.asgByScene[sceneId] || {}));
     st.history.push({ sceneId, asg });
     st.future = [];
     if (st.history.length > 12) st.history.shift();
@@ -1340,7 +1307,7 @@
 
   function setLayerColor(layerId, idx) {
     const asg = ensureAssignment(st.sceneId);
-    if (asg[layerId] === idx) return;
+    if (!asg || asg[layerId] === idx) return;
     const next = { ...asg, [layerId]: idx };
     commitAssignment(next);
     haptic.medium();
@@ -1356,14 +1323,18 @@
     const next = { ...asg, ...out.result };
     commitAssignment(next);
     haptic.success();
-    showStuToast(`بُر هوشمند اعمال شد — استراتژی: ${out.strategy === 'mono' ? 'تک‌رنگ' : out.strategy === 'analogous' ? 'آنالوگ' : out.strategy === 'complementary' ? 'مکمل' : 'سه‌گانه'}`);
+    const label = out.strategy === 'mono' ? 'تک‌رنگ'
+      : out.strategy === 'analogous' ? 'آنالوگ'
+      : out.strategy === 'complementary' ? 'مکمل'
+      : 'سه‌گانه';
+    showStuToast(`بُر هوشمند اعمال شد — استراتژی: ${label}`);
   }
 
   function doUndo() {
     if (!st.history.length) return;
     const current = {
       sceneId: st.sceneId,
-      asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId])),
+      asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {})),
     };
     st.future.push(current);
     const prev = st.history.pop();
@@ -1378,7 +1349,7 @@
     if (!st.future.length) return;
     const current = {
       sceneId: st.sceneId,
-      asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId])),
+      asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {})),
     };
     st.history.push(current);
     const next = st.future.pop();
@@ -1403,7 +1374,6 @@
     const target = st.history[idx];
     st.sceneId = target.sceneId;
     st.asgByScene[target.sceneId] = JSON.parse(JSON.stringify(target.asg));
-    // حذف مراحل بعد از این مرحله
     st.history = st.history.slice(0, idx);
     st.future = [];
     st.selected = null;
@@ -1416,7 +1386,6 @@
     const bar = $('#stuCompareBar', root);
     if (bar) bar.hidden = !st.before;
     if (st.before) {
-      // نیم‌شه‌یِ قبل: در سمت چپ، نسخه‌یِ خاکستری نمایش داده می‌شود
       applyBeforeAfterPreview();
     } else {
       renderStage();
@@ -1425,17 +1394,20 @@
   }
 
   function applyBeforeAfterPreview() {
-    // پیش‌نمایش «قبل»: همان صحنه اما با پالتِ خاکستریِ خنثی
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) return;
+
+    // پالت خاکستری: نسخه‌ی neutral برای نمایش «قبل»
     const greyPalette = st.palette.colors.map((_, i) => {
-      // ۵ طیف خاکستری از تیره به روشن
-      const v = Math.round(30 + (i / (st.palette.colors.length - 1)) * 170);
+      const v = Math.round(30 + (i / Math.max(1, st.palette.colors.length - 1)) * 170);
       return rgbToHex(v, v, v);
     });
-    // چپ تصویر: خاکستری، راست: رنگی — با کلیپ
+
+    // هر دو با پیشوند یگانه رندر می‌شوند → تداخل ID ندارند
     const afterSvg = buildSVG(scene, asg, st.palette.colors, st.light);
     const beforeSvg = buildSVG(scene, asg, greyPalette, st.light);
+
     stageEl.innerHTML = `
       <div style="position:relative;width:100%;height:100%">
         <div style="position:absolute;inset:0">${afterSvg}</div>
@@ -1448,7 +1420,8 @@
   async function doExport() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
-    // رندر نهایی در رزولوشن بالاتر
+    if (!scene || !asg) return;
+
     const svg = buildSVG(scene, asg, st.palette.colors, st.light);
     const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>${svg}`], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
@@ -1526,7 +1499,7 @@
   }
 
   /* ============================================================
-     ۱۳) مدیریت رویدادها
+     ۱۶) مدیریت رویدادها
      ============================================================ */
   function bindEvents() {
     root.addEventListener('click', (e) => {
@@ -1605,7 +1578,7 @@
       }
     });
 
-    // اسلایدر مقایسه
+    // اسلایدر مقایسه (رویداد input در سطح document چون اسلایدر داخل stage تزریق نمی‌شود)
     document.addEventListener('input', (e) => {
       if (e.target?.id === 'stuSplit') {
         st.splitX = +e.target.value;
@@ -1615,12 +1588,13 @@
 
     // کیبورد
     document.addEventListener('keydown', (e) => {
-      if (root.hidden) return;
+      if (!root || root.hidden) return;
       if (e.key === 'Escape') {
         if (st.selected) {
           st.selected = null;
           renderStage();
           renderLayers();
+          renderPalette();
           updateSelHint();
         } else {
           close();
@@ -1635,20 +1609,29 @@
   }
 
   /* ============================================================
-     ۱۴) باز/بسته
+     ۱۷) باز/بسته
      ============================================================ */
   function open(paletteId) {
-    const p = (window.state || {}).palettes?.find?.(x => x.id === paletteId);
+    // رفع باگ: در script.js، state با const تعریف شده و روی window نمی‌نشیند.
+    // قبلاً این‌جا فقط window.state چک می‌شد که همیشه undefined بود → پنل باز نمی‌شد.
+    const globalState = getGlobalState();
+    const palettes = globalState && Array.isArray(globalState.palettes) ? globalState.palettes : [];
+    const p = palettes.find(x => x.id === paletteId);
+
     if (!p) {
       showStuToast('پالت پیدا نشد');
+      // لاگ مفید برای دیباگ
+      try { console.warn('[ravaq-studio] palette not found:', paletteId, '| total palettes:', palettes.length); } catch (e) {}
       return;
     }
+
     if (!root) {
       root = buildShell();
       injectCSS();
       stageEl = $('#stuStage', root);
       bindEvents();
     }
+
     st.palette = p;
     st.sceneId = 'living';
     st.asgByScene = {};
@@ -1658,14 +1641,16 @@
     st.selected = null;
     st.light = 'day';
     st.before = false;
-    ensureAssignment(st.sceneId);
+    st.splitX = 50;
+
     // انتخاب صحنه‌ی مناسب بر اساس تگ‌های پالت
     const tags = (p.tags || []).join(' ');
     if (tags.includes('اتاق خواب')) st.sceneId = 'bedroom';
     else if (tags.includes('آشپزخانه')) st.sceneId = 'kitchen';
     else if (tags.includes('حمام')) st.sceneId = 'bathroom';
-    else if (tags.includes('اداری')) st.sceneId = 'office';
+    else if (tags.includes('اداری') || tags.includes('کتابخانه')) st.sceneId = 'office';
     else if (tags.includes('کافه')) st.sceneId = 'cafe';
+
     ensureAssignment(st.sceneId);
 
     root.hidden = false;
@@ -1678,11 +1663,15 @@
     if (!root) return;
     root.hidden = true;
     document.body.style.overflow = '';
+    // بستن مقایسه‌ی قبل/بعد
+    st.before = false;
+    const bar = $('#stuCompareBar', root);
+    if (bar) bar.hidden = true;
     haptic.light();
   }
 
   /* ============================================================
-     ۱۵) اتصال به کارت‌های پالت (سازگار با studio.js قبلی)
+     ۱۸) اتصال به کارت‌های پالت
      ============================================================ */
   function decorate() {
     $$('.pal').forEach(card => {
@@ -1699,7 +1688,14 @@
 
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-studio]');
-    if (b) open(b.dataset.studio);
+    if (!b) return;
+    // محافظت: اگر palettes هنوز بارگذاری نشده، به کاربر پیام می‌دهیم
+    const gs = getGlobalState();
+    if (!gs || !Array.isArray(gs.palettes) || gs.palettes.length === 0) {
+      showStuToast('هنوز پالت‌ها بارگذاری نشده‌اند — یک لحظه صبر کن');
+      return;
+    }
+    open(b.dataset.studio);
   });
 
   const list = document.getElementById('list');
@@ -1709,5 +1705,11 @@
   }
 
   // API عمومی برای دیباگ
-  window.__ravaqStudio = { open, close, SCENES, LIGHTS };
+  window.__ravaqStudio = {
+    open,
+    close,
+    get SCENES() { return SCENES; },
+    get LIGHTS() { return LIGHTS; },
+    get state() { return st; },
+  };
 })();
