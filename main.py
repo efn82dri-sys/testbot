@@ -160,6 +160,13 @@ MATERIALS_START_PAYLOAD = (
 _prompt_send_last: dict[int, float] = {}       # ضدِ اسپمِ دکمه‌یِ «دریافتِ فایل»
 _prompt_media_locks: dict[int, asyncio.Lock] = {}
 _prompt_media_dl_locks: dict[str, asyncio.Lock] = {}
+MATERIALS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_materials_media"
+MAT_IMAGES_MAX = 6                       # حداکثر عکس برای هر محصول
+MAT_TG_LIMIT = 20 * 1024 * 1024          # سقف دانلود فایل توسط ربات
+MAT_PENDING_TTL = 20 * 60                # مهلت انتظار برای عکس بعد از «افزودن عکس» (ثانیه)
+_mat_pending: dict[int, dict] = {}       # ادمین → مقصد آپلود بعدی
+_mat_lock = asyncio.Lock()
+_mat_dl_locks: dict[str, asyncio.Lock] = {}
 
 def load_prompt_titles() -> list[str]:
     try:
@@ -374,6 +381,8 @@ BASE_DIR = Path(__file__).parent
 # مینی‌اپ‌هایِ پرامپت و پالت (که قبلاً توی بکاپ نبودن و با هر دیپلویِ رندر
 # ریست می‌شدن، چون پوشه‌شون جدا از DATA_DIR بود).
 BACKUP_DIRS = [DATA_DIR, PROMPTS_DATA_FILE.parent, PALETTES_DATA_FILE.parent]
+if MATERIALS_LIVE_FILE.parent not in BACKUP_DIRS:   # دیتای زنده‌ی مصالح (شامل file_id عکس‌ها) هم بکاپ شود
+    BACKUP_DIRS.append(MATERIALS_LIVE_FILE.parent)
 
 BOT_USERNAME: str | None = None  # در on_startup مقداردهی می‌شود
 
@@ -2571,7 +2580,7 @@ async def send_prompts_glass_button(chat_id: int) -> None:
     except Exception as e:
         logger.warning("ارسالِ دکمه‌یِ پرامپت به %s ممکن نشد: %s", chat_id, e)
 
-async def send_materials_glass_button(chat_id: int) -> None:
+async def send_materials_glass_button(chat_id: int, pid: str = "") -> None:
     """دکمه‌ی شیشه‌ایِ وب‌اپِ مصالح و تجهیزات رو برای کاربر می‌فرسته."""
     text = (
         "🧱 <b>مصالح و تجهیزات</b>\n\n"
@@ -2580,8 +2589,8 @@ async def send_materials_glass_button(chat_id: int) -> None:
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text="🧱 باز کردنِ مصالح و تجهیزات",
-            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/materials"),
+            text="🧱 باز کردنِ این محصول" if pid else "🧱 باز کردنِ مصالح و تجهیزات",
+            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/materials" + (f"?p={quote(pid)}" if pid else "")),
         )
     ]])
     try:
@@ -2627,6 +2636,10 @@ async def handle_start(message: Message, command: CommandObject):
     # https://t.me/<BOT_USERNAME>?start=<MATERIALS_START_PAYLOAD>
     if args.lower() == MATERIALS_START_PAYLOAD:
         await send_materials_glass_button(message.chat.id)
+        return
+    # لینک عمیقِ محصول: ?start=mat_<id>
+    if args.lower().startswith("mat_") and re.fullmatch(r"[A-Za-z0-9_-]{1,24}", args[4:] or "-x-!"):
+        await send_materials_glass_button(message.chat.id, args[4:])
         return
 
     if args.startswith("ref_"):
@@ -4641,6 +4654,107 @@ async def _ingest_prompt_media(message: Message, base_id: str) -> tuple[dict | N
         logger.error("پردازشِ رسانه‌یِ پرامپت ناموفق بود: %s", e, exc_info=True)
         return None, "❌ پردازشِ این مورد ناموفق بود. یه بار دیگه امتحان کن."
     return item, None
+
+# ---------- آپلود عکس/لوگوی مصالح از داخل ربات (ادمین) ----------
+def _mat_pending_for(uid: int) -> dict | None:
+    p = _mat_pending.get(uid)
+    if p and datetime.now(timezone.utc).timestamp() - p["ts"] > MAT_PENDING_TTL:
+        _mat_pending.pop(uid, None)
+        return None
+    return p
+
+def _mat_upload_filter(message: Message) -> bool:
+    return bool(
+        message.from_user and is_admin(message.from_user.id)
+        and _mat_pending_for(message.from_user.id) and (message.photo or message.document)
+    )
+
+def _mat_probe(raw: bytes) -> tuple[int, int, str]:
+    img = Image.open(BytesIO(raw))
+    mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}.get((img.format or "").upper())
+    if not mime:
+        raise ValueError("unsupported")
+    img = ImageOps.exif_transpose(img)
+    return img.size[0], img.size[1], mime
+
+@dp.message(_mat_upload_filter)
+async def materials_image_received(message: Message):
+    uid = message.from_user.id
+    pend = _mat_pending_for(uid)
+    if not pend:
+        return
+    fo = None
+    if message.photo:
+        fo = message.photo[-1]
+    elif message.document and (message.document.mime_type or "").lower() in ("image/jpeg", "image/png", "image/webp"):
+        fo = message.document
+    if fo is None:
+        await message.answer("❗️ فقط عکس JPG / PNG / WebP قبول می‌شه (SVG پشتیبانی نمی‌شه).")
+        return
+    if (fo.file_size or 0) > MAT_TG_LIMIT:
+        await message.answer("❗️ فایل بالایِ ۲۰ مگابایته؛ حجمش رو کم کن.")
+        return
+    try:
+        raw = (await bot.download(fo.file_id)).read()
+        w, h, mime = await asyncio.to_thread(_mat_probe, raw)
+    except ValueError:
+        await message.answer("❗️ فرمتِ عکس پشتیبانی نمی‌شه (JPG / PNG / WebP).")
+        return
+    except Exception as e:
+        logger.warning("دریافتِ عکسِ مصالح ناموفق بود: %s", e)
+        await message.answer("❌ پردازشِ عکس ناموفق بود. دوباره بفرست.")
+        return
+    key = hashlib.sha1(f"{fo.file_id}{uuid.uuid4().hex}".encode()).hexdigest()[:20]
+    item = {"key": key, "fid": fo.file_id, "w": w, "h": h, "mime": mime}
+    removed, count = [], 0
+    async with _mat_lock:
+        data = load_materials_data()
+        co = next((c for c in data.get("companies", []) if c.get("id") == pend["co"]), None)
+        pr = None
+        if co and pend["kind"] == "image":
+            pr = next((p for p in co.get("products", []) if p.get("id") == pend.get("pid")), None)
+        if not co or (pend["kind"] == "image" and not pr):
+            _mat_pending.pop(uid, None)
+            await message.answer("❗️ این برند/محصول دیگر وجود ندارد.")
+            return
+        if pend["kind"] == "logo":
+            if co.get("logo"):
+                removed.append(co["logo"])
+            co["logo"] = item
+        else:
+            imgs = pr.setdefault("images", [])
+            if len(imgs) >= MAT_IMAGES_MAX:
+                await message.answer(f"❗️ حداکثر {to_persian_num(MAT_IMAGES_MAX)} عکس برای هر محصول. «✅ تمام» رو بزن.")
+                return
+            imgs.append(item)
+            count = len(imgs)
+        _mat_write(data)
+    for o in removed:
+        _mat_purge(o)
+    MATERIALS_MEDIA_CACHE.mkdir(parents=True, exist_ok=True)
+    (MATERIALS_MEDIA_CACHE / f"{key}.src").write_bytes(raw)
+    pend["ts"] = datetime.now(timezone.utc).timestamp()
+    if pend["kind"] == "logo":
+        _mat_pending.pop(uid, None)
+        await message.answer("✅ لوگو ثبت شد. مینی‌اپ رو دوباره باز کن.")
+        return
+    await message.answer(
+        f"✅ عکس {to_persian_num(count)} از {to_persian_num(MAT_IMAGES_MAX)} ثبت شد. بازم بفرست یا «تمام» رو بزن.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ تمام", callback_data="matadmin:done")]]),
+    )
+
+@dp.callback_query(F.data == "matadmin:done")
+async def cb_materials_upload_done(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+        return
+    _mat_pending.pop(callback.from_user.id, None)
+    await callback.answer("ثبت شد ✓")
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer("مینی‌اپ مصالح رو دوباره باز کن تا عکس‌ها رو ببینی.")
 
 @dp.message(PromptManageStates.collecting_media, F.photo | F.video | F.animation | F.document)
 async def prompt_media_received(message: Message, state: FSMContext):
@@ -9080,14 +9194,120 @@ def load_materials_data() -> dict:
 async def handle_materials_page(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(MATERIALS_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
+def _mat_write(data: dict) -> None:
+    MATERIALS_LIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = MATERIALS_LIVE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, MATERIALS_LIVE_FILE)
+
+def _mat_purge(item: dict | None) -> None:
+    if not item or not re.fullmatch(r"[0-9a-f]{20}", str(item.get("key", ""))):
+        return
+    try:
+        for f in MATERIALS_MEDIA_CACHE.glob(f"{item['key']}*"):
+            f.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+def _mat_find_media(data: dict, key: str) -> dict | None:
+    for c in data.get("companies", []):
+        if isinstance(c.get("logo"), dict) and c["logo"].get("key") == key:
+            return c["logo"]
+        for p in c.get("products", []):
+            for im in p.get("images") or []:
+                if isinstance(im, dict) and im.get("key") == key:
+                    return im
+    return None
+
+def _mat_render(raw: bytes, size: str) -> bytes:
+    """t = بندانگشتی ۴:۳ (۴۸۰)، l = اصلی ۴:۳ (تا ۱۲۰۰)، g = لوگوی مربعی شفاف (۲۵۶)."""
+    img = ImageOps.exif_transpose(Image.open(BytesIO(raw)))
+    out = BytesIO()
+    if size == "g":
+        img = img.convert("RGBA")
+        img.thumbnail((256, 256), Image.LANCZOS)
+        img.save(out, format="WEBP", quality=90)
+    else:
+        img = img.convert("RGB")
+        tw = 480 if size == "t" else max(160, min(1200, img.width, img.height * 4 // 3))
+        img = ImageOps.fit(img, (tw, tw * 3 // 4), Image.LANCZOS)
+        img.save(out, format="WEBP", quality=80 if size == "t" else 84)
+    return out.getvalue()
+
+async def handle_materials_media(request: web.Request) -> web.StreamResponse:
+    key = request.match_info.get("key", "")
+    if not re.fullmatch(r"[0-9a-f]{20}", key):
+        raise web.HTTPNotFound()
+    size = request.query.get("s", "l")
+    if size not in ("t", "l", "g"):
+        size = "l"
+    item = _mat_find_media(load_materials_data(), key)
+    if not item or not item.get("fid"):
+        raise web.HTTPNotFound()
+    out = MATERIALS_MEDIA_CACHE / f"{key}_{size}.webp"
+    if not out.exists():
+        lock = _mat_dl_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            if not out.exists():
+                MATERIALS_MEDIA_CACHE.mkdir(parents=True, exist_ok=True)
+                src = MATERIALS_MEDIA_CACHE / f"{key}.src"
+                if not src.exists():
+                    tmp = MATERIALS_MEDIA_CACHE / f"{key}.part"
+                    try:
+                        await bot.download(item["fid"], destination=str(tmp))
+                        tmp.replace(src)
+                    except Exception as e:
+                        logger.warning("دریافتِ عکسِ مصالح از تلگرام ناموفق بود (%s): %s", key, e)
+                        tmp.unlink(missing_ok=True)
+                        raise web.HTTPBadGateway()
+                try:
+                    data = await asyncio.to_thread(_mat_render, src.read_bytes(), size)
+                except Exception as e:
+                    logger.warning("ساختِ نسخه‌ی عکسِ مصالح ناموفق بود (%s): %s", key, e)
+                    raise web.HTTPUnsupportedMediaType()
+                part = out.with_suffix(".tmp")
+                part.write_bytes(data)
+                part.replace(out)
+    return web.FileResponse(out, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
 async def handle_materials_data(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     admin = bool(user and is_admin(int(user.get("id", 0))))
-    return web.json_response({"data": load_materials_data(), "admin": admin})
+    return web.json_response({"data": load_materials_data(), "admin": admin, "bot": BOT_USERNAME or ""})
+
+def _mat_admin(request: web.Request) -> int | None:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if user and is_admin(int(user.get("id", 0))):
+        return int(user["id"])
+    return None
+
+_MAT_AVAIL = ("داخلی", "وارداتی", "معادل ایرانی")
+_MAT_CONF = ("datasheet", "field", "review")
+
+def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
+    out = {k: v for k, v in p.items() if k != "images"}
+    specs = []
+    if isinstance(out.get("specs"), list):
+        for x in out["specs"][:40]:
+            if isinstance(x, dict):
+                k, v = str(x.get("k", "")).strip()[:60], str(x.get("v", "")).strip()[:120]
+                if k and v:
+                    specs.append({"k": k, "v": v})
+    out["specs"] = specs
+    if out.get("availability") not in _MAT_AVAIL:
+        out["availability"] = ""
+    if out.get("confidence") not in _MAT_CONF:
+        out["confidence"] = ""
+    for f in ("source", "lastVerified"):
+        out[f] = str(out.get(f) or "").strip()[:120]
+    out["images"] = old_images
+    err = ""
+    if (specs or out.get("price")) and not (out["source"] and out["confidence"]):
+        err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات، منبع و نشان اطمینان لازم است"
+    return out, err
 
 async def handle_materials_save(request: web.Request) -> web.Response:
-    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
-    if not (user and is_admin(int(user.get("id", 0)))):
+    if not _mat_admin(request):
         return web.json_response({"ok": False, "error": "forbidden"}, status=403)
     if (request.content_length or 0) > 2_000_000:
         return web.json_response({"ok": False, "error": "too large"}, status=413)
@@ -9097,13 +9317,82 @@ async def handle_materials_save(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "bad json"}, status=400)
     companies = payload.get("companies") if isinstance(payload, dict) else None
     if not isinstance(companies, list) or not all(
-        isinstance(c, dict) and isinstance(c.get("products", []), list) for c in companies
+        isinstance(c, dict) and isinstance(c.get("products", []), list)
+        and all(isinstance(p, dict) for p in c.get("products", [])) for c in companies
     ):
         return web.json_response({"ok": False, "error": "bad data"}, status=400)
-    MATERIALS_LIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = MATERIALS_LIVE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"v": 1, "companies": companies, "packs": payload.get("packs", [])}, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, MATERIALS_LIVE_FILE)
+    async with _mat_lock:
+        old = load_materials_data()
+        old_co = {c.get("id"): c for c in old.get("companies", [])}
+        for c in companies:
+            oc = old_co.get(c.get("id"), {})
+            c.pop("logo", None)                      # رسانه فقط از مسیر ربات/API رسانه عوض می‌شود
+            if isinstance(oc.get("logo"), dict):
+                c["logo"] = oc["logo"]
+            c["sponsor"] = bool(c.get("sponsor"))
+            oprods = {p.get("id"): p for p in oc.get("products", [])}
+            cleaned = []
+            for p in c.get("products", []):
+                np_, err = _mat_clean_product(p, (oprods.get(p.get("id")) or {}).get("images") or [])
+                if err:
+                    return web.json_response({"ok": False, "error": err}, status=400)
+                cleaned.append(np_)
+            c["products"] = cleaned
+        _mat_write({"v": 2, "companies": companies, "packs": payload.get("packs", [])})
+    return web.json_response({"ok": True})
+
+async def handle_materials_upload_request(request: web.Request) -> web.Response:
+    uid = _mat_admin(request)
+    if not uid:
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+        kind, co_id, pid = str(body.get("kind", "")), str(body.get("co", "")), str(body.get("pid", ""))
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    data = load_materials_data()
+    co = next((c for c in data.get("companies", []) if c.get("id") == co_id), None)
+    if kind not in ("logo", "image") or not co:
+        return web.json_response({"ok": False, "error": "bad target"}, status=400)
+    if kind == "image" and not any(p.get("id") == pid for p in co.get("products", [])):
+        return web.json_response({"ok": False, "error": "محصول ذخیره نشده؛ اول ذخیره کن"}, status=400)
+    _mat_pending[uid] = {"kind": kind, "co": co_id, "pid": pid, "ts": datetime.now(timezone.utc).timestamp()}
+    what = f"لوگوی «{co.get('name', '')}»" if kind == "logo" else "عکس‌های این محصول"
+    try:
+        await bot.send_message(uid, f"📷 {what} رو همین‌جا بفرست (JPG / PNG / WebP؛ برای کیفیت بهتر به‌صورت «فایل»).\n"
+                                     f"تا {to_persian_num(MAT_PENDING_TTL // 60)} دقیقه منتظرم.")
+    except Exception as e:
+        logger.warning("پیامِ آپلودِ مصالح به %s ارسال نشد: %s", uid, e)
+        _mat_pending.pop(uid, None)
+        return web.json_response({"ok": False, "error": "ربات نتوانست پیام بدهد؛ اول /start بزن"}, status=502)
+    return web.json_response({"ok": True})
+
+async def handle_materials_media_remove(request: web.Request) -> web.Response:
+    if not _mat_admin(request):
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+        co_id, pid, key = str(body.get("co", "")), str(body.get("pid", "")), str(body.get("key", ""))
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    gone = None
+    async with _mat_lock:
+        data = load_materials_data()
+        co = next((c for c in data.get("companies", []) if c.get("id") == co_id), None)
+        if co and not pid and isinstance(co.get("logo"), dict) and co["logo"].get("key") == key:
+            gone = co.pop("logo")
+        elif co:
+            pr = next((p for p in co.get("products", []) if p.get("id") == pid), None)
+            if pr:
+                keep = [i for i in pr.get("images") or [] if i.get("key") != key]
+                if len(keep) != len(pr.get("images") or []):
+                    gone = next(i for i in pr["images"] if i.get("key") == key)
+                    pr["images"] = keep
+        if gone:
+            _mat_write(data)
+    if not gone:
+        return web.json_response({"ok": False, "error": "not found"}, status=404)
+    _mat_purge(gone)
     return web.json_response({"ok": True})
 
 def create_app() -> web.Application:
@@ -9123,6 +9412,9 @@ def create_app() -> web.Application:
     app.router.add_get("/materials", handle_materials_page)
     app.router.add_get("/materials/api/data", handle_materials_data)
     app.router.add_post("/materials/api/save", handle_materials_save)
+    app.router.add_post("/materials/api/upload-request", handle_materials_upload_request)
+    app.router.add_post("/materials/api/media-remove", handle_materials_media_remove)
+    app.router.add_get("/materials/m/{key}", handle_materials_media)
     app.router.add_static("/materials/", path=MATERIALS_DIR, name="materials_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
