@@ -44,7 +44,8 @@
      "mode": "vol",
      "perM2": null,
      "def": 5,
-     "catalog": ""
+     "catalog": "",
+     "surf": "floor"
     },
     {
      "id": "leca4",
@@ -127,7 +128,8 @@
      "mode": "area",
      "perM2": 1,
      "def": null,
-     "catalog": ""
+     "catalog": "",
+     "surf": "wall"
     }
    ]
   },

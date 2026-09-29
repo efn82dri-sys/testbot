@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -9298,6 +9299,8 @@ def _mat_admin(request: web.Request) -> int | None:
         return int(user["id"])
     return None
 
+_MAT_SURF = ("floor", "wall", "ceiling")          # سطح پیش‌فرض در متره‌ی اتاق‌محور
+_MAT_TIER = ("eco", "mid", "lux")                 # رده‌ی سناریو (اقتصادی/متوسط/لوکس)
 _MAT_AVAIL = ("داخلی", "وارداتی", "معادل ایرانی")
 _MAT_CONF = ("datasheet", "field", "review")
 
@@ -9317,6 +9320,16 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
         out["confidence"] = ""
     for f in ("source", "lastVerified"):
         out[f] = str(out.get(f) or "").strip()[:120]
+    if out.get("surf") not in _MAT_SURF:
+        out["surf"] = ""
+    if out.get("tier") not in _MAT_TIER:
+        out["tier"] = ""
+    for f in ("speed", "durability"):                # امتیاز ۱ تا ۵؛ غیرمعتبر → ثبت‌نشده
+        try:
+            v = int(round(float(out.get(f) or 0)))
+        except (TypeError, ValueError):
+            v = 0
+        out[f] = v if 1 <= v <= 5 else None
     feats = []
     if isinstance(out.get("features"), list):
         for x in out["features"]:
@@ -9328,7 +9341,7 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
     out["features"] = feats
     out["images"] = old_images
     err = ""
-    if (specs or feats or out.get("price")) and not (out["source"] and out["confidence"]):
+    if (specs or feats or out.get("price") or out.get("speed") or out.get("durability")) and not (out["source"] and out["confidence"]):
         err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات/ویژگی‌ها، منبع و نشان اطمینان لازم است"
     return out, err
 
@@ -9366,6 +9379,68 @@ async def handle_materials_save(request: web.Request) -> web.Response:
             c["products"] = cleaned
         _mat_write({"v": 2, "companies": companies, "packs": payload.get("packs", [])})
     return web.json_response({"ok": True})
+
+MAT_SHEET_MAX_BYTES = 8 * 1024 * 1024    # سقف حجم درخواست برگه
+MAT_SHEET_MAX_PAGES = 8
+MAT_SHEET_COOLDOWN = 12                   # ثانیه بین دو ارسال برای هر کاربر
+_mat_sheet_last: dict[int, float] = {}
+
+async def handle_materials_sheet(request: web.Request) -> web.Response:
+    """برگه‌ی پیشنهاد مصالح: مینی‌اپ صفحه‌ها را با canvas می‌کشد (متن فارسی بی‌نقص)، اینجا با Pillow
+    (که از قبل نصب است) به PDF چندصفحه‌ای تبدیل و داخل چت خودِ کاربر ارسال می‌شود."""
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    uid = int(user.get("id", 0))
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _mat_sheet_last.get(uid, 0) < MAT_SHEET_COOLDOWN:
+        return web.json_response({"ok": False, "error": "چند ثانیه صبر کن و دوباره بزن"}, status=429)
+    if (request.content_length or 0) > MAT_SHEET_MAX_BYTES:
+        return web.json_response({"ok": False, "error": "too large"}, status=413)
+    buf = bytearray()
+    async for chunk in request.content.iter_chunked(65536):   # خواندنِ جریانی؛ سقف client_max_size برنمی‌خورد
+        buf += chunk
+        if len(buf) > MAT_SHEET_MAX_BYTES:
+            return web.json_response({"ok": False, "error": "too large"}, status=413)
+    try:
+        payload = json.loads(bytes(buf))
+        pages = payload.get("pages")
+        assert isinstance(pages, list) and 1 <= len(pages) <= MAT_SHEET_MAX_PAGES
+        raws = []
+        for s in pages:
+            assert isinstance(s, str) and s.startswith("data:image/jpeg;base64,")
+            raws.append(base64.b64decode(s.split(",", 1)[1], validate=True))
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad data"}, status=400)
+
+    def _build() -> bytes:
+        imgs = []
+        for raw in raws:
+            im = Image.open(BytesIO(raw))
+            im.load()
+            if im.width > 2600 or im.height > 3700:
+                raise ValueError("bad size")
+            imgs.append(im.convert("RGB"))
+        out = BytesIO()
+        imgs[0].save(out, "PDF", resolution=150.0, save_all=True, append_images=imgs[1:])
+        return out.getvalue()
+
+    try:
+        pdf = await asyncio.to_thread(_build)
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad image"}, status=400)
+    title = re.sub(r'[\\/:*?"<>|\r\n]+', " ", str(payload.get("title") or "")).strip()[:50] or "برگه پیشنهاد مصالح"
+    _mat_sheet_last[uid] = now
+    try:
+        await bot.send_document(
+            uid, BufferedInputFile(pdf, filename=f"{title}.pdf"),
+            caption="🧱 برگه‌ی پیشنهاد مصالح — رواق\nبرآورد تقریبی است و جایگزین استعلام رسمی نیست.",
+        )
+        await bot.send_photo(uid, BufferedInputFile(raws[0], filename="sheet.jpg"), caption="پیش‌نمایش صفحه‌ی اول")
+    except Exception as e:
+        logging.warning("materials sheet send failed: %s", e)
+        return web.json_response({"ok": False, "error": "ارسال به چت ناموفق بود"}, status=502)
+    return web.json_response({"ok": True, "pages": len(raws)})
 
 async def handle_materials_upload_request(request: web.Request) -> web.Response:
     uid = _mat_admin(request)
@@ -9438,6 +9513,7 @@ def create_app() -> web.Application:
     app.router.add_get("/materials", handle_materials_page)
     app.router.add_get("/materials/api/data", handle_materials_data)
     app.router.add_post("/materials/api/save", handle_materials_save)
+    app.router.add_post("/materials/api/sheet", handle_materials_sheet)
     app.router.add_post("/materials/api/upload-request", handle_materials_upload_request)
     app.router.add_post("/materials/api/media-remove", handle_materials_media_remove)
     app.router.add_get("/materials/m/{key}", handle_materials_media)
