@@ -1,5 +1,5 @@
 /* ============================================================
-   رواق — استودیو چیدمان (نسخه ۴ — بازطراحی کامل)
+   رواق — استودیو چیدمان (نسخه ۵ — واقع‌گرایی)
    سبک: نمای روبه‌روی flat illustration، هندسه تمیز
    ============================================================ */
 (() => {
@@ -572,9 +572,158 @@
     if (lampOn) {
       const col = KELVIN[c.kelvin] || KELVIN[3000];
       defs = `<radialGradient id="${id('lamp')}" cx="0.5" cy="0" r="0.75"><stop offset="0" stop-color="${col}" stop-opacity="0.85"/><stop offset="0.45" stop-color="${col}" stop-opacity="0.25"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`;
-      html += `<rect width="800" height="500" fill="url(#${id('lamp')})" style="mix-blend-mode:screen" opacity="0.6" pointer-events="none"/>`;
+      html += `<rect width="800" height="500" fill="url(#${id('lamp')})" style="mix-blend-mode:screen" opacity="0.35" pointer-events="none"/>`;
     }
     return { defs, html };
+  }
+
+  /* ============================================================
+     پکیج واقع‌گرایی — نور، سایه، بازتاب، بافت (نسخه ۵)
+     ============================================================ */
+  function rng(seed) { let s = (seed >>> 0) || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
+  function bbox(parts) {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    parts.forEach(d => { const n = d.match(/-?\d+\.?\d*/g).map(Number);
+      for (let i = 0; i + 1 < n.length; i += 2) { x0 = Math.min(x0, n[i]); x1 = Math.max(x1, n[i]); y0 = Math.min(y0, n[i + 1]); y1 = Math.max(y1, n[i + 1]); } });
+    return { x0, y0, x1, y1 };
+  }
+
+  function realismKit(scene, asg, pal, opts, id, lite) {
+    const L = opts.light || { t: 13, lamp: null, kelvin: 3000 };
+    const sv = L.t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (L.t - 6) / 14));
+    const lampOn = (L.lamp === null || L.lamp === undefined) ? sv < 0.2 : !!L.lamp;
+    const lampC = KELVIN[L.kelvin] || KELVIN[3000];
+    const f = n => (+n).toFixed(1);
+    const defs = [];
+    const byId = {}; scene.layers.forEach(l => byId[l.id] = l);
+    const win = byId.window, wb = win ? bbox(win.parts) : null;
+    const lx = wb && (wb.x0 + wb.x1) / 2 > 400 ? 1 : -1;            // سمتِ نور
+    const NOP = ['floor', 'rug', 'wall', 'accent', 'crown', 'window', 'mirror'];
+    const NOB = ['wall', 'floor', 'crown', 'window', 'accent', 'rug'];
+    const isProp = l => { if (NOP.includes(l.id)) return false; const b = bbox(l.parts); return b.y1 > 350 && b.y1 <= 500; };
+    const cpOf = (l, n) => { const c = id('cp-' + n); defs.push(`<clipPath id="${c}">${l.parts.map(d => `<path d="${d}"/>`).join('')}</clipPath>`); return c; };
+    const grad = (n, x1, y1, x2, y2, stops, user) => { defs.push(`<linearGradient id="${id(n)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${user ? ' gradientUnits="userSpaceOnUse"' : ''}>${stops.map(s => `<stop offset="${s[0]}" stop-color="${s[1]}" stop-opacity="${s[2]}"/>`).join('')}</linearGradient>`); return `url(#${id(n)})`; };
+    const rad = (n, cx, cy, r, col, o) => { defs.push(`<radialGradient id="${id(n)}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"><stop offset="0" stop-color="${col}" stop-opacity="${o}"/><stop offset="0.5" stop-color="${col}" stop-opacity="${f(o * 0.3)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`); return `url(#${id(n)})`; };
+    defs.push(`<filter id="${id('rb')}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2"/></filter><filter id="${id('rb4')}" x="-40%" y="-80%" width="180%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>`);
+    const fl = byId.floor;
+    const gl = (opts.gloss && opts.gloss.floor !== undefined) ? opts.gloss.floor : (fl && (MAT[fl.mat] || MAT.wood).rough < 0.55 ? 0.4 : 0.06);
+
+    /* --- کف: تخته/کاشی با پرسپکتیو و تنوع تُن --- */
+    function floorTex(l) {
+      const tile = l.texture === 'tile', rn = rng(tile ? 5 : 9);
+      const vx = 400, vy = 150, ya = 340, yb = 500, step = tile ? 110 : 62, zmax = (yb - vy) / (ya - vy);
+      const px = (X, y) => vx + (X - vx) * (y - vy) / (yb - vy);
+      const yz = z => vy + (yb - vy) / z;
+      const cp = cpOf(l, 'floor'); let h = '';
+      for (let i = 0; i < 60; i++) {
+        const X0 = -1000 + i * step, X1 = X0 + step;
+        if (px(X1, ya) < -20 || px(X0, ya) > 820) continue;
+        const cuts = [1]; let z = tile ? 1 + 0.16 : 1 + ((i * 0.137) % 1) * 0.35;
+        for (; z < zmax; z += tile ? 0.16 : 0.35) cuts.push(z);
+        cuts.push(zmax);
+        for (let k = 0; k + 1 < cuts.length; k++) {
+          const A = yz(cuts[k]), B = yz(cuts[k + 1]), r = rn();
+          const fill = r < 0.5 ? `rgba(0,0,0,${f((0.5 - r) * 0.2)})` : `rgba(255,255,255,${f((r - 0.5) * 0.16)})`;
+          h += `<path d="M${f(px(X0, A))},${f(A)} L${f(px(X1, A))},${f(A)} L${f(px(X1, B))},${f(B)} L${f(px(X0, B))},${f(B)} Z" fill="${fill}" stroke="rgba(0,0,0,${tile ? 0.28 : 0.2})" stroke-width="${tile ? 1.1 : 0.7}"/>`;
+        }
+      }
+      return `<g pointer-events="none" clip-path="url(#${cp})">${h}</g>`;
+    }
+
+    /* --- آسمان و منظره‌ی پشتِ پنجره بر پایه‌ی ساعت --- */
+    function sky(l) {
+      const b = wb, W = b.x1 - b.x0, H = b.y1 - b.y0, cp = cpOf(l, 'sky');
+      const a = clamp(sv * 4, 0, 1), d = clamp((sv - 0.25) / 0.5, 0, 1);
+      const top = mixHex(mixHex('#0d1633', '#4a4a8a', a), '#4f9be6', d);
+      const bot = mixHex(mixHex('#1b2a55', '#f6b27a', a), '#cfe7fb', d);
+      const g = grad('sky', 0, 0, 0, 1, [[0, top, 1], [1, bot, 1]]);
+      const rr = rng(5); let bld = '', x = b.x0;
+      while (x < b.x1) { const w = 10 + rr() * 22, hh = H * (0.1 + rr() * 0.26); bld += `<rect x="${f(x)}" y="${f(b.y1 - hh)}" width="${f(w)}" height="${f(hh + 2)}"/>`; x += w + 1; }
+      const ph = clamp((L.t - 6) / 14, 0.05, 0.95);
+      const sun = sv > 0.02 ? `<rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${rad('sun', b.x0 + W * ph, b.y0 + H * (0.8 - 0.6 * Math.sin(Math.PI * ph)), W * 0.9, '#FFF3D6', f(0.35 + sv * 0.6))}"/>` : '';
+      let stars = ''; if (sv < 0.08) for (let i = 0; i < 14; i++) stars += `<circle cx="${f(b.x0 + rr() * W)}" cy="${f(b.y0 + rr() * H * 0.5)}" r="${f(0.5 + rr() * 0.6)}" fill="#fff" opacity="${f(0.4 + rr() * 0.5)}"/>`;
+      const tint = pal[asg.window] || '#fff';
+      return `<g pointer-events="none" clip-path="url(#${cp})"><rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${g}"/>${sun}${stars}<g fill="${mixHex(bot, '#0a0f1e', 0.6)}" opacity="0.9">${bld}</g><rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${tint}" opacity="0.14"/><path d="M${b.x0 + W * 0.15},${b.y1} L${b.x0 + W * 0.45},${b.y0} L${b.x0 + W * 0.62},${b.y0} L${b.x0 + W * 0.32},${b.y1} Z" fill="#fff" opacity="0.10"/></g>`;
+    }
+
+    /* --- نقشِ فرش (پرسپکتیو دو‌خطی) --- */
+    function rugMotif(l) {
+      const n = l.parts[0].match(/-?\d+\.?\d*/g).map(Number);
+      const A = [n[0], n[1]], B = [n[2], n[3]], C = [n[4], n[5]], D = [n[6], n[7]];
+      const P = (u, v) => { const tx = A[0] + (B[0] - A[0]) * u, ty = A[1] + (B[1] - A[1]) * u, bx = D[0] + (C[0] - D[0]) * u, by = D[1] + (C[1] - D[1]) * u; return [tx + (bx - tx) * v, ty + (by - ty) * v]; };
+      const poly = (pts, fill, stroke, sw, op) => `<path d="M${pts.map(p => P(p[0], p[1]).map(f).join(',')).join(' L')} Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}"/>`;
+      const base = pal[asg.rug] || '#888', c1 = lighten(base, 0.32), c2 = darken(base, 0.38), ac = pal[popIndex(pal)] || c1;
+      let h = poly([[.02, .06], [.98, .06], [.98, .94], [.02, .94]], 'none', c1, 2.2, 0.85)
+        + poly([[.06, .16], [.94, .16], [.94, .84], [.06, .84]], darken(base, 0.14), c2, 1.4, 0.55)
+        + poly([[.5, .2], [.72, .5], [.5, .8], [.28, .5]], c1, ac, 1.4, 0.6)
+        + poly([[.5, .32], [.6, .5], [.5, .68], [.4, .5]], ac, 'none', 0, 0.85);
+      [[.14, .3], [.86, .3], [.14, .7], [.86, .7]].forEach(([u, v]) => { h += poly([[u, v - .09], [u + .035, v], [u, v + .09], [u - .035, v]], c1, c2, 0.8, 0.6); });
+      for (let k = 0; k < 24; k++) { const u = 0.04 + k * 0.04; [.075, .885].forEach(v => { h += poly([[u, v], [u + .022, v], [u + .022, v + .04], [u, v + .04]], k % 2 ? ac : c1, 'none', 0, 0.7); }); }
+      return `<g pointer-events="none">${h}</g>`;
+    }
+
+    /* --- سایه‌ی تماسی، پرتوِ خورشید و بازتابِ کف --- */
+    function under() {
+      let h = '';
+      if (wb && sv > 0.05 && L.wx !== 'ابری') {
+        const sunC = mixHex('#FFD9A0', '#FFF6E6', clamp((sv - 0.2) / 0.5, 0, 1));
+        const g = grad('shaft', 0, 0, 0, 1, [[0, sunC, f(0.42 * sv)], [1, sunC, 0]]);
+        const s = -lx * 150;
+        h += `<path d="M${wb.x0 + 10},342 L${wb.x1 - 10},342 L${wb.x1 - 10 + s},500 L${wb.x0 + 10 + s},500 Z" fill="${g}" filter="url(#${id('rb4')})" style="mix-blend-mode:screen" pointer-events="none"/>`;
+      }
+      const dark = 0.5 + 0.5 * Math.max(sv, lampOn ? 0.4 : 0);
+      scene.layers.filter(isProp).forEach(l => {
+        const b = bbox(l.parts), w = b.x1 - b.x0, cx = (b.x0 + b.x1) / 2 - lx * w * 0.12;
+        const soft = `<ellipse cx="${f(cx)}" cy="${f(b.y1 + 2)}" rx="${f(w * 0.56)}" ry="${f(Math.min(14, 4 + (b.y1 - b.y0) * 0.05))}" fill="#000" opacity="${f(0.3 * dark)}"${lite ? '' : ` filter="url(#${id('rb4')})"`}/>`;
+        const tight = `<ellipse cx="${f((b.x0 + b.x1) / 2)}" cy="${f(b.y1)}" rx="${f(w * 0.48)}" ry="3" fill="#000" opacity="0.35"${lite ? '' : ` filter="url(#${id('rb')})"`}/>`;
+        h += `<g pointer-events="none">${soft}${tight}</g>`;
+        if (!lite && gl > 0.05) {
+          const hh = Math.min(70, (b.y1 - b.y0) * 0.6), gd = grad('rg-' + l.id, 0, b.y1, 0, b.y1 + hh, [[0, '#fff', 1], [1, '#000', 1]], true), mk = id('rm-' + l.id);
+          defs.push(`<mask id="${mk}" maskUnits="userSpaceOnUse" x="0" y="${b.y1}" width="800" height="${f(hh)}"><rect x="0" y="${b.y1}" width="800" height="${f(hh)}" fill="${gd}"/></mask>`);
+          h += `<g mask="url(#${mk})" pointer-events="none"><use href="#${id('L-' + l.id)}" transform="translate(0 ${2 * b.y1}) scale(1 -1)" opacity="${f(Math.min(0.35, 0.08 + gl * 0.4))}"/></g>`;
+        }
+      });
+      return h;
+    }
+
+    return {
+      defs: () => defs.join(''),
+      tex: l => (l.texture ? floorTex(l) : ''),
+      bevel(l, mat) {
+        if (lite || NOB.includes(l.id)) return '';
+        const cp = cpOf(l, 'bv-' + l.id);
+        const s = (c, o, dx, dy) => `<g transform="translate(${dx},${dy})" opacity="${o}">${l.parts.map(d => `<path d="${d}" fill="none" stroke="${c}" stroke-width="7"/>`).join('')}</g>`;
+        return `<g clip-path="url(#${cp})" pointer-events="none"><g filter="url(#${id('rb')})">${s('#fff', f(0.28 + mat.hl), -lx * 2.5, 2.5)}${s('#000', 0.32, lx * 2.5, -2.5)}</g></g>`;
+      },
+      after(l) {
+        let h = '';
+        if (l.id === 'window' && wb) h += sky(l);
+        if (l.id === 'rug') h += rugMotif(l);
+        if (l.id === (byId.rug ? 'rug' : 'floor')) h += under();
+        return h;
+      },
+      top() {
+        let h = '';
+        const rc = (x, y, w, hh, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${fill}" pointer-events="none"/>`;
+        h += rc(0, 296, 800, 46, grad('aoB', 0, 0, 0, 1, [[0, '#000', 0], [1, '#000', 0.2]]));
+        h += rc(0, 340, 800, 70, grad('aoF', 0, 0, 0, 1, [[0, '#000', 0.22], [1, '#000', 0]]));
+        h += rc(0, 0, 800, 56, grad('aoT', 0, 0, 0, 1, [[0, '#000', 0.18], [1, '#000', 0]]));
+        h += rc(0, 0, 80, 500, grad('aoL', 0, 0, 1, 0, [[0, '#000', 0.16], [1, '#000', 0]]));
+        h += rc(720, 0, 80, 500, grad('aoR', 0, 0, 1, 0, [[0, '#000', 0], [1, '#000', 0.16]]));
+        const wc = wb ? [(wb.x0 + wb.x1) / 2, (wb.y0 + wb.y1) / 2] : [120, 180];
+        if (sv > 0.05) h += `<rect width="800" height="500" fill="${rad('wl', wc[0], wc[1], 560, '#FFF6E0', f(0.2 * sv))}" style="mix-blend-mode:screen" pointer-events="none"/>`;
+        if (lampOn) scene.layers.filter(l => /^lamp(_shade|_l|_r)?$/.test(l.id)).forEach(l => {
+          const b = bbox(l.parts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+          h += `<rect width="800" height="500" fill="${rad('lg-' + l.id, cx, cy, 190, lampC, 0.6)}" style="mix-blend-mode:screen" pointer-events="none"/>`;
+          h += `<g pointer-events="none" opacity="0.3">${l.parts.map(d => `<path d="${d}" fill="${lampC}"/>`).join('')}</g>`;
+        });
+        if (!lite) {
+          defs.push(`<filter id="${id('gr')}" filterUnits="userSpaceOnUse" x="0" y="0" width="800" height="500"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  1.4 0 0 0 -0.55"/></filter>`);
+          h += `<rect width="800" height="500" fill="#000" filter="url(#${id('gr')})" opacity="0.4" pointer-events="none"/>`;
+        }
+        return h;
+      },
+    };
   }
 
   let _svgUid = 0;
@@ -585,6 +734,7 @@
     const light = LIGHTS[lightKey] || LIGHTS.day;
     const lo = opts.light ? lightOverlay(opts.light, id) : null;
     const defs = [];
+    const R = realismKit(scene, asg, palette, opts, id, !!opts.lite);
 
     // فیلتر بلور (فقط برای سایه‌های زیر مبلمان)
     defs.push(`
@@ -633,12 +783,10 @@
         </linearGradient>
       `);
 
-      const paths = layer.parts.map(d => `<path d="${d}" fill="url(#${gradId})"/>`).join('');
+      const paths = layer.parts.map(d => `<path class="b" d="${d}" fill="url(#${gradId})"/>`).join('');
 
       // بافت روی سطح
-      const tex = layer.texture
-        ? `<g pointer-events="none" opacity="0.6">${layer.parts.map(d => `<path d="${d}" fill="url(#${id(layer.texture)})"/>`).join('')}</g>`
-        : '';
+      const tex = layer.texture ? R.tex(layer) : '';
 
       // هایلایتِ شیشه‌ای برای متریال صاف
       const gOv = opts.gloss ? opts.gloss[layer.id] : undefined;
@@ -661,12 +809,13 @@
       const sel = opts.selected === layer.id ? ' sel' : '';
 
       layerHtml.push(`
-        <g class="ly${sel}" data-l="${layer.id}" data-n="${layer.name}">
+        <g class="ly${sel}" id="${id('L-' + layer.id)}" data-l="${layer.id}" data-n="${layer.name}">
           ${paths}
           ${sheen}
-          ${tex}
+          ${tex}${R.bevel(layer, mat)}
         </g>
       `);
+      layerHtml.push(R.after(layer));
     }
 
     // ---- سایه‌ها ----
@@ -689,12 +838,14 @@
 
     if (lo && lo.defs) defs.push(lo.defs);
 
+    const topHtml = R.top();
     return `<svg viewBox="0 0 800 500" xmlns="${NS}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${scene.name}">
-      <defs>${defs.join('')}</defs>
+      <defs>${defs.join('')}${R.defs()}</defs>
       <rect width="800" height="500" fill="${palette[asg.wall] || '#222'}"/>
       <g class="stage-layer">${layerHtml.join('')}</g>
       ${shadows}
       ${details}
+      ${topHtml}
       ${lo ? lo.html : `<rect width="800" height="500" fill="${light.tint}" pointer-events="none"/>`}
       <rect width="800" height="500" fill="url(#${id('vig')})" pointer-events="none"/>
     </svg>`;
@@ -944,6 +1095,7 @@
       selected: st.selected,
       light: { t: st.t, dir: st.dir, wx: st.wx, lamp: st.lamp, kelvin: st.kelvin },
       gloss: glossMap(sceneId || st.sceneId),
+      lite: !!st.fast,
     }, extra || {});
   }
   function defaultSel(sceneId) {
@@ -1151,8 +1303,8 @@
     .stu-stage.cmp{touch-action:none;cursor:ew-resize}
     .stu-stage svg{width:100%;height:100%;display:block}
     .stu-stage .ly{cursor:pointer}
-    .stu-stage .ly:hover path{stroke:var(--accent);stroke-width:1.4;stroke-linejoin:round;paint-order:stroke}
-    .stu-stage .ly.sel path{stroke:var(--accent);stroke-width:2;stroke-linejoin:round;paint-order:stroke}
+    .stu-stage .ly:hover path.b{stroke:var(--accent);stroke-width:1.4;stroke-linejoin:round;paint-order:stroke}
+    .stu-stage .ly.sel path.b{stroke:var(--accent);stroke-width:2;stroke-linejoin:round;paint-order:stroke}
     .stu-cmp{position:absolute;inset:0}
     .stu-cmp>div{position:absolute;inset:0}
     .stu-cmp-h{inset:0 auto 0 50%!important;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);pointer-events:none}
@@ -1494,7 +1646,7 @@
     }
     inner.innerHTML = st.history.map((h, i) => {
       const scene = SCENES[h.sceneId];
-      const mini = buildSVG(scene, h.asg, st.palette.colors, st.light, ropts(h.sceneId, { selected: null }));
+      const mini = buildSVG(scene, h.asg, st.palette.colors, st.light, ropts(h.sceneId, { selected: null, lite: true }));
       return `<button type="button" class="stu-tl-item ${i === st.history.length - 1 ? 'on' : ''}" data-tl="${i}" aria-label="مرحله ${toPN(i + 1)}">${mini}</button>`;
     }).join('');
     requestAnimationFrame(() => { try { inner.scrollTo({ left: inner.scrollWidth, behavior: 'smooth' }); } catch (e) {} });
@@ -1859,6 +2011,7 @@
       const id = e.target.id;
       if (id === 'stuSplit') { setSplit(+e.target.value); return; }
       if (id === 'stuTime') {
+        st.fast = true;
         st.t = +e.target.value;
         st.light = nearestPreset(st.t);
         updateTimeLbl();
@@ -1870,6 +2023,7 @@
         return;
       }
       if (id === 'stuGloss' && st.selected) {
+        st.fast = true;
         const v = +e.target.value / 100;
         st.gloss[glossKey(st.sceneId, st.selected)] = v;
         $('#stuGlossV', root).textContent = toPN(Math.round(v * 100)) + '٪';
@@ -1877,8 +2031,8 @@
       }
     });
     root.addEventListener('change', (e) => {
-      if (e.target.id === 'stuTime') renderTimeline();
-      if (e.target.id === 'stuGloss') { renderMat(); renderTimeline(); }
+      if (e.target.id === 'stuTime') { st.fast = false; renderStage(); renderTimeline(); }
+      if (e.target.id === 'stuGloss') { st.fast = false; renderStage(); renderMat(); renderTimeline(); }
     });
 
     /* هاور و کشیدنِ مقایسه */
