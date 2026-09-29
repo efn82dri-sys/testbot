@@ -9290,7 +9290,7 @@ async def handle_materials_media(request: web.Request) -> web.StreamResponse:
 async def handle_materials_data(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     admin = bool(user and is_admin(int(user.get("id", 0))))
-    return web.json_response({"data": load_materials_data(), "admin": admin, "bot": BOT_USERNAME or ""})
+    return web.json_response({"data": load_materials_data(), "admin": admin, "bot": BOT_USERNAME or "", "start": MATERIALS_START_PAYLOAD})
 
 def _mat_admin(request: web.Request) -> int | None:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
