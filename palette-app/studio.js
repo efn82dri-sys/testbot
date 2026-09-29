@@ -554,12 +554,36 @@
   /* ============================================================
      موتور رندر
      ============================================================ */
+  const KELVIN = { 2700: '#FFB46B', 3000: '#FFC98E', 4000: '#FFE3C2', 6500: '#E4EEFF' };
+
+  function lightOverlay(c, id) {
+    const t = c.t;
+    const sv = t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
+    const k = Math.min(1, sv * 2);
+    const warm = (0.24 * (1 - k) * (t > 13 ? 1.3 : 1)).toFixed(3);
+    const night = (0.32 * (1 - Math.min(1, sv * 3.2))).toFixed(3);
+    const R = (fill) => `<rect width="800" height="500" fill="${fill}" pointer-events="none"/>`;
+    let html = R(`rgba(255,170,100,${warm})`) + R(`rgba(45,65,125,${night})`);
+    if (c.wx === 'ابری') html += R('rgba(140,150,168,0.12)');
+    if (c.dir === 'شمالی') html += R('rgba(110,140,205,0.07)');
+    else if (c.dir === 'جنوبی') html += R('rgba(255,214,150,0.05)');
+    const lampOn = (c.lamp === null || c.lamp === undefined) ? sv < 0.2 : !!c.lamp;
+    let defs = '';
+    if (lampOn) {
+      const col = KELVIN[c.kelvin] || KELVIN[3000];
+      defs = `<radialGradient id="${id('lamp')}" cx="0.5" cy="0" r="0.75"><stop offset="0" stop-color="${col}" stop-opacity="0.85"/><stop offset="0.45" stop-color="${col}" stop-opacity="0.25"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`;
+      html += `<rect width="800" height="500" fill="url(#${id('lamp')})" style="mix-blend-mode:screen" opacity="0.6" pointer-events="none"/>`;
+    }
+    return { defs, html };
+  }
+
   let _svgUid = 0;
 
   function buildSVG(scene, asg, palette, lightKey, opts = {}) {
     const uid = `u${++_svgUid}`;
     const id = (name) => `${uid}-${name}`;
     const light = LIGHTS[lightKey] || LIGHTS.day;
+    const lo = opts.light ? lightOverlay(opts.light, id) : null;
     const defs = [];
 
     // فیلتر بلور (فقط برای سایه‌های زیر مبلمان)
@@ -617,7 +641,9 @@
         : '';
 
       // هایلایتِ شیشه‌ای برای متریال صاف
-      const isFlat = mat.rough < 0.55;
+      const gOv = opts.gloss ? opts.gloss[layer.id] : undefined;
+      const isFlat = gOv !== undefined ? gOv > 0.05 : mat.rough < 0.55;
+      const sheenOp = gOv !== undefined ? clamp(gOv * 1.4, 0, 0.95) : 0.55;
       const sheenId = id(`s-${layer.id}`);
       if (isFlat) {
         defs.push(`
@@ -629,13 +655,13 @@
         `);
       }
       const sheen = isFlat
-        ? `<g pointer-events="none" opacity="0.55">${layer.parts.map(d => `<path d="${d}" fill="url(#${sheenId})"/>`).join('')}</g>`
+        ? `<g pointer-events="none" opacity="${sheenOp}">${layer.parts.map(d => `<path d="${d}" fill="url(#${sheenId})"/>`).join('')}</g>`
         : '';
 
       const sel = opts.selected === layer.id ? ' sel' : '';
 
       layerHtml.push(`
-        <g class="ly${sel}" data-l="${layer.id}">
+        <g class="ly${sel}" data-l="${layer.id}" data-n="${layer.name}">
           ${paths}
           ${sheen}
           ${tex}
@@ -661,13 +687,15 @@
       </radialGradient>
     `);
 
+    if (lo && lo.defs) defs.push(lo.defs);
+
     return `<svg viewBox="0 0 800 500" xmlns="${NS}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${scene.name}">
       <defs>${defs.join('')}</defs>
       <rect width="800" height="500" fill="${palette[asg.wall] || '#222'}"/>
       <g class="stage-layer">${layerHtml.join('')}</g>
       ${shadows}
       ${details}
-      <rect width="800" height="500" fill="${light.tint}" pointer-events="none"/>
+      ${lo ? lo.html : `<rect width="800" height="500" fill="${light.tint}" pointer-events="none"/>`}
       <rect width="800" height="500" fill="url(#${id('vig')})" pointer-events="none"/>
     </svg>`;
   }
@@ -796,20 +824,160 @@
   }
 
   /* ============================================================
+     ابزارهای رنگ برای جدول مشخصات
+     ============================================================ */
+  const fmt = (n, d = 0) => toPN(Number(n).toFixed(d)).replace('.', '٫');
+  function toCMYK(hex) {
+    const [r, g, b] = hexToRgb(hex).map(v => v / 255);
+    const k = 1 - Math.max(r, g, b);
+    if (k >= 1) return [0, 0, 0, 100];
+    return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k].map(v => Math.round(v * 100));
+  }
+  function toLAB(hex) {
+    const [r, g, b] = hexToRgb(hex).map(srgbToLinear);
+    const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+    const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+    const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.089);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)].map(Math.round);
+  }
+
+  const MAT_FA = {
+    wall: 'رنگ مات', wallGloss: 'رنگ نیمه‌براق', stucco: 'استوکو', concrete: 'بتن', wood: 'چوب',
+    woodDark: 'چوب تیره', marble: 'مرمر', tile: 'سرامیک', fabric: 'پارچه', velvet: 'مخمل',
+    leather: 'چرم', metal: 'فلز', brass: 'برنج', plant: 'گیاه', art: 'تابلو', rug: 'فرش', glass: 'شیشه',
+  };
+  const ROLE_FA = { L1: 'سطح غالب', L2: 'سطح ثانویه', M: 'کف / میانی', D: 'تیره', K: 'مبلمان', P: 'تأکید' };
+  const PAINT_MATS = new Set(['wall', 'wallGloss', 'stucco', 'concrete']);
+  const M_PER_UNIT = 2.7 / 340; // ارتفاع دیوار در نما ≈ ۲٫۷ متر
+
+  function geom(parts) {
+    let area = 0, minY = Infinity, maxY = -Infinity;
+    for (const d of parts) {
+      const n = (String(d).match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+      const pts = [];
+      for (let i = 0; i + 1 < n.length; i += 2) pts.push([n[i], n[i + 1]]);
+      let s = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], q = pts[(i + 1) % pts.length];
+        s += p[0] * q[1] - q[0] * p[1];
+        minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+      }
+      area += Math.abs(s) / 2;
+    }
+    return { area, minY: isFinite(minY) ? minY : 0, maxY: isFinite(maxY) ? maxY : 0 };
+  }
+
+  function buildSchedule() {
+    const scene = SCENES[st.sceneId], asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) return [];
+    const k = M_PER_UNIT * M_PER_UNIT;
+    const rows = scene.layers
+      .filter(l => l.role && asg[l.id] !== undefined && st.palette.colors[asg[l.id]])
+      .map(l => {
+        const g = geom(l.parts);
+        return { l, hex: st.palette.colors[asg[l.id]], area: g.area * k, g, paint: PAINT_MATS.has(l.mat) };
+      });
+    for (const r of rows) {
+      if (!r.paint) continue;
+      let sub = 0;
+      for (const o of rows) {
+        if (o === r || o.paint || o.l.texture) continue;
+        const h = o.g.maxY - o.g.minY;
+        if (h <= 0 || o.g.minY >= 340) continue;
+        sub += o.area * Math.min(1, (340 - o.g.minY) / h);
+      }
+      r.area = Math.max(r.area * 0.3, r.area - sub);
+    }
+    rows.forEach(r => { r.liters = r.paint ? r.area * 2 / 10 * 1.1 : null; });
+    return rows;
+  }
+
+  function layerLabel(scene, l) {
+    const same = scene.layers.filter(x => x.name === l.name);
+    return same.length > 1 ? `${l.name} ${toPN(same.indexOf(l) + 1)}` : l.name;
+  }
+
+  function roleColors(scene, asg) {
+    const o = {};
+    for (const l of scene.layers) {
+      if (!l.role || o[l.role]) continue;
+      const c = st.palette.colors[asg[l.id]];
+      if (c) o[l.role] = c;
+    }
+    return o;
+  }
+  function pairsInfo(scene, asg) {
+    const rc = roleColors(scene, asg);
+    return [['L1', 'M'], ['L1', 'L2'], ['L1', 'P'], ['M', 'K'], ['L1', 'K'], ['M', 'P']]
+      .filter(([a, b]) => rc[a] && rc[b])
+      .map(([a, b]) => ({ ca: rc[a], cb: rc[b], r: contrast(rc[a], rc[b]), label: `${ROLE_FA[a]} و ${ROLE_FA[b]}` }))
+      .slice(0, 5);
+  }
+
+  /* ============================================================
      وضعیت
      ============================================================ */
+  const PRESET_T = { dawn: 7.5, day: 13, dusk: 18, night: 21 };
   const st = {
     palette: null, sceneId: 'living', asgByScene: {},
     lock: new Set(), history: [], future: [],
     selected: null, light: 'day',
     before: false, splitX: 50,
+    t: 13, dir: 'جنوبی', wx: 'آفتابی', lamp: null, kelvin: 3000,
+    gloss: {}, cb: '', tab: 'color', why: '', size: 2400,
   };
 
-  let root, stageEl;
+  let root, stageEl, lastFocus = null, cmp = null, dragging = false, toastTimer = null;
+
+  const nearestPreset = (t) => t < 10 ? 'dawn' : t < 16 ? 'day' : t < 19.5 ? 'dusk' : 'night';
+  const svOf = (t) => t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
+  const lampIsOn = () => st.lamp === null ? svOf(st.t) < 0.2 : !!st.lamp;
+  const glossKey = (sceneId, layerId) => `${sceneId}:${layerId}`;
+  function glossMap(sceneId) {
+    const o = {}, pre = sceneId + ':';
+    for (const k in st.gloss) if (k.startsWith(pre)) o[k.slice(pre.length)] = st.gloss[k];
+    return o;
+  }
+  function ropts(sceneId, extra) {
+    return Object.assign({
+      selected: st.selected,
+      light: { t: st.t, dir: st.dir, wx: st.wx, lamp: st.lamp, kelvin: st.kelvin },
+      gloss: glossMap(sceneId || st.sceneId),
+    }, extra || {});
+  }
+  function defaultSel(sceneId) {
+    const sc = SCENES[sceneId];
+    return (sc.layers.find(l => l.role === 'L1') || sc.layers[0]).id;
+  }
+  function layerGloss(scene, l) {
+    const v = st.gloss[glossKey(st.sceneId, l.id)];
+    if (v !== undefined) return v;
+    return (MAT[l.mat] || MAT.wall).rough < 0.55 ? 0.4 : 0.04;
+  }
 
   /* ============================================================
      Shell
      ============================================================ */
+  const CB_DEFS = `
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+      <filter id="stu-f-pro" color-interpolation-filters="sRGB"><feColorMatrix values=".567 .433 0 0 0  .558 .442 0 0 0  0 .242 .758 0 0  0 0 0 1 0"/></filter>
+      <filter id="stu-f-deu" color-interpolation-filters="sRGB"><feColorMatrix values=".625 .375 0 0 0  .7 .3 0 0 0  0 .3 .7 0 0  0 0 0 1 0"/></filter>
+      <filter id="stu-f-tri" color-interpolation-filters="sRGB"><feColorMatrix values=".95 .05 0 0 0  0 .433 .567 0 0  0 .475 .525 0 0  0 0 0 1 0"/></filter>
+    </defs></svg>`;
+
+  const IC = {
+    undo: '<path d="M9 14 4 9l5-5M4 9h10a7 7 0 0 1 0 14h-3"/>',
+    redo: '<path d="m15 14 5-5-5-5M20 9H10a7 7 0 0 0 0 14h3"/>',
+    save: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    shuffle: '<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
+    split: '<path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/>',
+    reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>',
+  };
+  const svgI = (p, sw = 1.9) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+
   function buildShell() {
     const el = document.createElement('div');
     el.className = 'stu-v3';
@@ -819,83 +987,115 @@
         <header class="stu-head">
           <div class="stu-title">
             <div class="stu-dot" aria-hidden="true"></div>
-            <div>
-              <h3 id="stuName">—</h3>
-              <span id="stuMeta">—</span>
-            </div>
+            <div><h3 id="stuName">—</h3><span id="stuMeta">—</span></div>
           </div>
           <div class="stu-head-actions">
-            <button type="button" class="stu-icon" data-a="compare" aria-label="مقایسه" title="قبل/بعد">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg>
-            </button>
-            <button type="button" class="stu-icon" data-a="export" aria-label="ذخیره" title="ذخیره PNG">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-            </button>
-            <button type="button" class="stu-icon stu-icon-close" data-a="close" aria-label="بستن">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
-            </button>
+            <button type="button" class="stu-icon" data-a="undo" aria-label="بازگردانی" title="بازگردانی">${svgI(IC.undo)}</button>
+            <button type="button" class="stu-icon" data-a="redo" aria-label="ازنو" title="ازنو">${svgI(IC.redo)}</button>
+            <button type="button" class="stu-icon" data-a="goexport" aria-label="خروجی" title="خروجی">${svgI(IC.save)}</button>
+            <button type="button" class="stu-icon stu-icon-close" data-a="close" aria-label="بستن">${svgI(IC.close, 2)}</button>
           </div>
         </header>
 
-        <div class="stu-grid">
-          <section class="stu-canvas-col">
-            <div class="stu-scenes" id="stuScenes" role="tablist"></div>
-            <div class="stu-stage" id="stuStage" aria-live="polite"></div>
-            <div class="stu-lights" id="stuLights" role="tablist"></div>
-            <div class="stu-timeline">
-              <div class="stu-tl-inner" id="stuTlInner"></div>
-            </div>
-            <div class="stu-actions">
-              <button type="button" class="stu-btn stu-btn-primary" data-a="shuffle">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-                <span>بُر هوشمند</span>
-              </button>
-              <button type="button" class="stu-btn" data-a="undo" aria-label="قبلی">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5M4 9h10a7 7 0 0 1 0 14h-3"/></svg>
-              </button>
-              <button type="button" class="stu-btn" data-a="redo" aria-label="بعدی">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5M20 9H10a7 7 0 0 0 0 14h3"/></svg>
-              </button>
-              <button type="button" class="stu-btn" data-a="reset" aria-label="بازنشانی">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
-              </button>
+        <div class="stu-body">
+          <section class="stu-main">
+            <div class="stu-scenes" id="stuScenes" role="tablist" aria-label="نوع فضا"></div>
+            <div class="stu-sticky">
+              <div class="stu-stage-box">
+                <div class="stu-stage" id="stuStage" aria-live="polite"></div>
+                <div class="stu-hint"><span id="stuHover">روی هر بخش بزن تا انتخاب شود</span><span id="stuClock"></span></div>
+              </div>
+              <div class="stu-chips" id="stuChips" role="group" aria-label="بخش‌های قابل‌رنگ"></div>
             </div>
           </section>
 
           <aside class="stu-side">
-            <div class="stu-side-block">
-              <div class="stu-side-head">
-                <span>پالتِ فعال</span>
-                <span class="stu-hint-sm" id="stuSelHint">یک لایه انتخاب کن</span>
-              </div>
-              <div class="stu-palette" id="stuPalette" role="listbox"></div>
+            <div class="stu-tabs" id="stuTabs" role="tablist" aria-label="ابزارها">
+              <button type="button" role="tab" data-tab="color">رنگ</button>
+              <button type="button" role="tab" data-tab="mat">متریال</button>
+              <button type="button" role="tab" data-tab="light">نور</button>
+              <button type="button" role="tab" data-tab="an">تحلیل</button>
+              <button type="button" role="tab" data-tab="exp">خروجی</button>
             </div>
 
-            <div class="stu-side-block stu-side-grow">
-              <div class="stu-side-head">
-                <span>لایه‌ها</span>
-                <span class="stu-hint-sm" id="stuLayerCount">—</span>
+            <div class="stu-pane" data-pane="color" role="tabpanel">
+              <div class="stu-sel" id="stuSel"></div>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>پالت</span><span class="stu-hint-sm" id="stuSelHint"></span></div>
+                <div class="stu-palette" id="stuPalette"></div>
               </div>
-              <div class="stu-layers" id="stuLayers"></div>
+              <div class="stu-actions">
+                <button type="button" class="stu-btn stu-btn-primary" data-a="shuffle">${svgI(IC.shuffle)}<span>بُر هوشمند</span></button>
+                <button type="button" class="stu-btn" data-a="lock" id="stuLockBtn" aria-pressed="false"><span>قفل بخش</span></button>
+                <button type="button" class="stu-btn" data-a="compare" id="stuCmpBtn" aria-pressed="false">${svgI(IC.split)}<span>قبل / بعد</span></button>
+                <button type="button" class="stu-btn" data-a="reset" aria-label="بازنشانی چیدمان">${svgI(IC.reset)}</button>
+              </div>
+              <p class="stu-why" id="stuWhy"></p>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>تاریخچه</span><span class="stu-hint-sm" id="stuTlCount"></span></div>
+                <div class="stu-tl-inner" id="stuTlInner"></div>
+              </div>
             </div>
 
-            <div class="stu-side-block">
-              <div class="stu-side-head">
-                <span>تحلیل زنده</span>
-                <span class="stu-hint-sm" id="stuAnalyBadge">—</span>
+            <div class="stu-pane" data-pane="mat" role="tabpanel">
+              <div class="stu-block">
+                <div class="stu-side-head"><span id="stuMatTitle">متریال</span><span class="stu-hint-sm" id="stuMatSub"></span></div>
+                <div class="stu-pills" id="stuFinish"></div>
               </div>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>میزان براقی</span><span class="stu-hint-sm" id="stuGlossV"></span></div>
+                <input type="range" class="stu-range" id="stuGloss" min="0" max="100" step="1" aria-label="میزان براقی">
+              </div>
+              <p class="stu-why" id="stuMatWhy"></p>
+            </div>
+
+            <div class="stu-pane" data-pane="light" role="tabpanel">
+              <div class="stu-lights" id="stuLights" role="group" aria-label="حالت نور"></div>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>ساعت روز</span><span class="stu-hint-sm" id="stuTimeLbl"></span></div>
+                <input type="range" class="stu-range" id="stuTime" min="6" max="21" step="0.25" aria-label="ساعت روز">
+              </div>
+              <div class="stu-block"><div class="stu-side-head"><span>جهت پنجره</span></div><div class="stu-pills" id="stuDir"></div></div>
+              <div class="stu-block"><div class="stu-side-head"><span>هوا</span></div><div class="stu-pills" id="stuWx"></div></div>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>چراغ</span><span class="stu-hint-sm">دمای رنگ (کلوین)</span></div>
+                <div class="stu-pills" id="stuKel"></div>
+                <button type="button" class="stu-btn" data-a="lamp" id="stuLampBtn" aria-pressed="false"><span>لوستر</span></button>
+              </div>
+              <p class="stu-why" id="stuLightWhy"></p>
+            </div>
+
+            <div class="stu-pane" data-pane="an" role="tabpanel">
               <div class="stu-analysis" id="stuAnalysis"></div>
+            </div>
+
+            <div class="stu-pane" data-pane="exp" role="tabpanel">
+              <div class="stu-block">
+                <div class="stu-side-head"><span>جدول مشخصات</span><span class="stu-hint-sm">۲ دست و ۱۰٪ پرت</span></div>
+                <div class="stu-scroll"><table class="stu-tbl" id="stuFin"></table></div>
+              </div>
+              <div class="stu-block">
+                <div class="stu-side-head"><span>اندازه تصویر</span></div>
+                <div class="stu-pills" id="stuSize"></div>
+              </div>
+              <div class="stu-actions">
+                <button type="button" class="stu-btn stu-btn-primary" data-a="export">${svgI(IC.save)}<span>ذخیره تصویر</span></button>
+                <button type="button" class="stu-btn" data-a="csv"><span>جدول مشخصات (CSV)</span></button>
+                <button type="button" class="stu-btn" data-a="copyall"><span>کپی همه کدها</span></button>
+              </div>
+              <p class="stu-why">مساحت‌ها از روی نمای روبه‌رو برآورد می‌شوند (ارتفاع دیوار ≈ ۲٫۷ متر) و فقط برای برآورد اولیه‌اند؛ پوشش رنگ ۱۰ متر مربع در لیتر فرض شده است.</p>
             </div>
           </aside>
         </div>
 
         <div class="stu-compare-bar" id="stuCompareBar" hidden>
-          <span>قبل</span>
-          <input type="range" min="0" max="100" value="50" id="stuSplit" aria-label="مقایسه">
-          <span>بعد</span>
+          <span>بدون رنگ</span>
+          <input type="range" dir="ltr" min="0" max="100" value="50" id="stuSplit" aria-label="مقایسه قبل و بعد">
+          <span>با پالت</span>
         </div>
-      </div>
-    `;
+        <div class="stu-toast" id="stuToast" role="status" aria-live="polite"></div>
+        ${CB_DEFS}
+      </div>`;
     document.body.appendChild(el);
     return el;
   }
@@ -908,117 +1108,145 @@
     const s = document.createElement('style');
     s.id = 'stu-v3-css';
     s.textContent = `
-    .stu-v3{position:fixed;inset:0;z-index:90;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(20px) saturate(140%);-webkit-backdrop-filter:blur(20px) saturate(140%);display:flex;align-items:stretch;justify-content:center;padding:max(env(safe-area-inset-top,0px),8px) 8px max(env(safe-area-inset-bottom,0px),8px);animation:stuIn .3s var(--ease)}
-    .stu-v3[hidden]{display:none}
+    .stu-v3{--stu-warn:#F2C14E;position:fixed;inset:0;z-index:90;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(20px) saturate(140%);-webkit-backdrop-filter:blur(20px) saturate(140%);display:flex;align-items:stretch;justify-content:center;padding:max(env(safe-area-inset-top,0px),8px) 8px max(env(safe-area-inset-bottom,0px),8px);animation:stuIn .3s var(--ease)}
+    @media(prefers-color-scheme:light){:root:not([data-theme="dark"]) .stu-v3{--stu-warn:#9A6B00}}
+    :root[data-theme="light"] .stu-v3{--stu-warn:#9A6B00}
+    .stu-v3[hidden],.stu-v3 [hidden]{display:none!important}
     @keyframes stuIn{from{opacity:0;transform:translateY(10px)}}
-    @media(prefers-reduced-motion:reduce){.stu-v3{animation:none}}
-
-    .stu-panel{position:relative;width:min(1200px,100%);max-height:100%;background:var(--bg-elev);color:var(--ink);border-radius:20px;box-shadow:var(--shadow-lg);border:1px solid var(--line-soft);display:flex;flex-direction:column;overflow:hidden}
-
-    .stu-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line-soft)}
+    .stu-v3 *{box-sizing:border-box}
+    .stu-v3 button:focus-visible,.stu-v3 input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+    .stu-panel{position:relative;width:min(1200px,100%);min-height:0;background:var(--bg-elev);color:var(--ink);border-radius:20px;box-shadow:var(--shadow-lg),inset 0 0 0 1px var(--line);display:flex;flex-direction:column;overflow:hidden;font-family:inherit}
+    .stu-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft);flex:none}
     .stu-title{display:flex;align-items:center;gap:12px;min-width:0}
-    .stu-title h3{margin:0;font-size:16px;font-weight:800;line-height:1.2;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .stu-title span{display:block;font-size:11.5px;color:var(--ink-dim);font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .stu-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex-shrink:0}
-    .stu-head-actions{display:flex;gap:6px}
-    .stu-icon{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--glass);color:var(--ink-dim);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s var(--ease)}
-    .stu-icon:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--glass-strong)}
+    .stu-title h3{margin:0;font-size:16px;font-weight:800;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .stu-title span{display:block;font-size:11.5px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .stu-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex:none}
+    .stu-head-actions{display:flex;gap:6px;flex:none}
+    .stu-icon{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--glass);color:var(--ink-dim);display:inline-grid;place-items:center;cursor:pointer;transition:transform .16s var(--ease),color .16s,border-color .16s}
+    .stu-icon:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
     .stu-icon:active{transform:scale(.92)}
+    .stu-icon:disabled{opacity:.35;cursor:default;transform:none}
     .stu-icon svg{width:17px;height:17px}
     .stu-icon-close:hover{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}
 
-    .stu-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:0;flex:1;min-height:0}
-    @media(max-width:900px){.stu-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}}
+    .stu-body{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,1fr);flex:1;min-height:0}
+    .stu-main{padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto}
+    .stu-side{border-inline-start:1px solid var(--line-soft);display:flex;flex-direction:column;min-height:0;overflow-y:auto;background:color-mix(in srgb,var(--bg-sunk) 45%,transparent)}
+    @media(max-width:899px){
+      .stu-body{display:block;overflow-y:auto;overscroll-behavior:contain}
+      .stu-main{overflow:visible;padding:10px 10px 0}
+      .stu-side{border-inline-start:0;border-top:1px solid var(--line-soft);overflow:visible;margin-top:10px}
+      .stu-sticky{position:sticky;top:0;z-index:5;background:var(--bg-elev);padding-bottom:6px}
+    }
 
-    .stu-canvas-col{padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto}
-    .stu-side{padding:16px;border-inline-start:1px solid var(--line-soft);display:flex;flex-direction:column;gap:14px;min-height:0;overflow-y:auto;background:color-mix(in srgb,var(--bg-sunk) 40%,transparent)}
-    @media(max-width:900px){.stu-side{border-inline-start:0;border-top:1px solid var(--line-soft);max-height:45dvh}}
-
-    .stu-scenes{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-    .stu-scenes::-webkit-scrollbar{display:none}
-    .stu-scene{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border-radius:11px;border:1px solid var(--line-soft);background:var(--glass);color:var(--ink-dim);font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s var(--ease);white-space:nowrap}
-    .stu-scene:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 30%,var(--line-soft))}
-    .stu-scene.on{background:var(--accent);color:var(--accent-ink);border-color:transparent;box-shadow:0 8px 22px -12px var(--accent)}
+    .stu-scenes{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+    .stu-scenes::-webkit-scrollbar,.stu-chips::-webkit-scrollbar,.stu-tl-inner::-webkit-scrollbar,.stu-tabs::-webkit-scrollbar{display:none}
+    .stu-scene{flex:none;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:11px;border:1px solid var(--line-soft);background:var(--glass);color:var(--ink-dim);font:600 12.5px inherit;font-family:inherit;cursor:pointer;transition:all .16s var(--ease)}
+    .stu-scene:hover{color:var(--ink)}
+    .stu-scene.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
     .stu-scene svg{width:14px;height:14px}
 
-    .stu-stage{position:relative;border-radius:16px;overflow:hidden;background:var(--bg-sunk);box-shadow:inset 0 0 0 1px var(--line-soft),0 18px 40px -22px rgba(0,0,0,.55);aspect-ratio:8/5}
+    .stu-stage-box{position:relative;border-radius:16px;overflow:hidden;background:var(--bg-sunk);box-shadow:inset 0 0 0 1px var(--line-soft),0 18px 40px -22px rgba(0,0,0,.6)}
+    .stu-stage{position:relative;aspect-ratio:8/5;direction:ltr;user-select:none;-webkit-user-select:none;transition:filter .3s}
+    .stu-stage.cmp{touch-action:none;cursor:ew-resize}
     .stu-stage svg{width:100%;height:100%;display:block}
-    .stu-stage .ly{cursor:pointer;transition:opacity .2s var(--ease)}
-    .stu-stage .ly:hover{opacity:.94}
-    .stu-stage .ly.sel{stroke:#fff;stroke-width:1.8;paint-order:stroke;stroke-dasharray:6 4;animation:selPulse 1.6s ease-in-out infinite}
-    @keyframes selPulse{50%{stroke-opacity:.5}}
+    .stu-stage .ly{cursor:pointer}
+    .stu-stage .ly:hover path{stroke:var(--accent);stroke-width:1.4;stroke-linejoin:round;paint-order:stroke}
+    .stu-stage .ly.sel path{stroke:var(--accent);stroke-width:2;stroke-linejoin:round;paint-order:stroke}
+    .stu-cmp{position:absolute;inset:0}
+    .stu-cmp>div{position:absolute;inset:0}
+    .stu-cmp-h{inset:0 auto 0 50%!important;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);pointer-events:none}
+    .stu-cmp-h:after{content:"";position:absolute;top:50%;left:50%;width:30px;height:30px;margin:-15px;border-radius:50%;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+    .stu-cmp-t{position:absolute;top:8px;font-size:11px;padding:2px 10px;border-radius:99px;background:rgba(0,0,0,.55);color:#fff;direction:rtl}
+    .stu-cmp-t.l{left:8px}.stu-cmp-t.r{right:8px}
+    .stu-hint{position:absolute;bottom:8px;inset-inline:8px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+    .stu-hint span{background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 10px;border-radius:99px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 
-    .stu-lights{display:flex;gap:6px;background:var(--glass);border:1px solid var(--line-soft);border-radius:12px;padding:4px;width:fit-content}
-    .stu-light{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;border:0;background:transparent;color:var(--ink-dim);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s var(--ease)}
-    .stu-light:hover{color:var(--ink)}
+    .stu-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:10px 2px 2px}
+    .stu-chip{flex:none;display:flex;align-items:center;gap:8px;padding:5px 12px 5px 6px;border-radius:99px;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);font-family:inherit;font-size:12px;cursor:pointer;text-align:start;transition:border-color .16s,background .16s}
+    .stu-chip i{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(128,128,128,.35);flex:none}
+    .stu-chip b{font-weight:600;display:block;line-height:1.35}
+    .stu-chip em{font-style:normal;font-size:10px;color:var(--ink-dim);display:block;line-height:1.3}
+    .stu-chip[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--bg-elev))}
+
+    .stu-tabs{display:flex;border-bottom:1px solid var(--line-soft);overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg-elev);z-index:2;flex:none}
+    .stu-tabs button{flex:1;padding:12px 10px;background:none;border:0;color:var(--ink-dim);font-family:inherit;font-size:13px;white-space:nowrap;cursor:pointer;position:relative}
+    .stu-tabs button[aria-selected=true]{color:var(--ink);font-weight:700}
+    .stu-tabs button[aria-selected=true]:after{content:"";position:absolute;inset-inline:22%;bottom:-1px;height:2px;background:var(--accent);border-radius:2px}
+    .stu-pane{display:none;padding:14px;gap:14px;flex-direction:column}
+    .stu-pane.on{display:flex}
+    .stu-block{display:flex;flex-direction:column;gap:8px}
+    .stu-side-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink)}
+    .stu-hint-sm{font-size:11px;font-weight:500;color:var(--ink-dim)}
+
+    .stu-sel{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:16px;background:var(--bg-sunk)}
+    .stu-sel .big{width:56px;height:56px;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,.35)}
+    .stu-sel b{font-size:14px}
+    .stu-sel p{margin:0;font-size:11px;color:var(--ink-dim);font-variant-numeric:tabular-nums;line-height:1.7}
+    .stu-sel .ltr{direction:ltr;text-align:right;unicode-bidi:isolate}
+    .stu-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
+    .stu-sw{position:relative;aspect-ratio:1;border-radius:12px;border:2px solid var(--line-soft);background:var(--c);cursor:pointer;overflow:hidden;transition:transform .2s var(--ease)}
+    .stu-sw:hover{transform:translateY(-2px)}
+    .stu-sw:active{transform:scale(.94)}
+    .stu-sw.on{border-color:var(--ink);box-shadow:0 0 0 3px var(--accent)}
+    .stu-sw span{position:absolute;inset:auto 0 3px 0;text-align:center;font-size:9px;font-weight:800;color:#fff;mix-blend-mode:difference}
+
+    .stu-actions{display:flex;gap:6px;flex-wrap:wrap}
+    .stu-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:11px;border:1px solid var(--line);background:var(--glass);color:var(--ink-dim);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .16s var(--ease)}
+    .stu-btn:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+    .stu-btn:active{transform:scale(.96)}
+    .stu-btn[aria-pressed=true]{color:var(--accent-text);border-color:var(--accent)}
+    .stu-btn svg{width:14px;height:14px}
+    .stu-btn-primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
+    .stu-btn-primary:hover{color:var(--accent-ink);filter:brightness(1.05)}
+    .stu-why{margin:0;font-size:12px;line-height:1.85;color:var(--ink-dim);border-inline-start:2px solid var(--accent);padding-inline-start:10px}
+    .stu-why:empty{display:none}
+    .stu-why b{color:var(--ink);font-weight:600}
+    .stu-pills{display:flex;gap:6px;flex-wrap:wrap}
+    .stu-pill{padding:5px 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--ink);font-family:inherit;font-size:12px;cursor:pointer}
+    .stu-pill[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+    .stu-range{width:100%;accent-color:var(--accent);height:28px;margin:0}
+    .stu-lights{display:flex;gap:4px;background:var(--glass);border:1px solid var(--line-soft);border-radius:12px;padding:4px}
+    .stu-light{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 8px;border-radius:8px;border:0;background:transparent;color:var(--ink-dim);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
     .stu-light.on{background:var(--bg-elev);color:var(--ink);box-shadow:var(--shadow-sm)}
     .stu-light svg{width:14px;height:14px}
 
     .stu-tl-inner{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;min-height:46px;align-items:center}
-    .stu-tl-inner::-webkit-scrollbar{display:none}
-    .stu-tl-item{flex:0 0 auto;width:46px;height:44px;border-radius:9px;border:1.5px solid var(--line-soft);background:var(--glass);overflow:hidden;cursor:pointer;transition:all .15s var(--ease)}
-    .stu-tl-item:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--line-soft))}
-    .stu-tl-item.on{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
+    .stu-tl-item{flex:none;width:56px;height:36px;border-radius:9px;border:2px solid var(--line-soft);background:var(--glass);overflow:hidden;cursor:pointer;padding:0}
+    .stu-tl-item.on{border-color:var(--accent)}
     .stu-tl-item svg{width:100%;height:100%;display:block}
-    .stu-tl-empty{font-size:11.5px;color:var(--ink-faint);padding:14px 0}
+    .stu-tl-empty{font-size:11.5px;color:var(--ink-faint)}
 
-    .stu-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-    .stu-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:11px;border:1px solid var(--line);background:var(--glass);color:var(--ink-dim);font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s var(--ease);min-height:40px}
-    .stu-btn:hover{color:var(--ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
-    .stu-btn:active{transform:scale(.96)}
-    .stu-btn:disabled{opacity:.35;cursor:default;transform:none}
-    .stu-btn svg{width:14px;height:14px}
-    .stu-btn-primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700}
-    .stu-btn-primary:hover{background:var(--accent);color:var(--accent-ink);filter:brightness(1.05)}
+    .stu-analysis{display:flex;flex-direction:column;gap:14px}
+    .stu-score{display:flex;gap:14px;align-items:center;padding:12px;border-radius:16px;background:var(--bg-sunk);border:1px solid var(--line)}
+    .stu-ring{width:64px;height:64px;border-radius:50%;background:conic-gradient(var(--accent) calc(var(--s)*1%),var(--line) 0);display:grid;place-items:center;flex:none}
+    .stu-ring b{width:50px;height:50px;border-radius:50%;background:var(--bg-sunk);display:grid;place-items:center;font-size:16px}
+    .stu-score p{margin:0;font-size:12px;color:var(--ink-dim)}
+    .stu-bar3{display:grid;gap:4px;font-size:11.5px;color:var(--ink-dim)}
+    .stu-bar3>div{display:flex;height:16px;border-radius:8px;overflow:hidden;direction:ltr;background:var(--bg-sunk);box-shadow:inset 0 0 0 1px var(--line-soft)}
+    .stu-bar3>div s{display:block;transition:width .4s var(--ease)}
+    .stu-bar3>span{display:flex;justify-content:space-between;gap:8px}
+    .stu-bar3 b{font-weight:600;color:var(--ink)}
+    .stu-alert{display:flex;gap:8px;padding:9px 12px;border-radius:12px;font-size:12px;line-height:1.7;background:color-mix(in srgb,var(--stu-warn) 14%,transparent);border:1px solid color-mix(in srgb,var(--stu-warn) 40%,transparent)}
+    .stu-alert.info{background:color-mix(in srgb,var(--accent) 10%,transparent);border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
+    .stu-alert svg{width:14px;height:14px;flex:none;margin-top:3px}
+    .stu-scroll{overflow-x:auto}
+    .stu-tbl{width:100%;border-collapse:collapse;font-size:12px}
+    .stu-tbl th{font-weight:500;color:var(--ink-dim);text-align:right;padding:4px 6px;font-size:11px;white-space:nowrap}
+    .stu-tbl td{padding:7px 6px;border-top:1px solid var(--line-soft);vertical-align:middle;white-space:nowrap}
+    .stu-tbl .d{display:inline-block;width:14px;height:14px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(128,128,128,.4);vertical-align:-3px;margin-inline-end:6px}
+    .stu-tbl .n{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;display:inline-block}
+    .stu-tag{padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700}
+    .stu-tag.ok{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent-text)}
+    .stu-tag.mid{background:color-mix(in srgb,var(--stu-warn) 22%,transparent);color:var(--stu-warn)}
+    .stu-tag.no{background:color-mix(in srgb,var(--danger) 22%,transparent);color:var(--danger)}
 
-    .stu-side-block{display:flex;flex-direction:column;gap:8px}
-    .stu-side-grow{flex:1;min-height:0}
-    .stu-side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.4px}
-    .stu-hint-sm{font-size:11px;font-weight:500;color:var(--ink-faint);text-transform:none;letter-spacing:0}
-
-    .stu-palette{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
-    .stu-sw{position:relative;aspect-ratio:1;border-radius:10px;border:2px solid var(--line-soft);background:var(--c);cursor:pointer;overflow:hidden;transition:all .15s var(--ease)}
-    .stu-sw:hover{transform:translateY(-2px);box-shadow:0 8px 18px -10px rgba(0,0,0,.5)}
-    .stu-sw.on{border-color:var(--ink);box-shadow:0 0 0 3px var(--accent)}
-    .stu-sw .stu-sw-label{position:absolute;inset:auto 0 3px 0;text-align:center;font-size:9px;font-weight:800;color:#fff;mix-blend-mode:difference;letter-spacing:.3px;font-variant-numeric:tabular-nums}
-
-    .stu-layers{display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:260px;padding-inline-end:4px}
-    .stu-layer{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;border:1px solid transparent;background:transparent;cursor:pointer;transition:all .12s var(--ease);font-size:12.5px}
-    .stu-layer:hover{background:var(--glass)}
-    .stu-layer.on{background:var(--glass-strong);border-color:var(--accent)}
-    .stu-layer i{width:18px;height:18px;border-radius:6px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
-    .stu-layer b{flex:1;font-weight:600;color:var(--ink)}
-    .stu-layer span{font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums;direction:ltr}
-    .stu-layer button{background:none;border:0;color:var(--ink-faint);cursor:pointer;padding:2px;border-radius:5px;transition:color .12s}
-    .stu-layer button:hover{color:var(--ink)}
-    .stu-layer button.locked{color:var(--accent-text)}
-    .stu-layer button svg{width:13px;height:13px}
-
-    .stu-analysis{display:flex;flex-direction:column;gap:10px}
-    .stu-an-row{display:flex;flex-direction:column;gap:5px}
-    .stu-an-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-dim);font-weight:600}
-    .stu-an-bar{height:6px;border-radius:4px;background:var(--glass-strong);overflow:hidden;display:flex}
-    .stu-an-bar span{height:100%;transition:width .3s var(--ease)}
-    .stu-an-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:var(--glass-strong);font-size:11px;font-weight:700;color:var(--ink-dim)}
-    .stu-an-pill b{color:var(--ink);font-weight:800}
-    .stu-an-warn{display:flex;gap:8px;padding:8px 10px;border-radius:9px;font-size:11.5px;line-height:1.6;background:color-mix(in srgb,var(--danger) 12%,var(--glass));color:var(--ink-dim);border:1px solid color-mix(in srgb,var(--danger) 25%,transparent)}
-    .stu-an-warn.info{background:color-mix(in srgb,var(--accent) 10%,var(--glass));border-color:color-mix(in srgb,var(--accent) 25%,transparent)}
-    .stu-an-warn svg{width:14px;height:14px;flex-shrink:0;margin-top:2px}
-    .stu-swatches{display:flex;gap:4px;flex-wrap:wrap}
-    .stu-swatch-chip{width:22px;height:22px;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
-
-    .stu-compare-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--line-soft);background:var(--glass);font-size:12px;font-weight:600;color:var(--ink-dim)}
-    .stu-compare-bar input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:var(--line);outline:none}
-    .stu-compare-bar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);cursor:pointer;box-shadow:0 2px 8px -2px rgba(0,0,0,.4)}
-    .stu-compare-bar input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:var(--accent);cursor:pointer}
-
-    @media(max-width:520px){
-      .stu-head{padding:10px 12px}
-      .stu-canvas-col{padding:10px}
-      .stu-side{padding:10px}
-      .stu-title span{font-size:10.5px}
-      .stu-tl-item{width:40px;height:38px}
-    }
+    .stu-compare-bar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-top:1px solid var(--line-soft);background:var(--glass);font-size:12px;font-weight:600;color:var(--ink-dim);direction:ltr;flex:none}
+    .stu-compare-bar input{flex:1;accent-color:var(--accent)}
+    .stu-toast{position:absolute;inset-inline:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));max-width:340px;margin:auto;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:14px;font-size:13px;text-align:center;opacity:0;transform:translateY(12px);transition:opacity .26s var(--ease),transform .26s var(--ease);pointer-events:none;z-index:9}
+    .stu-toast.on{opacity:1;transform:none}
+    @media(max-width:520px){.stu-head{padding:10px 12px}.stu-pane{padding:12px}}
+    @media(prefers-reduced-motion:reduce){.stu-v3,.stu-v3 *{animation:none!important;transition:none!important}}
     `;
     document.head.appendChild(s);
   }
@@ -1042,8 +1270,8 @@
     office: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 20h8M12 17v3"/></svg>',
     cafe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM6 2v2M10 2v2M14 2v2"/></svg>',
   };
-  const SCENE_ICON = { living: 'home', bedroom: 'bed', kitchen: 'kitchen', bathroom: 'bath', office: 'office', cafe: 'cafe' };
 
+  const SCENE_ICON = { living: 'home', bedroom: 'bed', kitchen: 'kitchen', bathroom: 'bath', office: 'office', cafe: 'cafe' };
   const toPN = (n) => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 
   /* ============================================================
@@ -1053,7 +1281,6 @@
     const scene = SCENES[sceneId];
     if (!scene || !st.palette) return null;
     if (st.asgByScene[sceneId]) return st.asgByScene[sceneId];
-
     const pool = st.palette.colors;
     const pIdx = popIndex(pool);
     const base = { L1: 4, L2: 3, M: 2, D: 1, K: 0, P: pIdx };
@@ -1069,172 +1296,242 @@
   /* ============================================================
      رندر UI
      ============================================================ */
+  const pill = (attr, val, label, on) => `<button type="button" class="stu-pill" data-${attr}="${val}" aria-pressed="${on}">${label}</button>`;
+
   function renderStage() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
     if (!scene || !asg) return;
-
-    stageEl.innerHTML = buildSVG(scene, asg, st.palette.colors, st.light, { selected: st.selected });
-
+    stageEl.style.filter = st.cb ? `url(#stu-f-${st.cb})` : '';
+    stageEl.classList.toggle('cmp', st.before);
+    updateClock();
+    if (st.before) { applyBeforeAfter(); return; }
+    cmp = null;
+    stageEl.innerHTML = buildSVG(scene, asg, st.palette.colors, st.light, ropts());
     stageEl.querySelectorAll('.ly').forEach(g => {
-      g.addEventListener('click', () => {
-        const id = g.dataset.l;
-        st.selected = st.selected === id ? null : id;
-        haptic.select();
-        renderStage();
-        renderLayers();
-        renderPalette();
-        updateSelHint();
-      });
+      g.addEventListener('click', () => selectLayer(st.selected === g.dataset.l ? null : g.dataset.l));
     });
   }
 
+  function updateClock() {
+    const h = Math.floor(st.t), m = Math.round((st.t - h) * 60);
+    const el = $('#stuClock', root);
+    if (el) el.textContent = `${toPN(h)}:${toPN(String(m).padStart(2, '0'))}`;
+  }
+
+  function selectLayer(id) {
+    st.selected = id;
+    haptic.select();
+    renderStage(); renderChips(); renderColor(); renderMat();
+  }
+
   function renderScenes() {
-    const wrap = $('#stuScenes', root);
-    wrap.innerHTML = Object.entries(SCENES).map(([id, s]) => `
+    $('#stuScenes', root).innerHTML = Object.entries(SCENES).map(([id, s]) => `
       <button type="button" class="stu-scene ${id === st.sceneId ? 'on' : ''}" data-scene="${id}" role="tab" aria-selected="${id === st.sceneId}">
-        ${ICONS[SCENE_ICON[id] || 'home']}
-        <span>${s.name}</span>
-      </button>
-    `).join('');
+        ${ICONS[SCENE_ICON[id] || 'home']}<span>${s.name}</span>
+      </button>`).join('');
   }
 
-  function renderLights() {
-    const wrap = $('#stuLights', root);
-    wrap.innerHTML = Object.entries(LIGHTS).map(([id, l]) => `
-      <button type="button" class="stu-light ${id === st.light ? 'on' : ''}" data-light="${id}" role="tab" aria-selected="${id === st.light}">
-        ${ICONS[l.icon]}
-        <span>${l.name}</span>
-      </button>
-    `).join('');
-  }
-
-  function renderPalette() {
-    const wrap = $('#stuPalette', root);
-    const asg = ensureAssignment(st.sceneId);
-    if (!asg) { wrap.innerHTML = ''; return; }
-    const currentIdx = st.selected ? asg[st.selected] : -1;
-    wrap.innerHTML = st.palette.colors.map((hex, i) => `
-      <button type="button" class="stu-sw ${i === currentIdx ? 'on' : ''}" data-pick="${i}" style="--c:${hex}" aria-label="رنگ ${hex}">
-        <span class="stu-sw-label">${hex.replace('#','').toUpperCase()}</span>
-      </button>
-    `).join('');
-  }
-
-  function renderLayers() {
-    const wrap = $('#stuLayers', root);
-    const scene = SCENES[st.sceneId];
-    const asg = ensureAssignment(st.sceneId);
+  function renderChips() {
+    const scene = SCENES[st.sceneId], asg = ensureAssignment(st.sceneId);
     if (!scene || !asg) return;
-
-    wrap.innerHTML = scene.layers.map(l => {
-      const hex = st.palette.colors[asg[l.id]] || '#888';
-      const locked = st.lock.has(l.id);
-      return `
-        <div class="stu-layer ${st.selected === l.id ? 'on' : ''}" data-row="${l.id}">
-          <i style="background:${hex}"></i>
-          <b>${l.name}</b>
-          <span>${hex.replace('#','').toUpperCase()}</span>
-          <button type="button" data-lock="${l.id}" class="${locked ? 'locked' : ''}" aria-label="${locked ? 'بازکردن قفل' : 'قفل کردن'}">
-            ${locked ? ICONS.lock : ICONS.unlock}
-          </button>
-        </div>
-      `;
+    $('#stuChips', root).innerHTML = scene.layers.filter(l => l.role).map(l => {
+      const hex = st.palette.colors[asg[l.id]] || '#888888';
+      return `<button type="button" class="stu-chip" data-chip="${l.id}" aria-pressed="${st.selected === l.id}">
+        <i style="background:${hex}"></i><span><b>${layerLabel(scene, l)}</b><em>${st.lock.has(l.id) ? 'قفل · ' : ''}${ROLE_FA[l.role] || ''}</em></span></button>`;
     }).join('');
+  }
 
-    $('#stuLayerCount', root).textContent = `${scene.layers.length} لایه`;
+  function renderColor() {
+    const scene = SCENES[st.sceneId], asg = ensureAssignment(st.sceneId);
+    if (!scene || !asg) return;
+    const layer = scene.layers.find(l => l.id === st.selected);
+    const sel = $('#stuSel', root);
+    if (!layer) {
+      sel.innerHTML = `<div class="big" style="background:var(--glass)"></div><div><b>بخشی انتخاب نشده</b><p>روی تصویر یا یکی از بخش‌ها بزن.</p></div><span></span>`;
+    } else {
+      const hex = st.palette.colors[asg[layer.id]] || '#888888';
+      const rg = hexToRgb(hex), cm = toCMYK(hex), lb = toLAB(hex);
+      sel.innerHTML = `<div class="big" style="background:${hex}"></div>
+        <div><b>${layerLabel(scene, layer)}</b>
+        <p class="ltr">${hex.toUpperCase()} · RGB ${rg.join(',')}<br>CMYK ${cm.join('/')} · LAB ${lb.join(',')}</p>
+        <p>LRV ${toPN(lrv(hex))} · ${ROLE_FA[layer.role] || ''}</p></div>
+        <button type="button" class="stu-icon" data-a="copy" aria-label="کپی کد رنگ">${svgI(IC.copy)}</button>`;
+    }
+    const cur = layer ? asg[layer.id] : -1;
+    $('#stuPalette', root).innerHTML = st.palette.colors.map((hex, i) => `
+      <button type="button" class="stu-sw ${i === cur ? 'on' : ''}" data-pick="${i}" style="--c:${hex}" aria-label="رنگ ${hex}" aria-pressed="${i === cur}">
+        <span>${hex.replace('#', '').toUpperCase()}</span></button>`).join('');
+    $('#stuSelHint', root).textContent = layer ? 'روی رنگ بزن تا اعمال شود' : '';
+    const lk = $('#stuLockBtn', root), locked = !!layer && st.lock.has(layer.id);
+    lk.setAttribute('aria-pressed', locked);
+    lk.disabled = !layer;
+    lk.firstElementChild.textContent = locked ? 'باز کردن قفل' : 'قفل بخش';
+    $('#stuWhy', root).innerHTML = st.why || whyDefault(scene, asg);
+    $('[data-a=undo]', root).disabled = !st.history.length;
+    $('[data-a=redo]', root).disabled = !st.future.length;
+  }
+
+  function whyDefault(scene, asg) {
+    const p = pairsInfo(scene, asg)[0];
+    if (!p) return '';
+    const txt = p.r >= 3 ? 'سطوح از هم واضح جدا می‌شوند.' : p.r >= 1.5 ? 'جداسازی ملایم و آرام است.' : 'سطوح در هم محو می‌شوند؛ یکی را روشن‌تر یا تیره‌تر کن.';
+    return `<b>چرا این چیدمان؟</b> کنتراست ${p.label} ${fmt(p.r, 1)}:۱ است؛ ${txt}`;
+  }
+
+  function renderMat() {
+    const scene = SCENES[st.sceneId];
+    const layer = scene.layers.find(l => l.id === st.selected);
+    const slider = $('#stuGloss', root);
+    if (!layer) {
+      $('#stuMatTitle', root).textContent = 'متریال';
+      $('#stuMatSub', root).textContent = '';
+      $('#stuFinish', root).innerHTML = '';
+      slider.disabled = true; slider.value = 0;
+      $('#stuGlossV', root).textContent = '';
+      $('#stuMatWhy', root).textContent = 'اول یک بخش را انتخاب کن.';
+      return;
+    }
+    const g = layerGloss(scene, layer);
+    slider.disabled = false; slider.value = Math.round(g * 100);
+    $('#stuMatTitle', root).textContent = layerLabel(scene, layer);
+    $('#stuMatSub', root).textContent = MAT_FA[layer.mat] || '';
+    $('#stuGlossV', root).textContent = toPN(Math.round(g * 100)) + '٪';
+    const FIN = [['مات', 0.02], ['ساتن', 0.2], ['نیمه‌براق', 0.4], ['براق', 0.65]];
+    const near = FIN.reduce((a, b) => Math.abs(b[1] - g) < Math.abs(a[1] - g) ? b : a);
+    $('#stuFinish', root).innerHTML = FIN.map(([n, v]) => pill('fin', v, n, near[0] === n)).join('');
+    $('#stuMatWhy', root).textContent = g > 0.25
+      ? 'سطح براق نور پنجره را بازتاب می‌دهد و همان رنگ را روشن‌تر نشان می‌دهد؛ برای فضای کوچک مناسب است.'
+      : 'سطح مات نور را پخش می‌کند و رنگ آرام‌تر و عمیق‌تر دیده می‌شود.';
+  }
+
+  function renderLight() {
+    $('#stuLights', root).innerHTML = Object.entries(LIGHTS).map(([id, l]) => `
+      <button type="button" class="stu-light ${id === st.light ? 'on' : ''}" data-light="${id}" aria-pressed="${id === st.light}">${ICONS[l.icon]}<span>${l.name}</span></button>`).join('');
+    $('#stuTime', root).value = st.t;
+    updateTimeLbl();
+    $('#stuDir', root).innerHTML = ['شمالی', 'جنوبی', 'شرقی', 'غربی'].map(v => pill('dir', v, v, st.dir === v)).join('');
+    $('#stuWx', root).innerHTML = ['آفتابی', 'ابری'].map(v => pill('wx', v, v, st.wx === v)).join('');
+    $('#stuKel', root).innerHTML = [2700, 3000, 4000, 6500].map(v => pill('kel', v, toPN(v), st.kelvin === v)).join('');
+    const on = lampIsOn(), b = $('#stuLampBtn', root);
+    b.setAttribute('aria-pressed', on);
+    b.firstElementChild.textContent = on ? 'لوستر روشن' : 'لوستر خاموش';
+    $('#stuLightWhy', root).textContent = st.dir === 'شمالی'
+      ? 'نور شمالی سرد و یکنواخت است؛ رنگ‌ها آبی‌تر و تیره‌تر دیده می‌شوند. برای این فضا فام گرم‌تر بهتر جواب می‌دهد.'
+      : st.dir === 'جنوبی'
+        ? 'نور جنوبی گرم و پرشدت است؛ رنگ‌های سرد در آن زنده‌تر می‌مانند.'
+        : 'نور شرقی صبح گرم و عصر ملایم است؛ اتاق خواب را با آن بسنج.';
+  }
+  function updateTimeLbl() {
+    const t = st.t;
+    $('#stuTimeLbl', root).textContent = t < 9 ? 'صبح زود' : t < 12 ? 'صبح' : t < 15 ? 'ظهر' : t < 18 ? 'عصر' : t < 20 ? 'غروب' : 'شب';
   }
 
   function renderAnalysis() {
     const wrap = $('#stuAnalysis', root);
-    const scene = SCENES[st.sceneId];
-    const asg = ensureAssignment(st.sceneId);
+    const scene = SCENES[st.sceneId], asg = ensureAssignment(st.sceneId);
     if (!scene || !asg) { wrap.innerHTML = ''; return; }
-
     const an = computeAnalysis(scene, asg, st.palette.colors);
-    const l1 = an.roleInfo.find(r => r.role === 'L1')?.pct || 0;
-    const l2 = an.roleInfo.find(r => r.role === 'L2')?.pct || 0;
-    const accent = an.roleInfo.find(r => r.role === 'P')?.pct || 0;
+    const rc = roleColors(scene, asg);
+    const g = { base: 0, sec: 0, acc: 0 };
+    an.roleInfo.forEach(r => { if (r.role === 'L1') g.base += r.pct; else if (r.role === 'K' || r.role === 'P') g.acc += r.pct; else g.sec += r.pct; });
+    const cols = [rc.L1, rc.L2 || rc.M, rc.P || rc.K];
+    const seg = (v, c) => `<s style="width:${v}%;background:${c || 'var(--line)'}"></s>`;
+    const pairs = pairsInfo(scene, asg);
+    const score = Math.round(clamp((an.harmonyScore + an.balanceScore) / 2, 0, 100));
 
     let html = `
-      <div class="stu-an-row">
-        <div class="stu-an-label"><span>نسبتِ سطوح (هدف ۶۰/۳۰/۱۰)</span><span>${Math.round(l1 + l2 + accent)}٪</span></div>
-        <div class="stu-an-bar">
-          <span style="width:${l1}%;background:var(--accent)"></span>
-          <span style="width:${l2}%;background:color-mix(in srgb,var(--accent) 55%,transparent)"></span>
-          <span style="width:${accent}%;background:color-mix(in srgb,var(--accent) 30%,transparent)"></span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums">
-          <span>پایه ${Math.round(l1)}٪</span>
-          <span>ثانویه ${Math.round(l2)}٪</span>
-          <span>تأکید ${Math.round(accent)}٪</span>
-        </div>
+      <div class="stu-score"><div class="stu-ring" style="--s:${score}"><b>${toPN(score)}</b></div>
+        <div><b>${an.harmonyType}</b><p>هماهنگی ${toPN(an.harmonyScore)}٪ · تعادل ${toPN(Math.round(an.balanceScore))}٪</p></div></div>
+      <div class="stu-bar3">
+        <span><b>سطح واقعی</b><span>پایه ${toPN(Math.round(g.base))}٪ · ثانویه ${toPN(Math.round(g.sec))}٪ · تأکید ${toPN(Math.round(g.acc))}٪</span></span>
+        <div>${seg(g.base, cols[0])}${seg(g.sec, cols[1])}${seg(g.acc, cols[2])}</div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <span class="stu-an-pill">هماهنگی <b>${toPN(an.harmonyScore)}٪</b></span>
-        <span class="stu-an-pill">${an.harmonyType}</span>
-        <span class="stu-an-pill">تعادل <b>${toPN(Math.round(an.balanceScore))}٪</b></span>
-      </div>
-      <div class="stu-swatches">`;
-
-    for (const c of an.colorStats.slice(0, 6)) {
-      html += `<div class="stu-swatch-chip" style="background:${c.hex}" title="${c.hex} — LRV ${c.lrv}"></div>`;
-    }
-    html += `</div>`;
+      <div class="stu-bar3">
+        <span><b>هدف ۶۰-۳۰-۱۰</b><span>پایه ۶۰٪ · ثانویه ۳۰٪ · تأکید ۱۰٪</span></span>
+        <div>${seg(60, cols[0])}${seg(30, cols[1])}${seg(10, cols[2])}</div>
+      </div>`;
 
     if (an.warnings.length) {
-      for (const w of an.warnings.slice(0, 3)) {
-        const cls = w.level === 'warn' ? '' : 'info';
-        html += `<div class="stu-an-warn ${cls}">${ICONS[w.level === 'warn' ? 'alert' : 'info']}<span>${w.text}</span></div>`;
-      }
+      html += an.warnings.slice(0, 3).map(w => `<div class="stu-alert ${w.level === 'warn' ? '' : 'info'}">${ICONS[w.level === 'warn' ? 'alert' : 'info']}<span>${w.text}</span></div>`).join('');
     } else {
-      html += `<div class="stu-an-warn info" style="background:color-mix(in srgb,var(--accent) 10%,var(--glass));border-color:color-mix(in srgb,var(--accent) 25%,transparent)">${ICONS.info}<span>همه‌چیز متعادل است — LRV، کنتراست و نسبتِ سطوح در محدوده‌ی مطلوب.</span></div>`;
+      html += `<div class="stu-alert info">${ICONS.info}<span>هشداری برای این چیدمان وجود ندارد.</span></div>`;
     }
 
+    html += `<div class="stu-block"><div class="stu-side-head"><span>رنگ‌ها و LRV</span></div><div class="stu-scroll"><table class="stu-tbl">
+      <tr><th>رنگ</th><th>LRV</th><th>سهم</th><th>نقش</th></tr>
+      ${an.colorStats.map(c => `<tr><td><span class="d" style="background:${c.hex}"></span><span class="n">${c.hex.toUpperCase()}</span></td><td>${toPN(c.lrv)}</td><td>${toPN(Math.round(c.share))}٪</td><td>${c.usage}</td></tr>`).join('')}
+      </table></div></div>`;
+
+    if (pairs.length) {
+      html += `<div class="stu-block"><div class="stu-side-head"><span>کنتراست سطوح</span><span class="stu-hint-sm">WCAG</span></div><div class="stu-scroll"><table class="stu-tbl">
+        <tr><th>جفت</th><th>رنگ‌ها</th><th>نسبت</th><th></th></tr>
+        ${pairs.map(p => `<tr><td>${p.label}</td><td><span class="d" style="background:${p.ca}"></span><span class="d" style="background:${p.cb}"></span></td><td>${fmt(p.r, 1)}:۱</td>
+          <td><span class="stu-tag ${p.r >= 3 ? 'ok' : p.r >= 1.5 ? 'mid' : 'no'}">${p.r >= 3 ? 'واضح' : p.r >= 1.5 ? 'ملایم' : 'ضعیف'}</span></td></tr>`).join('')}
+        </table></div></div>`;
+    }
+
+    html += `<div class="stu-block"><div class="stu-side-head"><span>شبیه‌سازی کوررنگی</span></div><div class="stu-pills">
+      ${[['', 'عادی'], ['pro', 'پروتانوپی'], ['deu', 'دوترانوپی'], ['tri', 'تریتانوپی']].map(([k, n]) => pill('cb', k, n, st.cb === k)).join('')}</div></div>`;
     wrap.innerHTML = html;
-    $('#stuAnalyBadge', root).textContent = `${an.harmonyType} · ${an.harmonyScore}٪`;
+  }
+
+  function renderExport() {
+    const rows = buildSchedule();
+    const total = rows.reduce((a, r) => a + (r.liters || 0), 0);
+    $('#stuFin', root).innerHTML = `<tr><th>عنصر</th><th>رنگ</th><th>LRV</th><th>متریال</th><th>m² ≈</th><th>رنگ (لیتر)</th></tr>` +
+      rows.map(r => `<tr><td>${layerLabel(SCENES[st.sceneId], r.l)}</td><td><span class="d" style="background:${r.hex}"></span><span class="n">${r.hex.toUpperCase()}</span></td><td>${toPN(lrv(r.hex))}</td><td>${MAT_FA[r.l.mat] || ''}</td><td>${fmt(r.area, 1)}</td><td>${r.liters ? fmt(r.liters, 1) : '—'}</td></tr>`).join('') +
+      `<tr><td colspan="5"><b>جمع رنگ دیوار</b></td><td><b>${fmt(total, 1)}</b></td></tr>`;
+    $('#stuSize', root).innerHTML = [[1600, '۱K'], [2400, '۲K'], [3600, '۴K']].map(([v, n]) => pill('size', v, n, st.size === v)).join('');
   }
 
   function renderTimeline() {
     const inner = $('#stuTlInner', root);
+    $('#stuTlCount', root).textContent = st.history.length ? `${toPN(st.history.length)} مرحله` : '';
     if (!st.history.length) {
       inner.innerHTML = `<span class="stu-tl-empty">با اولین تغییر رنگ، تاریخچه اینجا ظاهر می‌شود.</span>`;
       return;
     }
     inner.innerHTML = st.history.map((h, i) => {
       const scene = SCENES[h.sceneId];
-      const mini = buildSVG(scene, h.asg, st.palette.colors, st.light);
-      return `<button type="button" class="stu-tl-item ${i === st.history.length - 1 ? 'on' : ''}" data-tl="${i}" aria-label="مرحله ${i + 1}">${mini}</button>`;
+      const mini = buildSVG(scene, h.asg, st.palette.colors, st.light, ropts(h.sceneId, { selected: null }));
+      return `<button type="button" class="stu-tl-item ${i === st.history.length - 1 ? 'on' : ''}" data-tl="${i}" aria-label="مرحله ${toPN(i + 1)}">${mini}</button>`;
     }).join('');
-    requestAnimationFrame(() => inner.scrollTo({ left: inner.scrollWidth, behavior: 'smooth' }));
+    requestAnimationFrame(() => { try { inner.scrollTo({ left: inner.scrollWidth, behavior: 'smooth' }); } catch (e) {} });
   }
 
-  function updateSelHint() {
-    const hint = $('#stuSelHint', root);
-    if (!st.selected) { hint.textContent = 'روی صحنه یا لیست بزن'; return; }
-    const scene = SCENES[st.sceneId];
-    const layer = scene.layers.find(l => l.id === st.selected);
-    hint.textContent = layer ? `انتخاب: ${layer.name}` : 'انتخاب';
+  function renderTabs() {
+    $$('#stuTabs button', root).forEach(b => {
+      const on = b.dataset.tab === st.tab;
+      b.setAttribute('aria-selected', on);
+      b.tabIndex = on ? 0 : -1;
+    });
+    $$('.stu-pane', root).forEach(p => p.classList.toggle('on', p.dataset.pane === st.tab));
+  }
+  function setTab(t) { st.tab = t; renderTabs(); }
+
+  function renderHeader() {
+    $('#stuName', root).textContent = st.palette.name;
+    $('#stuMeta', root).textContent = SCENES[st.sceneId].name + ' — ' + SCENES[st.sceneId].subtitle;
   }
 
   function renderAll() {
     if (!st.palette) return;
-    renderScenes(); renderStage(); renderLights();
-    renderPalette(); renderLayers(); renderAnalysis();
-    renderTimeline(); updateSelHint();
-
-    $('#stuName', root).textContent = st.palette.name;
-    $('#stuMeta', root).textContent = SCENES[st.sceneId].name + ' — ' + SCENES[st.sceneId].subtitle;
-
-    $('[data-a=undo]', root).disabled = !st.history.length;
-    $('[data-a=redo]', root).disabled = !st.future.length;
+    renderHeader(); renderScenes(); renderStage(); renderChips();
+    renderColor(); renderMat(); renderLight(); renderAnalysis(); renderExport();
+    renderTimeline(); renderTabs();
+  }
+  /* بعد از تغییر رنگ/چیدمان */
+  function renderChanged() {
+    renderStage(); renderChips(); renderColor(); renderAnalysis(); renderExport(); renderTimeline();
   }
 
   /* ============================================================
      عملیات
      ============================================================ */
+  const snapAsg = () => JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {}));
   function pushHistory() {
-    st.history.push({ sceneId: st.sceneId, asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {})) });
+    st.history.push({ sceneId: st.sceneId, asg: snapAsg() });
     st.future = [];
     if (st.history.length > 12) st.history.shift();
   }
@@ -1243,12 +1540,14 @@
     pushHistory();
     st.asgByScene[st.sceneId] = next;
     haptic.light();
-    renderStage(); renderPalette(); renderLayers(); renderAnalysis(); renderTimeline();
+    renderChanged();
   }
 
   function setLayerColor(layerId, idx) {
     const asg = ensureAssignment(st.sceneId);
     if (!asg || asg[layerId] === idx) return;
+    if (st.lock.has(layerId)) { showStuToast('این بخش قفل است'); return; }
+    st.why = '';
     commitAssignment({ ...asg, [layerId]: idx });
     haptic.medium();
   }
@@ -1260,31 +1559,41 @@
     const out = smartShuffle(scene, st.palette.colors, locked);
     if (!out) return;
     const next = { ...ensureAssignment(st.sceneId), ...out.result };
+    const label = out.strategy === 'mono' ? 'تک‌رنگ' : out.strategy === 'analogous' ? 'آنالوگ' : out.strategy === 'complementary' ? 'مکمل' : 'سه‌گانه';
+    const asgPrev = st.asgByScene[st.sceneId];
+    st.asgByScene[st.sceneId] = next; // برای محاسبه‌ی متن توضیح
+    const p = pairsInfo(scene, next)[0];
+    st.asgByScene[st.sceneId] = asgPrev;
+    st.why = `<b>چرا این چیدمان؟</b> هارمونی ${label}` + (p ? `؛ کنتراست ${p.label} ${fmt(p.r, 1)}:۱ است.` : '.');
     commitAssignment(next);
     haptic.success();
-    const label = out.strategy === 'mono' ? 'تک‌رنگ' : out.strategy === 'analogous' ? 'آنالوگ' : out.strategy === 'complementary' ? 'مکمل' : 'سه‌گانه';
     showStuToast(`بُر هوشمند — استراتژی: ${label}`);
+  }
+
+  function afterJump() {
+    const sc = SCENES[st.sceneId];
+    if (!sc.layers.some(l => l.id === st.selected)) st.selected = defaultSel(st.sceneId);
+    st.why = '';
+    haptic.light();
+    renderAll();
   }
 
   function doUndo() {
     if (!st.history.length) return;
-    st.future.push({ sceneId: st.sceneId, asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {})) });
+    st.future.push({ sceneId: st.sceneId, asg: snapAsg() });
     const prev = st.history.pop();
     st.sceneId = prev.sceneId;
     st.asgByScene[prev.sceneId] = prev.asg;
-    st.selected = null;
-    haptic.light();
-    renderAll();
+    afterJump();
   }
 
   function doRedo() {
     if (!st.future.length) return;
-    st.history.push({ sceneId: st.sceneId, asg: JSON.parse(JSON.stringify(st.asgByScene[st.sceneId] || {})) });
+    st.history.push({ sceneId: st.sceneId, asg: snapAsg() });
     const nx = st.future.pop();
     st.sceneId = nx.sceneId;
     st.asgByScene[nx.sceneId] = nx.asg;
-    haptic.light();
-    renderAll();
+    afterJump();
   }
 
   function doReset() {
@@ -1292,9 +1601,8 @@
     st.asgByScene[st.sceneId] = null;
     ensureAssignment(st.sceneId);
     st.lock.clear();
-    st.selected = null;
-    haptic.light();
-    renderAll();
+    for (const k of Object.keys(st.gloss)) if (k.startsWith(st.sceneId + ':')) delete st.gloss[k];
+    afterJump();
   }
 
   function jumpToHistory(idx) {
@@ -1304,199 +1612,329 @@
     st.asgByScene[t.sceneId] = JSON.parse(JSON.stringify(t.asg));
     st.history = st.history.slice(0, idx);
     st.future = [];
-    st.selected = null;
-    haptic.light();
-    renderAll();
+    afterJump();
   }
 
   function doCompare() {
     st.before = !st.before;
     $('#stuCompareBar', root).hidden = !st.before;
-    if (st.before) applyBeforeAfter();
-    else renderStage();
+    $('#stuCmpBtn', root).setAttribute('aria-pressed', st.before);
+    renderStage();
     haptic.light();
+  }
+
+  function setSplit(v) {
+    st.splitX = clamp(v, 0, 100);
+    if (cmp) { cmp.b.style.clipPath = `inset(0 ${100 - st.splitX}% 0 0)`; cmp.h.style.left = st.splitX + '%'; }
+    const r = $('#stuSplit', root);
+    if (r) r.value = st.splitX;
   }
 
   function applyBeforeAfter() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
     if (!scene || !asg) return;
-
-    // پالتِ خاکستری برای «قبل»
+    const n = st.palette.colors.length;
     const grey = st.palette.colors.map((_, i) => {
-      const v = Math.round(35 + (i / Math.max(1, st.palette.colors.length - 1)) * 160);
+      const v = Math.round(35 + (i / Math.max(1, n - 1)) * 160);
       return rgbToHex(v, v, v);
     });
-
-    const afterSvg = buildSVG(scene, asg, st.palette.colors, st.light);
-    const beforeSvg = buildSVG(scene, asg, grey, st.light);
-
-    stageEl.innerHTML = `
-      <div style="position:relative;width:100%;height:100%">
-        <div style="position:absolute;inset:0">${afterSvg}</div>
-        <div style="position:absolute;inset:0;clip-path:inset(0 ${100 - st.splitX}% 0 0)">${beforeSvg}</div>
-        <div style="position:absolute;top:0;bottom:0;left:${st.splitX}%;width:2px;background:#fff;opacity:.7;box-shadow:0 0 8px rgba(0,0,0,.4);pointer-events:none"></div>
+    const o = ropts(null, { selected: null });
+    stageEl.innerHTML = `<div class="stu-cmp">
+        <div>${buildSVG(scene, asg, st.palette.colors, st.light, o)}</div>
+        <div class="stu-cmp-b">${buildSVG(scene, asg, grey, st.light, o)}</div>
+        <div class="stu-cmp-h"></div>
+        <span class="stu-cmp-t l">بدون رنگ</span><span class="stu-cmp-t r">با پالت</span>
       </div>`;
+    cmp = { b: $('.stu-cmp-b', stageEl), h: $('.stu-cmp-h', stageEl) };
+    setSplit(st.splitX);
   }
 
+  /* ---------- خروجی ---------- */
   async function doExport() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
     if (!scene || !asg) return;
+    try {
+      let svg = buildSVG(scene, asg, st.palette.colors, st.light, ropts(null, { selected: null }));
+      svg = svg.replace('<svg ', '<svg width="800" height="500" ');
+      const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>${svg}`], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = url; });
+      try { await document.fonts.load('900 58px Vazirmatn'); } catch (e) {}
 
-    const svg = buildSVG(scene, asg, st.palette.colors, st.light);
-    const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>${svg}`], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = url; });
+      const BW = 2400, BH = 1500, sc = st.size / BW;
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(BW * sc); cv.height = Math.round(BH * sc);
+      const ctx = cv.getContext('2d');
+      ctx.scale(sc, sc);
+      ctx.drawImage(img, 0, 0, BW, BH);
+      URL.revokeObjectURL(url);
 
-    const W = 2400, H = 1500;
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    ctx.drawImage(img, 0, 0, W, H);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, BH - 200, BW, 200);
+      ctx.direction = 'rtl'; ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = '900 58px Vazirmatn, sans-serif';
+      ctx.fillText(st.palette.name, BW - 60, BH - 120);
+      ctx.font = '500 28px Vazirmatn, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fillText(`${scene.name} — ${LIGHTS[st.light].name}`, BW - 60, BH - 70);
+      ctx.direction = 'ltr'; ctx.textAlign = 'left';
+      ctx.font = '800 40px Vazirmatn, sans-serif';
+      ctx.fillStyle = '#6FE3C4';
+      ctx.fillText('RAVAQ', 60, BH - 90);
+      const w = BW / st.palette.colors.length;
+      st.palette.colors.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(i * w, BH - 40, w, 40); });
 
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, H - 200, W, 200);
-    ctx.direction = 'rtl'; ctx.textAlign = 'right';
-    ctx.fillStyle = '#fff';
-    ctx.font = '900 58px Vazirmatn, sans-serif';
-    ctx.fillText(st.palette.name, W - 60, H - 120);
-    ctx.font = '500 28px Vazirmatn, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText(`${scene.name} — ${LIGHTS[st.light].name}`, W - 60, H - 70);
-    ctx.direction = 'ltr'; ctx.textAlign = 'left';
-    ctx.font = '800 40px Vazirmatn, sans-serif';
-    ctx.fillStyle = '#6FE3C4';
-    ctx.fillText('RAVAQ', 60, H - 90);
-
-    const w = W / st.palette.colors.length;
-    st.palette.colors.forEach((c, i) => {
-      ctx.fillStyle = c; ctx.fillRect(i * w, H - 40, w, 40);
-    });
-
-    URL.revokeObjectURL(url);
-    cv.toBlob(async (b) => {
-      const file = new File([b], `ravaq-${st.palette.id}-${st.sceneId}.png`, { type: 'image/png' });
-      try {
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: st.palette.name });
-          haptic.success(); return;
-        }
-      } catch (e) { if (e.name === 'AbortError') return; }
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(b);
-      a.download = file.name;
-      a.click();
-      showStuToast('تصویر با قاب برند رواق ذخیره شد');
-      haptic.success();
-    }, 'image/png');
+      cv.toBlob(async (b) => {
+        if (!b) { showStuToast('ساخت تصویر ناموفق بود؛ اندازه‌ی کوچک‌تری امتحان کن'); return; }
+        const file = new File([b], `ravaq-${st.palette.id}-${st.sceneId}.png`, { type: 'image/png' });
+        try {
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: st.palette.name });
+            haptic.success(); return;
+          }
+        } catch (e) { if (e && e.name === 'AbortError') return; }
+        downloadBlob(b, file.name);
+        showStuToast('تصویر با قاب برند رواق ذخیره شد');
+        haptic.success();
+      }, 'image/png');
+    } catch (e) {
+      showStuToast('ذخیره‌ی تصویر ناموفق بود');
+      try { console.warn('[ravaq-studio] export failed', e); } catch (_) {}
+    }
   }
 
-  let toastTimer = null;
+  function downloadBlob(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+
+  function doCSV() {
+    const scene = SCENES[st.sceneId];
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const head = ['عنصر', 'HEX', 'RGB', 'CMYK', 'LAB', 'LRV', 'متریال', 'مساحت تقریبی m2', 'رنگ دیوار (لیتر)'];
+    const lines = buildSchedule().map(r => [
+      layerLabel(scene, r.l), r.hex.toUpperCase(), hexToRgb(r.hex).join(' '), toCMYK(r.hex).join(' '), toLAB(r.hex).join(' '),
+      lrv(r.hex), MAT_FA[r.l.mat] || '', r.area.toFixed(1), r.liters ? r.liters.toFixed(1) : '',
+    ]);
+    const csv = '\ufeff' + [head, ...lines].map(r => r.map(q).join(',')).join('\r\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `ravaq-${st.palette.id}-${st.sceneId}-schedule.csv`);
+    showStuToast('جدول مشخصات ذخیره شد');
+    haptic.success();
+  }
+
+  function copyText(text, msg) {
+    const done = () => showStuToast(msg || 'کپی شد');
+    const fallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove(); done();
+      } catch (e) { showStuToast(text.split('\n')[0]); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+
   function showStuToast(msg) {
-    let t = $('#stuToast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'stuToast';
-      t.style.cssText = 'position:fixed;left:50%;bottom:calc(60px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--glass-strong);border:1px solid var(--line);color:var(--ink);padding:11px 18px;border-radius:999px;font-size:13px;font-weight:700;z-index:100;opacity:0;transition:all .3s var(--ease);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:var(--shadow-md);pointer-events:none;max-width:calc(100vw - 40px)';
-      document.body.appendChild(t);
-    }
+    const t = (root && $('#stuToast', root)) || null;
+    if (!t) return;
     t.textContent = msg;
-    requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translate(-50%,0)'; });
+    t.classList.add('on');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translate(-50%,20px)'; }, 2200);
+    toastTimer = setTimeout(() => t.classList.remove('on'), 2200);
   }
 
   /* ============================================================
      رویدادها
      ============================================================ */
+  function focusables() {
+    return $$('button:not([disabled]),input:not([disabled])', root).filter(el => el.offsetParent !== null || el === document.activeElement);
+  }
+
   function bindEvents() {
     root.addEventListener('click', (e) => {
-      const sceneBtn = e.target.closest('[data-scene]');
+      const t = e.target;
+      const sceneBtn = t.closest('[data-scene]');
       if (sceneBtn) {
         const id = sceneBtn.dataset.scene;
         if (id !== st.sceneId) {
           pushHistory();
           st.sceneId = id;
-          st.selected = null;
           ensureAssignment(id);
+          st.selected = defaultSel(id);
+          st.why = '';
           haptic.light();
           renderAll();
         }
         return;
       }
+      const chip = t.closest('[data-chip]');
+      if (chip) { selectLayer(st.selected === chip.dataset.chip ? null : chip.dataset.chip); return; }
 
-      const lightBtn = e.target.closest('[data-light]');
+      const tab = t.closest('[data-tab]');
+      if (tab) { haptic.select(); setTab(tab.dataset.tab); return; }
+
+      const lightBtn = t.closest('[data-light]');
       if (lightBtn) {
         st.light = lightBtn.dataset.light;
+        st.t = PRESET_T[st.light];
         haptic.light();
-        renderStage(); renderLights();
-        if (st.before) applyBeforeAfter();
+        renderStage(); renderLight(); renderTimeline();
         return;
       }
-
-      const pickBtn = e.target.closest('[data-pick]');
-      if (pickBtn) {
-        const i = +pickBtn.dataset.pick;
-        if (!st.selected) { showStuToast('اول یک لایه انتخاب کن'); return; }
-        setLayerColor(st.selected, i);
+      const pick = t.closest('[data-pick]');
+      if (pick) {
+        if (!st.selected) { showStuToast('اول یک بخش انتخاب کن'); return; }
+        setLayerColor(st.selected, +pick.dataset.pick);
         return;
       }
-
-      const lockBtn = e.target.closest('[data-lock]');
-      if (lockBtn) {
-        e.stopPropagation();
-        const id = lockBtn.dataset.lock;
-        st.lock.has(id) ? st.lock.delete(id) : st.lock.add(id);
-        haptic.select(); renderLayers();
+      const fin = t.closest('[data-fin]');
+      if (fin && st.selected) {
+        st.gloss[glossKey(st.sceneId, st.selected)] = +fin.dataset.fin;
+        haptic.select(); renderStage(); renderMat(); renderTimeline();
         return;
       }
+      const dir = t.closest('[data-dir]');
+      if (dir) { st.dir = dir.dataset.dir; haptic.select(); renderStage(); renderLight(); renderTimeline(); return; }
+      const wx = t.closest('[data-wx]');
+      if (wx) { st.wx = wx.dataset.wx; haptic.select(); renderStage(); renderLight(); renderTimeline(); return; }
+      const kel = t.closest('[data-kel]');
+      if (kel) { st.kelvin = +kel.dataset.kel; haptic.select(); renderStage(); renderLight(); renderTimeline(); return; }
+      const cbBtn = t.closest('[data-cb]');
+      if (cbBtn) { st.cb = cbBtn.dataset.cb; haptic.select(); renderStage(); renderAnalysis(); return; }
+      const sz = t.closest('[data-size]');
+      if (sz) { st.size = +sz.dataset.size; renderExport(); return; }
 
-      const rowBtn = e.target.closest('[data-row]');
-      if (rowBtn) {
-        st.selected = st.selected === rowBtn.dataset.row ? null : rowBtn.dataset.row;
-        haptic.select();
-        renderStage(); renderPalette(); renderLayers(); updateSelHint();
-        return;
-      }
+      const tl = t.closest('[data-tl]');
+      if (tl) { jumpToHistory(+tl.dataset.tl); return; }
 
-      const tlBtn = e.target.closest('[data-tl]');
-      if (tlBtn) { jumpToHistory(+tlBtn.dataset.tl); return; }
-
-      const action = e.target.closest('[data-a]');
+      const action = t.closest('[data-a]');
       if (action) {
         const a = action.dataset.a;
-        if (a === 'close')   return close();
-        if (a === 'shuffle') return doShuffle();
-        if (a === 'undo')    return doUndo();
-        if (a === 'redo')    return doRedo();
-        if (a === 'reset')   return doReset();
-        if (a === 'compare') return doCompare();
-        if (a === 'export')  return doExport();
+        if (a === 'close')    return close();
+        if (a === 'shuffle')  return doShuffle();
+        if (a === 'undo')     return doUndo();
+        if (a === 'redo')     return doRedo();
+        if (a === 'reset')    return doReset();
+        if (a === 'compare')  return doCompare();
+        if (a === 'export')   return doExport();
+        if (a === 'csv')      return doCSV();
+        if (a === 'goexport') { setTab('exp'); return; }
+        if (a === 'lock' && st.selected) {
+          st.lock.has(st.selected) ? st.lock.delete(st.selected) : st.lock.add(st.selected);
+          haptic.select(); renderColor(); renderChips();
+          return;
+        }
+        if (a === 'lamp') {
+          st.lamp = !lampIsOn();
+          haptic.select(); renderStage(); renderLight(); renderTimeline();
+          return;
+        }
+        if (a === 'copy' && st.selected) {
+          const asg = ensureAssignment(st.sceneId);
+          copyText(st.palette.colors[asg[st.selected]].toUpperCase(), 'کد رنگ کپی شد');
+          return;
+        }
+        if (a === 'copyall') {
+          const scene = SCENES[st.sceneId], asg = ensureAssignment(st.sceneId);
+          copyText(scene.layers.filter(l => l.role && asg[l.id] !== undefined)
+            .map(l => `${layerLabel(scene, l)}: ${st.palette.colors[asg[l.id]].toUpperCase()}`).join('\n'), 'همه‌ی کدها کپی شد');
+        }
       }
     });
 
-    document.addEventListener('input', (e) => {
-      if (e.target?.id === 'stuSplit') {
-        st.splitX = +e.target.value;
-        if (st.before) applyBeforeAfter();
+    /* اسلایدرها */
+    root.addEventListener('input', (e) => {
+      const id = e.target.id;
+      if (id === 'stuSplit') { setSplit(+e.target.value); return; }
+      if (id === 'stuTime') {
+        st.t = +e.target.value;
+        st.light = nearestPreset(st.t);
+        updateTimeLbl();
+        renderStage();
+        $$('.stu-light', root).forEach(b => { const on = b.dataset.light === st.light; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+        const on = lampIsOn(), b = $('#stuLampBtn', root);
+        b.setAttribute('aria-pressed', on);
+        b.firstElementChild.textContent = on ? 'لوستر روشن' : 'لوستر خاموش';
+        return;
+      }
+      if (id === 'stuGloss' && st.selected) {
+        const v = +e.target.value / 100;
+        st.gloss[glossKey(st.sceneId, st.selected)] = v;
+        $('#stuGlossV', root).textContent = toPN(Math.round(v * 100)) + '٪';
+        renderStage();
       }
     });
+    root.addEventListener('change', (e) => {
+      if (e.target.id === 'stuTime') renderTimeline();
+      if (e.target.id === 'stuGloss') { renderMat(); renderTimeline(); }
+    });
 
+    /* هاور و کشیدنِ مقایسه */
+    const splitFrom = (e) => {
+      const r = stageEl.getBoundingClientRect();
+      if (r.width > 0) setSplit((e.clientX - r.left) / r.width * 100);
+    };
+    stageEl.addEventListener('pointerdown', (e) => {
+      if (!st.before) return;
+      dragging = true;
+      try { stageEl.setPointerCapture(e.pointerId); } catch (_) {}
+      splitFrom(e);
+    });
+    stageEl.addEventListener('pointermove', (e) => {
+      if (st.before) { if (dragging) splitFrom(e); return; }
+      const g = e.target.closest ? e.target.closest('.ly') : null;
+      $('#stuHover', root).textContent = g ? g.dataset.n : 'روی هر بخش بزن تا انتخاب شود';
+    });
+    const endDrag = () => { dragging = false; };
+    stageEl.addEventListener('pointerup', endDrag);
+    stageEl.addEventListener('pointercancel', endDrag);
+    stageEl.addEventListener('pointerleave', () => { if (!st.before) $('#stuHover', root).textContent = 'روی هر بخش بزن تا انتخاب شود'; });
+
+    /* کیبورد: تب‌ها با فلش، تله‌ی فوکوس، Esc و Ctrl+Z */
+    root.addEventListener('keydown', (e) => {
+      const tabBtn = e.target.closest && e.target.closest('#stuTabs [data-tab]');
+      if (tabBtn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const tabs = $$('#stuTabs [data-tab]', root);
+        const i = tabs.indexOf(tabBtn);
+        const n = tabs[(i + (e.key === 'ArrowLeft' ? 1 : -1) + tabs.length) % tabs.length];
+        e.preventDefault(); setTab(n.dataset.tab); n.focus();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const f = focusables();
+        if (!f.length) return;
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    });
     document.addEventListener('keydown', (e) => {
       if (!root || root.hidden) return;
       if (e.key === 'Escape') {
-        if (st.selected) {
-          st.selected = null;
-          renderStage(); renderLayers(); renderPalette(); updateSelHint();
-        } else close();
+        if (st.selected) { selectLayer(null); }
+        else close();
+        return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.target && e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
         e.preventDefault();
         e.shiftKey ? doRedo() : doUndo();
       }
     });
+
+    try { if (tg && tg.BackButton) tg.BackButton.onClick(() => { if (root && !root.hidden) close(); }); } catch (_) {}
   }
 
   /* ============================================================
@@ -1507,28 +1945,29 @@
     const palettes = gs && Array.isArray(gs.palettes) ? gs.palettes : [];
     const p = palettes.find(x => x.id === paletteId);
 
-    if (!p) {
-      showStuToast('پالت پیدا نشد');
-      try { console.warn('[ravaq-studio] palette not found:', paletteId, '| total:', palettes.length); } catch (e) {}
+    if (!p || !Array.isArray(p.colors) || p.colors.length < 2) {
+      if (root) showStuToast('پالت پیدا نشد');
+      try { console.warn('[ravaq-studio] palette not found or invalid:', paletteId, '| total:', palettes.length); } catch (e) {}
       return;
     }
 
+    lastFocus = document.activeElement;
     if (!root) {
-      root = buildShell();
       injectCSS();
+      root = buildShell();
       stageEl = $('#stuStage', root);
       bindEvents();
     }
 
-    st.palette = p;
-    st.sceneId = 'living';
-    st.asgByScene = {};
-    st.history = []; st.future = [];
-    st.lock = new Set();
-    st.selected = null;
-    st.light = 'day';
-    st.before = false;
-    st.splitX = 50;
+    Object.assign(st, {
+      palette: p, sceneId: 'living', asgByScene: {}, history: [], future: [], lock: new Set(),
+      selected: null, light: 'day', before: false, splitX: 50,
+      t: 13, dir: 'جنوبی', wx: 'آفتابی', lamp: null, kelvin: 3000,
+      gloss: {}, cb: '', tab: 'color', why: '', size: 2400,
+    });
+    cmp = null;
+    $('#stuCompareBar', root).hidden = true;
+    $('#stuCmpBtn', root).setAttribute('aria-pressed', 'false');
 
     const tags = (p.tags || []).join(' ');
     if (tags.includes('اتاق خواب')) st.sceneId = 'bedroom';
@@ -1538,20 +1977,26 @@
     else if (tags.includes('کافه')) st.sceneId = 'cafe';
 
     ensureAssignment(st.sceneId);
+    st.selected = defaultSel(st.sceneId);
 
     root.hidden = false;
     document.body.style.overflow = 'hidden';
     renderAll();
     haptic.medium();
+    try { if (tg && tg.BackButton) tg.BackButton.show(); } catch (_) {}
+    const closeBtn = $('[data-a=close]', root);
+    if (closeBtn) closeBtn.focus();
   }
 
   function close() {
-    if (!root) return;
+    if (!root || root.hidden) return;
     root.hidden = true;
     document.body.style.overflow = '';
-    st.before = false;
+    st.before = false; cmp = null; dragging = false;
     $('#stuCompareBar', root).hidden = true;
     haptic.light();
+    try { if (tg && tg.BackButton) tg.BackButton.hide(); } catch (_) {}
+    try { if (lastFocus && lastFocus.focus) lastFocus.focus(); } catch (_) {}
   }
 
   /* ============================================================
@@ -1575,7 +2020,7 @@
     if (!b) return;
     const gs = getGlobalState();
     if (!gs || !Array.isArray(gs.palettes) || gs.palettes.length === 0) {
-      showStuToast('هنوز پالت‌ها بارگذاری نشده‌اند');
+      try { tg && tg.showAlert ? tg.showAlert('هنوز پالت‌ها بارگذاری نشده‌اند') : alert('هنوز پالت‌ها بارگذاری نشده‌اند'); } catch (_) {}
       return;
     }
     open(b.dataset.studio);
