@@ -4706,6 +4706,17 @@ async def materials_image_received(message: Message):
         return
     key = hashlib.sha1(f"{fo.file_id}{uuid.uuid4().hex}".encode()).hexdigest()[:20]
     item = {"key": key, "fid": fo.file_id, "w": w, "h": h, "mime": mime}
+    # نسخه‌های نمایشی همین‌جا ساخته می‌شوند؛ اگر بسازی نشد، همین حالا به ادمین خبر می‌دهیم (نه بعداً با عکسِ خالی)
+    try:
+        MATERIALS_MEDIA_CACHE.mkdir(parents=True, exist_ok=True)
+        for sz in (("g",) if pend["kind"] == "logo" else ("t", "l")):
+            (MATERIALS_MEDIA_CACHE / f"{key}_{sz}.webp").write_bytes(await asyncio.to_thread(_mat_render, raw, sz))
+        (MATERIALS_MEDIA_CACHE / f"{key}.src").write_bytes(raw)
+    except Exception as e:
+        logger.error("ساختِ پیش‌نمایشِ عکسِ مصالح ناموفق بود: %s", e, exc_info=True)
+        _mat_purge({"key": key})
+        await message.answer(f"❌ ساختِ پیش‌نمایش ناموفق بود ({type(e).__name__}). عکس رو به‌صورتِ JPG دوباره بفرست.")
+        return
     removed, count = [], 0
     async with _mat_lock:
         data = load_materials_data()
@@ -4715,6 +4726,7 @@ async def materials_image_received(message: Message):
             pr = next((p for p in co.get("products", []) if p.get("id") == pend.get("pid")), None)
         if not co or (pend["kind"] == "image" and not pr):
             _mat_pending.pop(uid, None)
+            _mat_purge({"key": key})
             await message.answer("❗️ این برند/محصول دیگر وجود ندارد.")
             return
         if pend["kind"] == "logo":
@@ -4724,6 +4736,7 @@ async def materials_image_received(message: Message):
         else:
             imgs = pr.setdefault("images", [])
             if len(imgs) >= MAT_IMAGES_MAX:
+                _mat_purge({"key": key})
                 await message.answer(f"❗️ حداکثر {to_persian_num(MAT_IMAGES_MAX)} عکس برای هر محصول. «✅ تمام» رو بزن.")
                 return
             imgs.append(item)
@@ -4731,8 +4744,6 @@ async def materials_image_received(message: Message):
         _mat_write(data)
     for o in removed:
         _mat_purge(o)
-    MATERIALS_MEDIA_CACHE.mkdir(parents=True, exist_ok=True)
-    (MATERIALS_MEDIA_CACHE / f"{key}.src").write_bytes(raw)
     pend["ts"] = datetime.now(timezone.utc).timestamp()
     if pend["kind"] == "logo":
         _mat_pending.pop(uid, None)
@@ -9228,7 +9239,13 @@ def _mat_render(raw: bytes, size: str) -> bytes:
         img.thumbnail((256, 256), Image.LANCZOS)
         img.save(out, format="WEBP", quality=90)
     else:
-        img = img.convert("RGB")
+        if img.mode in ("RGBA", "LA", "P"):       # PNG شفاف روی سفید (نه سیاه)
+            img = img.convert("RGBA")
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[-1])
+            img = bg
+        else:
+            img = img.convert("RGB")
         tw = 480 if size == "t" else max(160, min(1200, img.width, img.height * 4 // 3))
         img = ImageOps.fit(img, (tw, tw * 3 // 4), Image.LANCZOS)
         img.save(out, format="WEBP", quality=80 if size == "t" else 84)
@@ -9300,10 +9317,19 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
         out["confidence"] = ""
     for f in ("source", "lastVerified"):
         out[f] = str(out.get(f) or "").strip()[:120]
+    feats = []
+    if isinstance(out.get("features"), list):
+        for x in out["features"]:
+            t = str(x).strip()[:140]
+            if t:
+                feats.append(t)
+            if len(feats) >= 20:
+                break
+    out["features"] = feats
     out["images"] = old_images
     err = ""
-    if (specs or out.get("price")) and not (out["source"] and out["confidence"]):
-        err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات، منبع و نشان اطمینان لازم است"
+    if (specs or feats or out.get("price")) and not (out["source"] and out["confidence"]):
+        err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات/ویژگی‌ها، منبع و نشان اطمینان لازم است"
     return out, err
 
 async def handle_materials_save(request: web.Request) -> web.Response:

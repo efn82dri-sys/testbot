@@ -30,7 +30,7 @@ const CONF = { datasheet: 'تأییدشده با دیتاشیت', field: 'تجر
 const mUrl = (m, z) => '/materials/m/' + m.key + '?s=' + z;
 const letter = c => esc((c.en || c.name || '').trim()[0] || '؟');
 const logoBox = (c, cls) => c.logo && c.logo.key ? `<div class="${cls} has-logo"><img src="${mUrl(c.logo, 'g')}" alt="${esc(c.name)}" decoding="async"></div>` : `<div class="${cls}">${letter(c)}</div>`;
-const thumb = (c, p) => { const m = (p.images || [])[0]; return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" loading="lazy" decoding="async"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
+const thumb = (c, p) => { const m = (p.images || [])[0]; return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" decoding="async"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
 const specsText = a => (a || []).map(x => x.k + ': ' + x.v).join('\n');
 const parseSpecs = t => String(t || '').split('\n').map(l => { const i = l.search(/[:：]/); return i > 0 ? { k: l.slice(0, i).trim(), v: l.slice(i + 1).trim() } : null; }).filter(x => x && x.k && x.v);
 const noImg = () => D.companies.reduce((n, c) => n + c.products.filter(p => !(p.images || []).length).length, 0);
@@ -61,7 +61,7 @@ let io; function observe() { const cs = document.querySelectorAll('.mc'); if (!(
 
 function catView() {
   const q = S.q.trim();
-  const list = D.companies.filter(c => (!S.cat || c.cat === S.cat) && (!S.brand || c.id === S.brand) && (!q || (c.name + ' ' + c.en + ' ' + c.cat + ' ' + c.desc + ' ' + c.products.map(p => p.name + p.group).join(' ')).includes(q)));
+  const list = D.companies.filter(c => (!S.cat || c.cat === S.cat) && (!S.brand || c.id === S.brand) && (!q || (c.name + ' ' + c.en + ' ' + c.cat + ' ' + c.desc + ' ' + c.products.map(p => p.name + p.group + (p.features || []).join(' ')).join(' ')).includes(q)));
   const add = S.edit ? '<button type="button" class="act act-primary" data-a="addco" style="margin-top:12px">+ برند جدید</button>' : '';
   if (!list.length) return add + '<div class="empty"><div class="empty-icon">🔍</div><p>موردی پیدا نشد</p></div>';
   return add + '<div class="grid">' + list.map((c, i) => `<article class="mc" data-brand="${c.id}" data-i="${i}" tabindex="0" role="button"><div style="display:flex;gap:10px;align-items:center">${logoBox(c, 'mono')}<div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.cat)}</span></div></div></div><p>${esc(c.desc)}</p><div class="meta"><span>${fa(c.products.length)} محصول</span>${safe(c.catalog) ? '<span class="sp">کاتالوگ</span>' : ''}${c.sponsor ? '<span class="sp">حامی رواق</span>' : ''}</div></article>`).join('') + '</div>';
@@ -70,7 +70,7 @@ function prodRow(c, p) {
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
   const on = S.fav.includes(p.id);
   const warn = S.edit && !(p.images || []).length ? '<small class="wr">⚠ بدون تصویر؛ از داخل محصول عکس اضافه کن</small>' : '';
-  return `<div class="pr2" data-prod="${p.id}" tabindex="0" role="button">${thumb(c, p)}<h4>${esc(p.name)}</h4>${p.desc ? `<small>${esc(p.desc)}</small>` : ''}${price}${warn}<div class="bt"><button type="button" class="sq pl" data-add="${p.id}" aria-label="افزودن به برآورد">＋</button><button type="button" class="sq ${on ? 'on' : ''}" data-fav="${p.id}" aria-pressed="${on}" aria-label="ذخیره">${I.heart}</button>${safe(p.catalog) ? `<a class="sq" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener" aria-label="کاتالوگ محصول">${I.pdf.replace('<svg', '<svg width="17" height="17"')}</a>` : ''}${S.edit ? `<button type="button" class="sq" data-ep="${p.id}">✎</button><button type="button" class="sq dg" data-dp="${p.id}">✕</button>` : ''}</div></div>`;
+  return `<div class="pr2" data-prod="${p.id}" tabindex="0" role="button">${thumb(c, p)}<h4>${esc(p.name)}</h4>${p.desc ? `<small>${esc(p.desc)}</small>` : ''}${price}${(p.features || []).length ? `<div class="fch">${p.features.slice(0, 2).map(f => `<b>${esc(f)}</b>`).join('')}</div>` : ''}${warn}<div class="bt"><button type="button" class="sq pl" data-add="${p.id}" aria-label="افزودن به برآورد">＋</button><button type="button" class="sq ${on ? 'on' : ''}" data-fav="${p.id}" aria-pressed="${on}" aria-label="ذخیره">${I.heart}</button>${safe(p.catalog) ? `<a class="sq" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener" aria-label="کاتالوگ محصول">${I.pdf.replace('<svg', '<svg width="17" height="17"')}</a>` : ''}${S.edit ? `<button type="button" class="sq" data-ep="${p.id}">✎</button><button type="button" class="sq dg" data-dp="${p.id}">✕</button>` : ''}</div></div>`;
 }
 function openBrand(id) {
   const c = D.companies.find(x => x.id === id); if (!c) return;
@@ -87,12 +87,13 @@ function openProd(pid) {
   const [c, p] = find(pid); if (!p) return;
   S.cur = c.id; S.curP = pid;
   const imgs = p.images || [];
-  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" ${k ? 'loading="lazy"' : ''} decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
+  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
   const specs = (p.specs || []).length ? `<table class="spt">${p.specs.map(x => `<tr><td>${esc(x.k)}</td><td>${esc(x.v)}</td></tr>`).join('')}</table>` : '<div class="pc no">مشخصات فنی: استعلام</div>';
   const trace = (p.confidence || p.source || p.lastVerified || p.availability) ? `<div class="tr">${p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span> ` : ''}${p.availability ? `<div>قابل تهیه در ایران: ${esc(p.availability)}</div>` : ''}${p.source ? `<div>منبع: ${esc(p.source)}</div>` : ''}${p.lastVerified ? `<div>آخرین بررسی: ${esc(p.lastVerified)}</div>` : ''}</div>` : '<div class="tr">منبع و تاریخ بررسی برای این محصول هنوز ثبت نشده است.</div>';
+  const feats = (p.features || []).length ? `<div class="grp">ویژگی‌ها</div><ul class="fts">${p.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const on = S.fav.includes(p.id);
-  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}<div class="grp">مشخصات فنی</div>${specs}${trace}
+  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${trace}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
   <div class="sd-bar" style="margin-top:12px"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button>${S.bot ? `<button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button><button type="button" class="act" data-a="copylink" data-pid="${p.id}">کپی لینک</button>` : ''}${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}</div>`);
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
@@ -131,14 +132,14 @@ function summary() { return 'برآورد مصالح (رواق)\n' + S.est.map(l
 
 /* ---------- فرم ادمین ---------- */
 const CF = [['name', 'نام برند'], ['en', 'نام لاتین'], ['cat', 'دسته‌بندی'], ['desc', 'توضیح کوتاه', 'area'], ['catalog', 'لینک کاتالوگ (https://…)'], ['sponsor', 'حامی رواق', 'chk']];
-const PF = [['name', 'نام محصول'], ['group', 'گروه'], ['desc', 'توضیح', 'area'], ['unit', 'واحد (عدد، کیسه، م²…)'], ['price', 'قیمت روز (تومان)'], ['mode', 'نوع محاسبه', 'sel', [['count', 'تعدادی'], ['area', 'بر اساس متراژ'], ['vol', 'حجمی (متراژ × ضخامت)']]], ['perM2', 'مصرف هر م²'], ['def', 'ضخامت پیش‌فرض (cm)'], ['catalog', 'لینک کاتالوگ محصول'], ['availability', 'قابل تهیه در ایران؟', 'sel', [['', 'نامشخص'], ['داخلی', 'تولید داخل'], ['وارداتی', 'وارداتی'], ['معادل ایرانی', 'معادل ایرانی دارد']]], ['confidence', 'نشان اطمینان', 'sel', [['', 'انتخاب کن'], ['datasheet', 'تأییدشده با دیتاشیت'], ['field', 'تجربه‌ی اجرایی'], ['review', 'نیازمند بررسی']]], ['source', 'منبع (مثلاً دیتاشیت شرکت، نسخه)'], ['lastVerified', 'آخرین بررسی (مثلاً ۱۴۰۵/۰۷/۰۱)'], ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']];
+const PF = [['name', 'نام محصول'], ['group', 'گروه'], ['desc', 'توضیح', 'area'], ['unit', 'واحد (عدد، کیسه، م²…)'], ['price', 'قیمت روز (تومان)'], ['mode', 'نوع محاسبه', 'sel', [['count', 'تعدادی'], ['area', 'بر اساس متراژ'], ['vol', 'حجمی (متراژ × ضخامت)']]], ['perM2', 'مصرف هر م²'], ['def', 'ضخامت پیش‌فرض (cm)'], ['catalog', 'لینک کاتالوگ محصول'], ['availability', 'قابل تهیه در ایران؟', 'sel', [['', 'نامشخص'], ['داخلی', 'تولید داخل'], ['وارداتی', 'وارداتی'], ['معادل ایرانی', 'معادل ایرانی دارد']]], ['confidence', 'نشان اطمینان', 'sel', [['', 'انتخاب کن'], ['datasheet', 'تأییدشده با دیتاشیت'], ['field', 'تجربه‌ی اجرایی'], ['review', 'نیازمند بررسی']]], ['source', 'منبع (مثلاً دیتاشیت شرکت، نسخه)'], ['lastVerified', 'آخرین بررسی (مثلاً ۱۴۰۵/۰۷/۰۱)'], ['featuresT', 'ویژگی‌ها — هر خط یک ویژگی (از کاتالوگ)', 'area'], ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']];
 function form(title, F, v, ok, back, val) {
   sheet(`<h3 style="margin:4px 0 10px;color:var(--ink)">${title}</h3><div class="rw">${F.map(([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`).join('')}</div><div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
   S.ok = ok; S.val = val || null;
 }
 const readForm = () => { const o = {}; document.querySelectorAll('#sdPanel [data-f]').forEach(e => o[e.dataset.f] = e.type === 'checkbox' ? e.checked : e.value.trim()); return o; };
-const cleanP = o => { const r = { ...o, price: num(o.price) || null, perM2: num(o.perM2) || null, def: num(o.def) || null, catalog: safe(o.catalog), specs: parseSpecs(o.specsT) }; delete r.specsT; return r; };
-const valP = o => (parseSpecs(o.specsT).length || num(o.price)) && !(o.source && o.confidence) ? 'برای قیمت یا مشخصات، «منبع» و «نشان اطمینان» را وارد کن' : '';
+const cleanP = o => { const r = { ...o, price: num(o.price) || null, perM2: num(o.perM2) || null, def: num(o.def) || null, catalog: safe(o.catalog), specs: parseSpecs(o.specsT), features: String(o.featuresT || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20) }; delete r.specsT; delete r.featuresT; return r; };
+const valP = o => (parseSpecs(o.specsT).length || String(o.featuresT || '').trim() || num(o.price)) && !(o.source && o.confidence) ? 'برای قیمت یا مشخصات، «منبع» و «نشان اطمینان» را وارد کن' : '';
 
 /* ---------- رویدادها ---------- */
 document.addEventListener('click', e => {
@@ -162,7 +163,7 @@ document.addEventListener('click', e => {
   if (d.rm) { S.est = S.est.filter(l => l.id !== d.rm); persist(); return render(); }
   if (d.rmimg) { if (confirm('این عکس حذف شود؟')) rmMedia(S.cur, S.curP, d.rmimg).then(() => openProd(S.curP)); return; }
   const c = D.companies.find(x => x.id === (d.id || S.cur));
-  if (d.ep) { const p = c.products.find(x => x.id === d.ep); return form('ویرایش محصول', PF, { ...p, specsT: specsText(p.specs) }, o => { Object.assign(p, cleanP(o)); saveData(); }, () => openBrand(c.id), valP); }
+  if (d.ep) { const p = c.products.find(x => x.id === d.ep); return form('ویرایش محصول', PF, { ...p, specsT: specsText(p.specs), featuresT: (p.features || []).join('\n') }, o => { Object.assign(p, cleanP(o)); saveData(); }, () => openBrand(c.id), valP); }
   if (d.dp) { if (confirm('این محصول حذف شود؟')) { c.products = c.products.filter(x => x.id !== d.dp); S.fav = S.fav.filter(x => x !== d.dp); saveData(); persist(); openBrand(c.id); } return; }
   switch (d.a) {
     case 'tobrand': return openBrand(S.cur);
@@ -196,7 +197,7 @@ try { const th = localStorage.getItem(K.th); th && document.documentElement.setA
 /* ---------- شروع ---------- */
 render();
 const deep = () => { try { const p = new URLSearchParams(location.search).get('p'); if (p && find(p)[1]) openProd(p); } catch (e) {} };
-addEventListener('load', e => { if (e.target.tagName === 'IMG') e.target.classList.add('ok'); }, true);
-addEventListener('error', e => { if (e.target.tagName === 'IMG') e.target.style.display = 'none'; }, true);
+addEventListener('error', e => { const i = e.target; if (!i || i.tagName !== 'IMG') return; if (!i.dataset.r) { i.dataset.r = '1'; i.src = i.src + (i.src.includes('?') ? '&' : '?') + 'r=' + Date.now(); } else { i.style.display = 'none'; i.parentElement && i.parentElement.classList.add('bad'); } }, true);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !S.admin) return; const cp = S.curP, open = !$('#sd').hidden; reload().then(() => { render(); if (open && cp && find(cp)[1]) openProd(cp); }).catch(() => {}); });
 api('data').then(r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || ''; render(); deep(); }).catch(() => fetch('/materials/data/materials.json').then(r => r.json()).then(d => { D = d; render(); deep(); }));
 })();
