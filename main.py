@@ -9102,7 +9102,7 @@ async def handle_materials_save(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "bad data"}, status=400)
     MATERIALS_LIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = MATERIALS_LIVE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"v": 1, "companies": companies}, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.write_text(json.dumps({"v": 1, "companies": companies, "packs": payload.get("packs", [])}, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, MATERIALS_LIVE_FILE)
     return web.json_response({"ok": True})
 

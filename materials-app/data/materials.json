@@ -1,28 +1,388 @@
-{"v":1,"companies":[
-{"id":"leca","name":"لیکا","en":"LECA","cat":"سبک‌سازی و سبکدانه","sponsor":false,"catalog":"","desc":"سبکدانه‌ی رسی و محصولات وابسته برای سازه، کف‌سازی و ژئوتکنیک","products":[
-{"id":"leca1","group":"مخلوط و ملات","name":"مخلوط خشک آماده لیکا","desc":"مخلوط خشک آماده بر پایه‌ی سبکدانه لیکا","unit":"کیسه","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"leca2","group":"دیوار و سقف","name":"بلوک سبک لیکا","desc":"بلوک دیواری سبک برای کاهش بار مرده","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"leca3","group":"کف‌سازی","name":"کف‌سازی با سبکدانه لیکا","desc":"پرکننده‌ی سبک زیر کف؛ متراژ و ضخامت را وارد کن","unit":"متر مکعب","price":null,"mode":"vol","perM2":null,"def":5,"catalog":""},
-{"id":"leca4","group":"ژئوتکنیک","name":"لیکا در ژئوتکنیک","desc":"کاربرد در خاک‌ریزی سبک و پشت دیوار حائل","unit":"متر مکعب","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"leca5","group":"فضای سبز","name":"لیکاپون","desc":"بستر کشت و زهکشی برای گلدان و فضای سبز","unit":"کیسه","price":null,"mode":"count","perM2":null,"def":null,"catalog":""}]},
-{"id":"gach","name":"گچ ماشینی شرق","en":"","cat":"گچ و پوشش دیوار","sponsor":false,"catalog":"","desc":"تولید انواع گچ ساختمانی و پانل گچی","products":[
-{"id":"g1","group":"گچ","name":"گچ سفید","desc":"مناسب سفیدکاری و رویه","unit":"کیسه","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"g2","group":"گچ","name":"گچ خاکی","desc":"مناسب زیرسازی و کشیدن سطوح","unit":"کیسه","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"g3","group":"گچ","name":"گچ دوسرنده","desc":"گچ دوسرنده ساختمانی","unit":"کیسه","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"g4","group":"پانل","name":"پانل (دیواره) گچی","desc":"دیواره‌ی گچی پیش‌ساخته؛ مصرف بر متر مربع","unit":"متر مربع","price":null,"mode":"area","perM2":1,"def":null,"catalog":""}]},
-{"id":"markiz","name":"Markiz","en":"MARKIZ","cat":"بهداشتی و شیرآلات","sponsor":false,"catalog":"","desc":"سرویس بهداشتی، شیرآلات، تجهیزات و اکسسوری","products":[
-{"id":"m1","group":"سنگ و کابین","name":"سنگ روشویی","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m2","group":"سنگ و کابین","name":"مجموعه کابین روشویی","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m3","group":"توالت","name":"توالت ایرانی","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m4","group":"توالت","name":"توالت فرنگی","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m5","group":"توالت","name":"توالت وال‌هنگ","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m6","group":"شیرآلات","name":"شیرآلات اسمارت","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m7","group":"شیرآلات","name":"شیرآلات فلت","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m8","group":"شیرآلات","name":"شیرآلات شانل","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m9","group":"شیرآلات","name":"شیرآلات یونیورست","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m10","group":"شیرآلات","name":"سردوش","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m11","group":"تجهیزات و اکسسوری","name":"استراکچر و کلید","desc":"","unit":"ست","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m12","group":"تجهیزات و اکسسوری","name":"فلاش‌تانک","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m13","group":"تجهیزات و اکسسوری","name":"جادستمالی","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""},
-{"id":"m14","group":"تجهیزات و اکسسوری","name":"جامایع","desc":"","unit":"عدد","price":null,"mode":"count","perM2":null,"def":null,"catalog":""}]}
-]}
+{
+ "v": 1,
+ "companies": [
+  {
+   "id": "leca",
+   "name": "لیکا",
+   "en": "LECA",
+   "cat": "سبک‌سازی و سبکدانه",
+   "sponsor": false,
+   "catalog": "",
+   "desc": "سبکدانه‌ی رسی و محصولات وابسته برای سازه، کف‌سازی و ژئوتکنیک",
+   "products": [
+    {
+     "id": "leca1",
+     "group": "مخلوط و ملات",
+     "name": "مخلوط خشک آماده لیکا",
+     "desc": "مخلوط خشک آماده بر پایه‌ی سبکدانه لیکا",
+     "unit": "کیسه",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "leca2",
+     "group": "دیوار و سقف",
+     "name": "بلوک سبک لیکا",
+     "desc": "بلوک دیواری سبک برای کاهش بار مرده",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "leca3",
+     "group": "کف‌سازی",
+     "name": "کف‌سازی با سبکدانه لیکا",
+     "desc": "پرکننده‌ی سبک زیر کف؛ متراژ و ضخامت را وارد کن",
+     "unit": "متر مکعب",
+     "price": null,
+     "mode": "vol",
+     "perM2": null,
+     "def": 5,
+     "catalog": ""
+    },
+    {
+     "id": "leca4",
+     "group": "ژئوتکنیک",
+     "name": "لیکا در ژئوتکنیک",
+     "desc": "کاربرد در خاک‌ریزی سبک و پشت دیوار حائل",
+     "unit": "متر مکعب",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "leca5",
+     "group": "فضای سبز",
+     "name": "لیکاپون",
+     "desc": "بستر کشت و زهکشی برای گلدان و فضای سبز",
+     "unit": "کیسه",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    }
+   ]
+  },
+  {
+   "id": "gach",
+   "name": "گچ ماشینی شرق",
+   "en": "",
+   "cat": "گچ و پوشش دیوار",
+   "sponsor": false,
+   "catalog": "",
+   "desc": "تولید انواع گچ ساختمانی و پانل گچی",
+   "products": [
+    {
+     "id": "g1",
+     "group": "گچ",
+     "name": "گچ سفید",
+     "desc": "مناسب سفیدکاری و رویه",
+     "unit": "کیسه",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "g2",
+     "group": "گچ",
+     "name": "گچ خاکی",
+     "desc": "مناسب زیرسازی و کشیدن سطوح",
+     "unit": "کیسه",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "g3",
+     "group": "گچ",
+     "name": "گچ دوسرنده",
+     "desc": "گچ دوسرنده ساختمانی",
+     "unit": "کیسه",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "g4",
+     "group": "پانل",
+     "name": "پانل (دیواره) گچی",
+     "desc": "دیواره‌ی گچی پیش‌ساخته؛ مصرف بر متر مربع",
+     "unit": "متر مربع",
+     "price": null,
+     "mode": "area",
+     "perM2": 1,
+     "def": null,
+     "catalog": ""
+    }
+   ]
+  },
+  {
+   "id": "markiz",
+   "name": "Markiz",
+   "en": "MARKIZ",
+   "cat": "بهداشتی و شیرآلات",
+   "sponsor": false,
+   "catalog": "",
+   "desc": "سرویس بهداشتی، شیرآلات، تجهیزات و اکسسوری",
+   "products": [
+    {
+     "id": "m1",
+     "group": "سنگ و کابین",
+     "name": "سنگ روشویی",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m2",
+     "group": "سنگ و کابین",
+     "name": "مجموعه کابین روشویی",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m3",
+     "group": "توالت",
+     "name": "توالت ایرانی",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m4",
+     "group": "توالت",
+     "name": "توالت فرنگی",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m5",
+     "group": "توالت",
+     "name": "توالت وال‌هنگ",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m6",
+     "group": "شیرآلات",
+     "name": "شیرآلات اسمارت",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m7",
+     "group": "شیرآلات",
+     "name": "شیرآلات فلت",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m8",
+     "group": "شیرآلات",
+     "name": "شیرآلات شانل",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m9",
+     "group": "شیرآلات",
+     "name": "شیرآلات یونیورست",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m10",
+     "group": "شیرآلات",
+     "name": "سردوش",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m11",
+     "group": "تجهیزات و اکسسوری",
+     "name": "استراکچر و کلید",
+     "desc": "",
+     "unit": "ست",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m12",
+     "group": "تجهیزات و اکسسوری",
+     "name": "فلاش‌تانک",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m13",
+     "group": "تجهیزات و اکسسوری",
+     "name": "جادستمالی",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    },
+    {
+     "id": "m14",
+     "group": "تجهیزات و اکسسوری",
+     "name": "جامایع",
+     "desc": "",
+     "unit": "عدد",
+     "price": null,
+     "mode": "count",
+     "perM2": null,
+     "def": null,
+     "catalog": ""
+    }
+   ]
+  }
+ ],
+ "packs": [
+  {
+   "id": "pk1",
+   "title": "سرویس بهداشتی کامل",
+   "desc": "توالت فرنگی، کابین روشویی، شیرآلات و سردوش",
+   "items": [
+    {
+     "p": "m4",
+     "q": 1
+    },
+    {
+     "p": "m2",
+     "q": 1
+    },
+    {
+     "p": "m6",
+     "q": 1
+    },
+    {
+     "p": "m10",
+     "q": 1
+    },
+    {
+     "p": "m12",
+     "q": 1
+    }
+   ]
+  },
+  {
+   "id": "pk2",
+   "title": "سرویس ایرانی اقتصادی",
+   "desc": "توالت ایرانی، سنگ روشویی و شیرآلات",
+   "items": [
+    {
+     "p": "m3",
+     "q": 1
+    },
+    {
+     "p": "m1",
+     "q": 1
+    },
+    {
+     "p": "m7",
+     "q": 1
+    }
+   ]
+  },
+  {
+   "id": "pk3",
+   "title": "سبک‌سازی کف",
+   "desc": "کف‌سازی با سبکدانه لیکا (متراژ و ضخامت را وارد کن)",
+   "items": [
+    {
+     "p": "leca3",
+     "q": 20
+    }
+   ]
+  },
+  {
+   "id": "pk4",
+   "title": "تیغه‌بندی گچی",
+   "desc": "پانل گچی و گچ سفید برای دیوارها",
+   "items": [
+    {
+     "p": "g4",
+     "q": 30
+    },
+    {
+     "p": "g1",
+     "q": 10
+    }
+   ]
+  }
+ ]
+}

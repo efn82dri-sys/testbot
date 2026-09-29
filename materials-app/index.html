@@ -3,143 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>مصالح — رواق</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap">
-<style>
-:root{--bg:#0C0E10;--el:#14171B;--glass:rgba(255,255,255,.055);--line:rgba(255,255,255,.09);--ink:#F0EDE6;--dim:#9BA0A6;--ac:#6FE3C4;--acink:#06231C;--red:#FF6B6B;--ease:cubic-bezier(.16,1,.3,1)}
-@media(prefers-color-scheme:light){:root{--bg:#F2EEE8;--el:#fff;--glass:rgba(0,0,0,.04);--line:rgba(0,0,0,.09);--ink:#1B1D1F;--dim:#666B71;--ac:#1F8F76;--acink:#fff;--red:#D64545}}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:500 14px/1.7 Vazirmatn,system-ui,sans-serif}
-body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);min-height:100vh;background:radial-gradient(60% 40% at 90% 0,color-mix(in srgb,var(--ac) 14%,transparent),transparent),var(--bg)}
-button,input,select,textarea{font:inherit;color:inherit}
-.bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;backdrop-filter:blur(18px);background:color-mix(in srgb,var(--bg) 80%,transparent);border-bottom:1px solid var(--line)}
-.bar b{font-weight:800;font-size:16px}.bar b i{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ac);margin-left:8px;box-shadow:0 0 12px var(--ac)}
-.tabs{display:flex;gap:6px;padding:12px 16px 4px}
-.tabs button,.chip,.btn{border:1px solid var(--line);background:var(--glass);border-radius:999px;padding:7px 14px;cursor:pointer;transition:.25s var(--ease);white-space:nowrap}
-.tabs button{flex:1;padding:10px;font-weight:700}
-.on{background:var(--ac)!important;color:var(--acink)!important;border-color:transparent!important}
-.btn.p{background:var(--ac);color:var(--acink);border-color:transparent;font-weight:700}.btn.d{color:var(--red)}
-.btn{font-size:12.5px;padding:6px 12px}
-main{padding:8px 16px 90px;max-width:760px;margin:auto}
-.search{width:100%;padding:12px 16px;border-radius:16px;border:1px solid var(--line);background:var(--glass);margin:8px 0 10px;outline:0}
-.search:focus{border-color:var(--ac)}
-.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
-.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-top:10px}
-.card{background:var(--glass);border:1px solid var(--line);border-radius:20px;padding:14px;cursor:pointer;position:relative;transition:.3s var(--ease);animation:up .5s var(--ease) both}
-.card:active{transform:scale(.98)}
-@keyframes up{from{opacity:0;transform:translateY(10px)}}
-.logo{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-weight:800;font-size:18px;background:linear-gradient(135deg,var(--ac),color-mix(in srgb,var(--ac) 40%,#000));color:var(--acink)}
-.card h3{margin:10px 0 0;font-size:16px}.dim{color:var(--dim);font-size:12.5px}
-.badge{position:absolute;top:12px;left:12px;font-size:11px;padding:2px 9px;border-radius:99px;background:color-mix(in srgb,var(--ac) 20%,transparent);color:var(--ac)}
-.grp{margin:18px 0 6px;font-weight:800;color:var(--ac);font-size:13px}
-.row{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:8px}
-.row h4{margin:0;font-size:14.5px}.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.price{font-weight:700;margin-top:4px}.price.no{color:var(--dim);font-weight:500}
-.hero{display:flex;gap:12px;align-items:center;margin:8px 0 4px}.hero .logo{width:58px;height:58px;font-size:24px}
-.back{background:none;border:0;color:var(--ac);cursor:pointer;padding:8px 0;font-weight:700}
-.fld{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--dim);flex:1;min-width:90px}
-.fld input,.fld select,.fld textarea{padding:9px 11px;border-radius:12px;border:1px solid var(--line);background:var(--el);outline:0;font-size:14px}
-.fld input:focus{border-color:var(--ac)}
-.flex{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.tot{background:var(--el);border:1px solid var(--line);border-radius:20px;padding:14px;margin-top:12px}
-.tot div{display:flex;justify-content:space-between;padding:3px 0}.tot .g{font-size:18px;font-weight:800;color:var(--ac);border-top:1px dashed var(--line);margin-top:6px;padding-top:10px}
-.warn{color:var(--red);font-size:12px}
-.sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
-.sheet>div{background:var(--bg);width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:24px 24px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));border:1px solid var(--line);animation:up .35s var(--ease)}
-.toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,30px);background:var(--ink);color:var(--bg);padding:9px 18px;border-radius:99px;opacity:0;transition:.3s;z-index:30;pointer-events:none}.toast.s{opacity:1;transform:translate(-50%,0)}
-.empty{text-align:center;color:var(--dim);padding:40px 0}
-</style>
+<meta name="theme-color" content="#0C0E10" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F2EEE8" media="(prefers-color-scheme: light)">
+<title>مصالح و تجهیزات — رواق</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="/materials/base.css">
+<link rel="stylesheet" href="/materials/mat.css">
 </head>
 <body>
-<header class="bar"><b><i></i>رواق — مصالح و تجهیزات</b><button class="btn" id="adm" hidden></button></header>
-<nav class="tabs"><button data-t="cat" class="on">کاتالوگ شرکت‌ها</button><button data-t="est">برآورد هزینه <span id="cnt"></span></button></nav>
-<main id="app"></main>
-<div class="sheet" id="sheet" hidden></div>
-<div class="toast" id="toast"></div>
+<div class="bg" aria-hidden="true"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span><span class="grain"></span></div>
+<header class="app-bar">
+  <div class="brand"><span class="dot"></span><span>رواق — مصالح و تجهیزات</span></div>
+  <div class="app-actions">
+    <button class="icon-btn ad" id="editBtn" hidden aria-label="حالت ویرایش"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+    <button class="icon-btn" id="themeBtn" aria-label="تغییر حالت نمایش">
+      <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+<main class="wrap">
+  <section class="hero">
+    <span class="eyebrow"><i></i>مرجع مصالح بازار اجرای ایران</span>
+    <h1>برندها، کاتالوگ‌ها و برآورد هزینه</h1>
+    <p>محصولات برندهای مطرح را ببین، کاتالوگشان را بخوان و برای پروژه‌ات در چند ثانیه برآورد بگیر.</p>
+    <div class="idx" id="index" role="tablist"></div>
+  </section>
+  <section class="filters" id="filters">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="search" placeholder="جست‌وجوی برند یا محصول…" autocomplete="off" spellcheck="false">
+      <button class="search-clear" id="searchClear" hidden aria-label="پاک‌کردن"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>
+  <section class="list" id="list" aria-live="polite"></section>
+  <footer class="foot"><span>رواق — مرجع فایل‌های معماری و عمران</span><span class="heart">برآوردها تقریبی‌اند و جایگزین استعلام رسمی نیستند</span></footer>
+</main>
+<div class="sd" id="sd" hidden role="dialog" aria-modal="true"><div class="sd-scrim" id="sdScrim"></div><div class="sd-panel" id="sdPanel"></div></div>
+<button class="to-top" id="toTop" hidden aria-label="بازگشت به بالا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script>
-const TG=window.Telegram&&Telegram.WebApp;try{TG&&(TG.ready(),TG.expand())}catch(e){}
-const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fa=n=>Number(n||0).toLocaleString('fa-IR',{maximumFractionDigits:2}),num=v=>parseFloat(String(v).replace(/[٠-٩۰-۹]/g,d=>'٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹'.indexOf(d)%10).replace(/[,٬]/g,''))||0;
-const safe=u=>/^https?:\/\//i.test(u||'')?u:'#';
-const uid=()=>Math.random().toString(36).slice(2,9);
-let D={companies:[]},S={tab:'cat',q:'',cat:'همه',co:null,edit:false,admin:false,waste:5,labor:0,est:[]};
-try{S.est=JSON.parse(localStorage.rq_est||'[]');S.waste=+localStorage.rq_w||5;S.labor=+localStorage.rq_l||0}catch(e){}
-const persist=()=>{try{localStorage.rq_est=JSON.stringify(S.est);localStorage.rq_w=S.waste;localStorage.rq_l=S.labor}catch(e){}};
-const api=(p,o={})=>fetch('/materials/api/'+p,{...o,headers:{'Content-Type':'application/json','X-Init-Data':TG?TG.initData:''}}).then(r=>r.json());
-const toast=t=>{const e=$('#toast');e.textContent=t;e.className='toast s';clearTimeout(toast.t);toast.t=setTimeout(()=>e.className='toast',1800)};
-const price=p=>p.price?`<div class="price">${fa(p.price)} تومان / ${esc(p.unit)}</div>`:`<div class="price no">قیمت روز: استعلام (${esc(p.unit)})</div>`;
-const find=id=>{for(const c of D.companies)for(const p of c.products)if(p.id===id)return[c,p];return[]};
-async function save(){try{const r=await api('save',{method:'POST',body:JSON.stringify(D)});toast(r.ok?'ذخیره شد':'خطا در ذخیره')}catch(e){toast('خطا در ارتباط')}}
-
-function view(){
-  $('#cnt').textContent=S.est.length?`(${fa(S.est.length)})`:'';
-  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===S.tab));
-  $('#adm').hidden=!S.admin;$('#adm').textContent=S.edit?'پایان ویرایش':'ویرایش';$('#adm').className='btn'+(S.edit?' p':'');
-  $('#app').innerHTML=S.tab==='est'?estView():S.co?coView():catView();
-}
-function catView(){
-  const cats=['همه',...new Set(D.companies.map(c=>c.cat).filter(Boolean))],q=S.q.trim();
-  const list=D.companies.filter(c=>(S.cat==='همه'||c.cat===S.cat)&&(!q||(c.name+c.en+c.cat+c.products.map(p=>p.name).join(' ')).includes(q)));
-  return`<input class="search" id="q" placeholder="جست‌وجوی شرکت یا محصول…" value="${esc(S.q)}"><div class="chips">${cats.map(c=>`<button class="chip ${c===S.cat?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-  ${S.edit?'<div class="flex"><button class="btn p" data-a="addco">+ شرکت جدید</button></div>':''}
-  <div class="grid">${list.map((c,i)=>`<div class="card" style="animation-delay:${i*50}ms" data-co="${c.id}">${c.sponsor?'<span class="badge">حامی رواق</span>':''}<div class="logo">${esc((c.en||c.name)[0])}</div><h3>${esc(c.name)}</h3><div class="dim">${esc(c.cat)} · ${fa(c.products.length)} محصول</div><div class="dim" style="margin-top:6px">${esc(c.desc)}</div></div>`).join('')||'<div class="empty">موردی پیدا نشد</div>'}</div>`}
-function coView(){
-  const c=D.companies.find(x=>x.id===S.co);if(!c){S.co=null;return catView()}
-  const gs={};c.products.forEach(p=>(gs[p.group||'سایر']=gs[p.group||'سایر']||[]).push(p));
-  return`<button class="back" data-a="back">→ بازگشت</button><div class="hero"><div class="logo">${esc((c.en||c.name)[0])}</div><div><h2 style="margin:0">${esc(c.name)}</h2><div class="dim">${esc(c.cat)}${c.sponsor?' · حامی رواق':''}</div></div></div>
-  <p class="dim">${esc(c.desc)}</p><div class="acts">${c.catalog?`<a class="btn p" href="${esc(safe(c.catalog))}" target="_blank" rel="noopener" style="text-decoration:none">📄 کاتالوگ شرکت</a>`:''}${S.edit?`<button class="btn" data-a="editco">✎ ویرایش شرکت</button><button class="btn d" data-a="delco">حذف</button><button class="btn p" data-a="addp">+ محصول</button>`:''}</div>
-  ${Object.entries(gs).map(([g,ps])=>`<div class="grp">${esc(g)}</div>${ps.map(p=>`<div class="row"><h4>${esc(p.name)}</h4>${p.desc?`<div class="dim">${esc(p.desc)}</div>`:''}${price(p)}<div class="acts"><button class="btn p" data-add="${p.id}">＋ افزودن به برآورد</button>${p.catalog?`<a class="btn" href="${esc(safe(p.catalog))}" target="_blank" rel="noopener" style="text-decoration:none">📄 کاتالوگ</a>`:''}${S.edit?`<button class="btn" data-ep="${p.id}">✎</button><button class="btn d" data-dp="${p.id}">✕</button>`:''}</div></div>`).join('')}`).join('')}`}
-
-const qty=l=>l.mode==='area'?l.q*l.per*(1+S.waste/100):l.mode==='vol'?l.q*l.th/100*(1+S.waste/100):l.q;
-function estView(){
-  if(!S.est.length)return'<div class="empty">هنوز موردی اضافه نکردی.<br>از کاتالوگ، «افزودن به برآورد» را بزن.</div>';
-  let sum=0;const rows=S.est.map(l=>{const n=qty(l),t=n*l.price;sum+=t;
-    const inp=(k,lab,v)=>`<label class="fld">${lab}<input inputmode="decimal" data-l="${l.id}" data-k="${k}" value="${v}"></label>`;
-    return`<div class="row"><h4>${esc(l.name)} <span class="dim">· ${esc(l.co)}</span></h4><div class="flex">
-    ${inp('q',l.mode==='count'?'تعداد':'متراژ (م²)',l.q)}${l.mode==='area'?inp('per','مصرف هر م²',l.per):''}${l.mode==='vol'?inp('th','ضخامت (cm)',l.th):''}${inp('price','قیمت واحد (تومان)',l.price||'')}</div>
-    <div class="dim" style="margin-top:6px">مقدار نهایی: ${fa(n)} ${esc(l.unit)}${l.mode!=='count'?` (با ${fa(S.waste)}٪ ضایعات)`:''}</div>
-    ${l.price?'':'<div class="warn">قیمت ثبت نشده؛ قیمت روز را وارد کن.</div>'}
-    <div class="price">${fa(t)} تومان</div><div class="acts"><button class="btn d" data-rm="${l.id}">حذف</button></div></div>`}).join('');
-  const lab=sum*S.labor/100;
-  return rows+`<div class="tot"><div class="flex" style="margin:0 0 8px"><label class="fld">ضایعات (٪)<input inputmode="decimal" data-g="waste" value="${S.waste}"></label><label class="fld">اجرت و متفرقه (٪)<input inputmode="decimal" data-g="labor" value="${S.labor}"></label></div>
-  <div><span>جمع مصالح</span><b>${fa(sum)}</b></div><div><span>اجرت و متفرقه</span><b>${fa(lab)}</b></div><div class="g"><span>برآورد نهایی</span><span>${fa(sum+lab)} تومان</span></div></div>
-  <div class="flex"><button class="btn p" data-a="copy">کپی خلاصه</button><button class="btn d" data-a="clear">پاک‌کردن همه</button></div><p class="dim">برآورد اولیه است و جایگزین برآورد رسمی یا استعلام نیست.</p>`}
-
-function form(title,fields,vals,ok){
-  const s=$('#sheet');s.hidden=false;
-  s.innerHTML=`<div><h3 style="margin:0 0 8px">${title}</h3><div class="flex">${fields.map(([k,l,t,o])=>`<label class="fld" style="min-width:${t==='area'?'100%':'140px'}">${l}${t==='area'?`<textarea data-f="${k}" rows="2">${esc(vals[k])}</textarea>`:t==='sel'?`<select data-f="${k}">${o.map(x=>`<option value="${x[0]}" ${vals[k]===x[0]?'selected':''}>${x[1]}</option>`).join('')}</select>`:t==='chk'?`<input type="checkbox" data-f="${k}" ${vals[k]?'checked':''} style="width:22px;height:22px">`:`<input data-f="${k}" value="${esc(vals[k])}">`}</label>`).join('')}</div>
-  <div class="flex"><button class="btn p" id="fok">ذخیره</button><button class="btn" id="fno">انصراف</button></div></div>`;
-  $('#fno').onclick=()=>s.hidden=true;s.onclick=e=>{if(e.target===s)s.hidden=true};
-  $('#fok').onclick=()=>{const o={};s.querySelectorAll('[data-f]').forEach(e=>o[e.dataset.f]=e.type==='checkbox'?e.checked:e.value.trim());s.hidden=true;ok(o)};
-}
-const CF=[['name','نام شرکت'],['en','نام لاتین'],['cat','دسته‌بندی'],['desc','توضیح کوتاه','area'],['catalog','لینک کاتالوگ'],['sponsor','حامی رواق','chk']];
-const PF=[['name','نام محصول'],['group','گروه'],['desc','توضیح','area'],['unit','واحد'],['price','قیمت روز (تومان)'],['mode','نوع محاسبه','sel',[['count','تعدادی'],['area','بر اساس متراژ'],['vol','حجمی (متراژ × ضخامت)']]],['perM2','مصرف هر م²'],['def','ضخامت پیش‌فرض (cm)'],['catalog','لینک کاتالوگ']];
-
-document.addEventListener('click',e=>{
-  const t=e.target.closest('button,.card');if(!t)return;const d=t.dataset,co=D.companies.find(c=>c.id===S.co);
-  if(d.t){S.tab=d.t}else if(d.cat){S.cat=d.cat}else if(d.co){S.co=d.co;scrollTo(0,0)}else if(d.a==='back'){S.co=null}
-  else if(d.add){const[c,p]=find(d.add);S.est.push({id:uid(),name:p.name,co:c.name,unit:p.unit,mode:p.mode||'count',price:p.price||0,q:1,per:p.perM2||1,th:p.def||5});persist();toast('به برآورد اضافه شد')}
-  else if(d.rm){S.est=S.est.filter(l=>l.id!==d.rm);persist()}
-  else if(d.a==='clear'){S.est=[];persist()}
-  else if(d.a==='copy'){const s=S.est.map(l=>`• ${l.name}: ${fa(qty(l))} ${l.unit} × ${fa(l.price)} = ${fa(qty(l)*l.price)}`).join('\n');const sum=S.est.reduce((a,l)=>a+qty(l)*l.price,0);const txt=s+`\nجمع نهایی: ${fa(sum*(1+S.labor/100))} تومان`;navigator.clipboard&&navigator.clipboard.writeText(txt).then(()=>toast('کپی شد'));return}
-  else if(t.id==='adm'){S.edit=!S.edit}
-  else if(d.a==='addco'){form('شرکت جدید',CF,{},o=>{D.companies.push({id:uid(),products:[],...o});save();view()});return}
-  else if(d.a==='editco'){form('ویرایش شرکت',CF,co,o=>{Object.assign(co,o);save();view()});return}
-  else if(d.a==='delco'){if(confirm('این شرکت و همه‌ی محصولاتش حذف شود؟')){D.companies=D.companies.filter(c=>c!==co);S.co=null;save()}}
-  else if(d.a==='addp'){form('محصول جدید',PF,{mode:'count'},o=>{co.products.push({id:uid(),...o,price:num(o.price)||null,perM2:num(o.perM2)||null,def:num(o.def)||null});save();view()});return}
-  else if(d.ep){const p=co.products.find(x=>x.id===d.ep);form('ویرایش محصول',PF,p,o=>{Object.assign(p,o,{price:num(o.price)||null,perM2:num(o.perM2)||null,def:num(o.def)||null});save();view()});return}
-  else if(d.dp){if(confirm('حذف شود؟')){co.products=co.products.filter(x=>x.id!==d.dp);save()}}
-  else return;
-  view();
-});
-document.addEventListener('input',e=>{const t=e.target;
-  if(t.id==='q'){S.q=t.value;const p=t.selectionStart;view();const n=$('#q');n.focus();n.setSelectionRange(p,p);return}
-  if(t.dataset.l){const l=S.est.find(x=>x.id===t.dataset.l);l[t.dataset.k]=num(t.value);persist();const y=scrollY,f=t.dataset.l+t.dataset.k;view();const n=document.querySelector(`[data-l="${t.dataset.l}"][data-k="${t.dataset.k}"]`);n&&(n.focus(),n.setSelectionRange(n.value.length,n.value.length));scrollTo(0,y)}
-  else if(t.dataset.g){S[t.dataset.g]=num(t.value);persist();const y=scrollY,g=t.dataset.g;view();const n=document.querySelector(`[data-g="${g}"]`);n&&(n.focus(),n.setSelectionRange(n.value.length,n.value.length));scrollTo(0,y)}
-});
-api('data').then(r=>{D=r.data;S.admin=r.admin;view()}).catch(()=>fetch('/materials/data/materials.json').then(r=>r.json()).then(d=>{D=d;view()}));
-view();
-</script>
+<script src="/materials/script.js" defer></script>
 </body>
 </html>
