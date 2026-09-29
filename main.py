@@ -146,6 +146,17 @@ PROMPT_MEDIA_MAX_ITEMS = 10                    # حداکثرِ عکس/ویدی�
 PROMPT_TG_DOWNLOAD_LIMIT = 20 * 1024 * 1024    # سقفِ دانلودِ فایل توسطِ ربات در تلگرام
 # عکس/ویدیویِ اصلی‌ها «داخلِ خودِ تلگرام» (با file_id) می‌مونن و فقط موقعِ نمایش کش می‌شن؛ این‌طوری بکاپِ دیتا سنگین نمی‌شه.
 PROMPTS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_prompt_media"
+
+# ---------- Mini App مستقل: مصالح و تجهیزات ----------
+# دسترسی مثلِ پالت/پرامپت: لینکِ مخفی، بدونِ محدودیتِ آیدی.
+#   https://t.me/<BOT_USERNAME>?start=<MATERIALS_START_PAYLOAD>
+# ویرایش فقط برای ADMIN_IDS (از داخلِ خودِ مینی‌اپ، با اعتبارسنجیِ initData).
+MATERIALS_DIR = Path(__file__).parent / "materials-app"
+MATERIALS_SEED_FILE = MATERIALS_DIR / "data" / "materials.json"      # دیتای اولیه (داخلِ ریپو)
+MATERIALS_LIVE_FILE = Path(__file__).parent / "data" / "materials.json"  # دیتای زنده (ویرایش‌های ادمین)
+MATERIALS_START_PAYLOAD = (
+    os.environ.get("MATERIALS_START_PAYLOAD", "materials").strip().lower() or "materials"
+)
 _prompt_send_last: dict[int, float] = {}       # ضدِ اسپمِ دکمه‌یِ «دریافتِ فایل»
 _prompt_media_locks: dict[int, asyncio.Lock] = {}
 _prompt_media_dl_locks: dict[str, asyncio.Lock] = {}
@@ -2560,6 +2571,24 @@ async def send_prompts_glass_button(chat_id: int) -> None:
     except Exception as e:
         logger.warning("ارسالِ دکمه‌یِ پرامپت به %s ممکن نشد: %s", chat_id, e)
 
+async def send_materials_glass_button(chat_id: int) -> None:
+    """دکمه‌ی شیشه‌ایِ وب‌اپِ مصالح و تجهیزات رو برای کاربر می‌فرسته."""
+    text = (
+        "🧱 <b>مصالح و تجهیزات</b>\n\n"
+        "کاتالوگِ شرکت‌ها و محصولاتِ بازارِ اجرایِ ایران؛ کاتالوگ‌ها رو ببین و برایِ پروژه‌ات "
+        "برآوردِ هزینه‌یِ حدودی بگیر."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🧱 باز کردنِ مصالح و تجهیزات",
+            web_app=WebAppInfo(url=f"{WEBHOOK_HOST}/materials"),
+        )
+    ]])
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, reply_markup=kb)
+    except Exception as e:
+        logger.warning("ارسالِ دکمه‌یِ مصالح به %s ممکن نشد: %s", chat_id, e)
+
 # ---------- دستور /start ----------
 @dp.message(Command("start"))
 async def handle_start(message: Message, command: CommandObject):
@@ -2592,6 +2621,12 @@ async def handle_start(message: Message, command: CommandObject):
     # https://t.me/<BOT_USERNAME>?start=<PROMPTS_START_PAYLOAD>
     if args.lower() == PROMPTS_START_PAYLOAD:
         await send_prompts_glass_button(message.chat.id)
+        return
+
+    # ---- لینکِ مستقیمِ مصالح و تجهیزات (همان الگویِ پالت/پرامپت) ----
+    # https://t.me/<BOT_USERNAME>?start=<MATERIALS_START_PAYLOAD>
+    if args.lower() == MATERIALS_START_PAYLOAD:
+        await send_materials_glass_button(message.chat.id)
         return
 
     if args.startswith("ref_"):
@@ -8965,6 +9000,10 @@ async def on_startup(app: web.Application):
         "🔗 لینکِ مستقیمِ پرامپت‌ها: https://t.me/%s?start=%s",
         BOT_USERNAME, PROMPTS_START_PAYLOAD,
     )
+    logger.info(
+        "🔗 لینکِ مستقیمِ مصالح: https://t.me/%s?start=%s",
+        BOT_USERNAME, MATERIALS_START_PAYLOAD,
+    )
 
     # جداسازیِ اسکوپِ دستورات: /admin فقط برایِ چت‌هایِ خصوصیِ خودِ ادمین‌ها ثبت می‌شود،
     # نه برایِ همه‌ی کاربرها — تا کاربرِ عادی حتی سرنخی از وجودِ پنلِ ادمین در لیستِ
@@ -9011,6 +9050,62 @@ async def on_startup(app: web.Application):
     app["daily_digest_task"] = asyncio.create_task(daily_digest_loop())
     logger.info("ربات «رواق» با موفقیت راه‌اندازی شد! 🏛")
 
+# ==============================================================
+#  Mini App مصالح و تجهیزات (مستقل از پالت و پرامپت)
+# ==============================================================
+
+def _materials_verify_init_data(init_data: str) -> dict | None:
+    """اعتبارسنجیِ initData تلگرام (HMAC) و برگرداندنِ کاربر؛ نامعتبر/قدیمی → None."""
+    try:
+        pairs = dict(parse_qsl(init_data or "", keep_blank_values=True))
+        got = pairs.pop("hash", "")
+        check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+        key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        calc = hmac.new(key, check.encode(), hashlib.sha256).hexdigest()
+        if not got or not hmac.compare_digest(calc, got):
+            return None
+        if datetime.now(timezone.utc).timestamp() - int(pairs.get("auth_date", 0)) > 86400:
+            return None
+        return json.loads(pairs["user"])
+    except Exception:
+        return None
+
+def load_materials_data() -> dict:
+    path = MATERIALS_LIVE_FILE if MATERIALS_LIVE_FILE.exists() else MATERIALS_SEED_FILE
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"v": 1, "companies": []}
+
+async def handle_materials_page(request: web.Request) -> web.StreamResponse:
+    return web.FileResponse(MATERIALS_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
+async def handle_materials_data(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    admin = bool(user and is_admin(int(user.get("id", 0))))
+    return web.json_response({"data": load_materials_data(), "admin": admin})
+
+async def handle_materials_save(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not (user and is_admin(int(user.get("id", 0)))):
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    if (request.content_length or 0) > 2_000_000:
+        return web.json_response({"ok": False, "error": "too large"}, status=413)
+    try:
+        payload = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    companies = payload.get("companies") if isinstance(payload, dict) else None
+    if not isinstance(companies, list) or not all(
+        isinstance(c, dict) and isinstance(c.get("products", []), list) for c in companies
+    ):
+        return web.json_response({"ok": False, "error": "bad data"}, status=400)
+    MATERIALS_LIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = MATERIALS_LIVE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"v": 1, "companies": companies}, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, MATERIALS_LIVE_FILE)
+    return web.json_response({"ok": True})
+
 def create_app() -> web.Application:
     app = web.Application()
 
@@ -9024,6 +9119,11 @@ def create_app() -> web.Application:
     app.router.add_post("/prompts/api/send", handle_prompt_send)
     app.router.add_get("/prompts/m/{key}", handle_prompt_media)
     app.router.add_static("/prompts/", path=PROMPTS_DIR, name="prompts_assets")
+    # مسیرهای API باید قبل از static ثبت بشن تا با مسیرِ فایل‌ها قاطی نشن
+    app.router.add_get("/materials", handle_materials_page)
+    app.router.add_get("/materials/api/data", handle_materials_data)
+    app.router.add_post("/materials/api/save", handle_materials_save)
+    app.router.add_static("/materials/", path=MATERIALS_DIR, name="materials_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
