@@ -9435,8 +9435,9 @@ async def handle_materials_sheet(request: web.Request) -> web.Response:
         await bot.send_document(
             uid, BufferedInputFile(pdf, filename=f"{title}.pdf"),
             caption="🧱 برگه‌ی پیشنهاد مصالح — رواق\nبرآورد تقریبی است و جایگزین استعلام رسمی نیست.",
+            protect_content=False,   # پیش‌فرضِ ربات True است؛ فقط برگه‌ی پیشنهاد باید قابل فوروارد باشد تا کاربر برای کارفرما بفرستد
         )
-        await bot.send_photo(uid, BufferedInputFile(raws[0], filename="sheet.jpg"), caption="پیش‌نمایش صفحه‌ی اول")
+        await bot.send_photo(uid, BufferedInputFile(raws[0], filename="sheet.jpg"), caption="پیش‌نمایش صفحه‌ی اول", protect_content=False)
     except Exception as e:
         logging.warning("materials sheet send failed: %s", e)
         return web.json_response({"ok": False, "error": "ارسال به چت ناموفق بود"}, status=502)

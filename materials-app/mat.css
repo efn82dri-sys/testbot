@@ -129,3 +129,6 @@
 .co{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;color:var(--ink-dim)}
 .co:last-child{border-bottom:0}.co span{flex:1}.co b{color:var(--ink);font-variant-numeric:tabular-nums}.co .sq{width:32px;height:32px;font-size:15px}
 .pk{width:auto}
+
+.qi{width:64px;min-width:0;height:38px;text-align:center;padding:0 4px;border-radius:11px;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);font:inherit;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;outline:0}
+.qi:focus{border-color:var(--accent)}

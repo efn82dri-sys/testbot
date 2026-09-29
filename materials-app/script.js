@@ -109,7 +109,7 @@ function estView() {
   const lines = S.est.map(l => {
     const m = l.mode;
     const ctl = m === 'count'
-      ? `<div class="fl"><span>تعداد</span><div class="stp"><button type="button" class="sq" data-st="${l.id}" data-d="-1">−</button><b>${fa(l.q)}</b><button type="button" class="sq pl" data-st="${l.id}" data-d="1">＋</button></div></div>`
+      ? `<div class="fl"><span>تعداد</span><div class="stp"><button type="button" class="sq" data-st="${l.id}" data-d="-1">−</button><input class="qi" inputmode="numeric" data-l="${l.id}" data-k="q" value="${l.q}" aria-label="تعداد"><button type="button" class="sq pl" data-st="${l.id}" data-d="1">＋</button></div></div>`
       : `<label class="fl"><span>متراژ (م²)</span><input inputmode="decimal" data-l="${l.id}" data-k="q" value="${l.q}"></label>` + (m === 'area' ? `<label class="fl"><span>مصرف هر م²</span><input inputmode="decimal" data-l="${l.id}" data-k="per" value="${l.per}"></label>` : `<label class="fl"><span>ضخامت (cm)</span><input inputmode="decimal" data-l="${l.id}" data-k="th" value="${l.th}"></label>`);
     return `<div class="ln"><h4><span>${esc(l.name)}</span><em>${esc(l.co)}</em></h4><div class="rw">${ctl}<label class="fl"><span>قیمت هر ${esc(l.unit)} (تومان)</span><input inputmode="decimal" data-l="${l.id}" data-k="price" value="${l.price || ''}" placeholder="وارد کن"></label></div><div class="lt"><small data-lq="${l.id}"></small><span data-lt="${l.id}"></span></div><div class="wr" data-lw="${l.id}" hidden>قیمت این قلم ثبت نشده؛ قیمت روز را وارد کن.</div><button type="button" class="act" data-rm="${l.id}" style="margin-top:8px;color:var(--danger)">حذف</button></div>`;
   }).join('');
@@ -279,7 +279,7 @@ function roomCard(r) {
 function itemRow(r, i) {
   const [c, p] = find(i.pid); if (!p) return '';
   const a = `data-i="item" data-rid="${r.id}" data-iid="${i.id}"`; let ctl;
-  if (p.mode === 'count') ctl = `<div class="fl"><span>تعداد در هر اتاق</span><div class="stp"><button type="button" class="sq" data-x="iq" data-rid="${r.id}" data-iid="${i.id}" data-d="-1">−</button><b>${fa(i.q)}</b><button type="button" class="sq pl" data-x="iq" data-rid="${r.id}" data-iid="${i.id}" data-d="1">＋</button></div></div>`;
+  if (p.mode === 'count') ctl = `<div class="fl"><span>تعداد در هر اتاق</span><div class="stp"><button type="button" class="sq" data-x="iq" data-rid="${r.id}" data-iid="${i.id}" data-d="-1">−</button><input class="qi" inputmode="numeric" data-i="item" data-rid="${r.id}" data-iid="${i.id}" data-k="q" value="${esc(i.q)}" aria-label="تعداد"><button type="button" class="sq pl" data-x="iq" data-rid="${r.id}" data-iid="${i.id}" data-d="1">＋</button></div></div>`;
   else ctl = `<label class="fl"><span>سطح اجرا</span><select ${a} data-k="on">${Object.entries(SURF).map(([k, l]) => `<option value="${k}" ${(i.on || defSurf(p)) === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` + (p.mode === 'area' ? `<label class="fl"><span>مصرف هر م²</span><input inputmode="decimal" ${a} data-k="per" value="${esc(i.per)}" placeholder="${fa(p.perM2 || 1)}"></label>` : `<label class="fl"><span>ضخامت (cm)</span><input inputmode="decimal" ${a} data-k="th" value="${esc(i.th)}" placeholder="${fa(p.def || 5)}"></label>`);
   return `<div class="it"><div class="it-t"><b>${esc(p.name)}</b><em>${esc(c.name)}</em><button type="button" class="sq dg" data-x="irm" data-rid="${r.id}" data-iid="${i.id}" aria-label="حذف">✕</button></div><div class="rw">${ctl}</div><small class="iq" data-iq="${i.id}"></small></div>`;
 }
