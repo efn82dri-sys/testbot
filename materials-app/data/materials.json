@@ -1,1999 +1,3028 @@
 {
- "v": 2,
- "companies": [
-  {
-   "id": "leca",
-   "name": "لیکا",
-   "en": "LECA",
-   "cat": "سبک‌سازی و سبکدانه",
-   "sponsor": false,
-   "catalog": "",
-   "desc": "سبکدانه رس منبسط‌شده، بلوک سبک، ملات آماده و بتن سبک برای پروژه‌های ساختمانی.",
-   "products": [
+  "v": 2,
+  "companies": [
     {
-     "id": "leca3",
-     "group": "سبکدانه",
-     "name": "سبکدانه لیکا — کف‌سازی و پرکننده",
-     "desc": "سبکدانه رس منبسط‌شده برای سبک‌سازی کف و پرکردن فضاها.",
-     "unit": "متر مکعب",
-     "price": null,
-     "mode": "vol",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D8%AF%D8%A7%D9%86%D9%87-%D9%87%D8%A7%DB%8C-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — صفحه‌ی دانه‌های لیکا",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "سبک‌سازی کف",
-      "عایق حرارتی"
-     ],
-     "specs": [
-      {
-       "k": "ضریب هدایت حرارتی",
-       "v": "0.09 – 0.101 W/m·K"
+      "id": "leca",
+      "name": "لیکا",
+      "en": "LECA",
+      "cat": "سبک‌سازی و سبکدانه",
+      "sponsor": false,
+      "catalog": "",
+      "desc": "سبکدانه رس منبسط‌شده، بلوک سبک، ملات آماده و بتن سبک برای پروژه‌های ساختمانی.",
+      "products": [
+        {
+          "id": "leca3",
+          "group": "سبکدانه",
+          "name": "سبکدانه لیکا — کف‌سازی و پرکننده",
+          "desc": "سبکدانه رس منبسط‌شده برای کف‌سازی و پرکننده.",
+          "unit": "متر مکعب",
+          "price": null,
+          "mode": "vol",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D8%AF%D8%A7%D9%86%D9%87-%D9%87%D8%A7%DB%8C-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "سبک‌سازی کف",
+            "عایق حرارتی"
+          ],
+          "specs": [
+            {
+              "k": "ضریب هدایت حرارتی",
+              "v": "0.09 – 0.101 W/m·K"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "surf": "floor",
+          "sourceImageUrl": "/materials/images/leca-aggregate-texture.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca4",
+          "group": "زیرساخت",
+          "name": "سبکدانه لیکا در زیرساخت و ژئوتکنیک",
+          "desc": "سبکدانه برای خاک‌ریزی سبک و کاربردهای ژئوتکنیکی.",
+          "unit": "متر مکعب",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاهش وزن خاکریز",
+            "زهکشی"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-aggregate-geotech.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca2",
+          "group": "بلوک",
+          "name": "بلوک سبک لیکا",
+          "desc": "بلوک دیواری سبک از بتن سبکدانه لیکا.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاهش وزن دیوار",
+            "عایق حرارتی"
+          ],
+          "specs": [
+            {
+              "k": "حداقل مقاومت فشاری",
+              "v": "20 kg/cm²"
+            }
+          ],
+          "standards": [
+            {
+              "code": "استاندارد ملی ایران ۷۷۸۲ (حداقل مقاومت بلوک)",
+              "verified": "1405/07/08"
+            },
+            {
+              "code": "استاندارد ملی ایران ۸۵۶۸ و ISO 140-3 (آکوستیک)",
+              "verified": "1405/07/08"
+            }
+          ],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-block-general.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca6",
+          "group": "بلوک",
+          "name": "ترمو بلوک لیکا",
+          "desc": "بلوک چندلایه با حفره‌های هوا برای بهبود عایق حرارتی.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D8%AA%D8%B1%D9%85%D9%88-%D8%A8%D9%84%D9%88%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "ساختار چندلایه",
+            "عایق حرارتی"
+          ],
+          "specs": [
+            {
+              "k": "ساختار",
+              "v": "۳ لایه بتن سبکدانه + ۲ لایه فیلم هوا"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "",
+          "catalogImageUnavailable": true,
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft"
+        },
+        {
+          "id": "leca7",
+          "group": "بلوک",
+          "name": "بلوک سبز لیکا",
+          "desc": "بلوک چندلایه با تمرکز بر عایق حرارتی و صوتی.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D8%B3%D8%A8%D8%B2-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "عایق حرارتی",
+            "عایق صوتی"
+          ],
+          "specs": [
+            {
+              "k": "ضریب انتقال حرارت",
+              "v": "0.45 W/m²·K"
+            },
+            {
+              "k": "مقاومت صوتی",
+              "v": "حدود 54 dB"
+            },
+            {
+              "k": "ساختار",
+              "v": "۸ لایه بتن سبک + ۷ لایه فیلم هوا"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "",
+          "catalogImageUnavailable": true,
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft"
+        },
+        {
+          "id": "leca8",
+          "group": "بلوک",
+          "name": "بلوک سوپرساند لیکا",
+          "desc": "بلوک سبک؛ تصویر اختصاصی این مدل در دفترچه موجود نیست.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D8%B3%D9%88%D9%BE%D8%B1%D8%B3%D8%A7%D9%86%D8%AF-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "",
+          "catalogImageUnavailable": true,
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft"
+        },
+        {
+          "id": "leca9",
+          "group": "بتن",
+          "name": "بتن سبک لیکا",
+          "desc": "بتن سبک با سبکدانه لیکا؛ مشخصات تابع طرح اختلاط است.",
+          "unit": "متر مکعب",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "سبک‌سازی بتن"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-floor-concrete-product.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "family",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca1",
+          "group": "ملات و مخلوط خشک",
+          "name": "ملات پلاستر (اندودکاری) لیکا",
+          "desc": "اندود آماده برای پوشش دیوار.",
+          "unit": "بسته ۲۵ لیتری",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری",
+            "کارپذیری"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-plaster-application.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca10",
+          "group": "ملات و مخلوط خشک",
+          "name": "ملات بنایی (آجرچینی) لیکا",
+          "desc": "ملات خشک آماده برای آجرچینی و بلوک‌چینی.",
+          "unit": "بسته ۲۵ لیتری",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "آماده‌سازی سریع",
+            "چسبندگی"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-m100.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca11",
+          "group": "ملات و مخلوط خشک",
+          "name": "ملات با جذب آب کم لیکا",
+          "desc": "ملات خشک؛ مشخصات جذب آب باید از دیتاشیت بررسی شود.",
+          "unit": "بسته ۲۵ لیتری",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "ملات خشک آماده"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "",
+          "catalogImageUnavailable": true,
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft"
+        },
+        {
+          "id": "leca5",
+          "group": "کشاورزی",
+          "name": "سبکدانه‌ی کشاورزی لیکا",
+          "desc": "سبکدانه برای بستر کشت و زهکشی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "بستر کشت",
+            "زهکشی"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "def": null,
+          "sourceImageUrl": "/materials/images/leca-lecapoon-product.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "family",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv01",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×8×20 سانتی‌متر، 7.2 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×8×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "7.2 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-01.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv02",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×10×20 سانتی‌متر، 9.5 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×10×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "9.5 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-02.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv03",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 40×7×20 سانتی‌متر، 4.1 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "40×7×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "4.1 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-03.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv04",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 40×10×20 سانتی‌متر، 5.8 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "40×10×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "5.8 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-04.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv05",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 24×17.5×20 سانتی‌متر، 6.5 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "24×17.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "6.5 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-05.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv06",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 24×19×20 سانتی‌متر، 5.7 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "24×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "5.7 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-06.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv07",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 24×12×20 سانتی‌متر، 4.8 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "24×12×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "4.8 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-07.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv08",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 24×14.5×20 سانتی‌متر، 4.7 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "24×14.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "4.7 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-08.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv09",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 40×19×20 سانتی‌متر، 7.7 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "40×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "7.7 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-09.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv10",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 8 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "8 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-10.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv11",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 20×10×5 سانتی‌متر، 1.25 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "20×10×5 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "1.25 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-11.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv12",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 20×10×20 سانتی‌متر، 4 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "20×10×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "4 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-12.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv13",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 39×19×20 سانتی‌متر، 9.5 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "39×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "9.5 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-13.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv14",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 13 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "13 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-14.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv15",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×25×20 سانتی‌متر، 20 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×25×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "20 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-15.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv16",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 11 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×14.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "11 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-16.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv17",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 12 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "12 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-17.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv19",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×12×20 سانتی‌متر، 9.2 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×12×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "9.2 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-19.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv20",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 9.5 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×14.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "9.5 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-20.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv21",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 14.8 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×19×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "14.8 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-21.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv22",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 40×10×20 سانتی‌متر، 6.5 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "40×10×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "6.5 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-22.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv23",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×17.5×20 سانتی‌متر، 12 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×17.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "12 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-23.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-bv24",
+          "group": "بلوک",
+          "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 10.7 کیلوگرم",
+          "desc": "بلوک سبکدانه؛ ابعاد و وزن در مشخصات فنی آمده است.",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/block",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [],
+          "specs": [
+            {
+              "k": "ابعاد درج‌شده در دفترچه",
+              "v": "49×14.5×20 سانتی‌متر"
+            },
+            {
+              "k": "وزن درج‌شده در دفترچه",
+              "v": "10.7 کیلوگرم"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-block-24.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl31",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL31",
+          "desc": "اندود آماده ساختمانی؛ کد PL31.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL31"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl31.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl21",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL121",
+          "desc": "اندود آماده ساختمانی؛ کد PL121.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL121"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl121.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl30",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL30",
+          "desc": "اندود آماده ساختمانی؛ کد PL30.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL30"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl30.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl20",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL120",
+          "desc": "اندود آماده ساختمانی؛ کد PL120.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL120"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl120.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl110",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL110",
+          "desc": "اندود آماده ساختمانی؛ کد PL110.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL110"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl110.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl111",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL111",
+          "desc": "اندود آماده ساختمانی؛ کد PL111.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL111"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl111.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl180",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL180",
+          "desc": "اندود آماده ساختمانی؛ کد PL180.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL180"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl180.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-pl-pl181",
+          "group": "ملات و مخلوط خشک",
+          "name": "اندود آماده ساختمانی لیکا PL181",
+          "desc": "اندود آماده ساختمانی؛ کد PL181.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "اندودکاری"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "PL181"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-pl181.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-fl400",
+          "group": "بتن سبک",
+          "name": "بتن سبک کف‌سازی لیکا FL400",
+          "desc": "بتن سبک برای کف‌سازی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کف‌سازی",
+            "شیب‌بندی"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "FL400"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-fl400.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-fl700",
+          "group": "بتن سبک",
+          "name": "بتن سبک کف‌سازی لیکا FL700",
+          "desc": "بتن سبک برای کف‌سازی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کف‌سازی",
+            "شیب‌بندی"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "FL700"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-fl700.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-fl1200",
+          "group": "بتن سبک",
+          "name": "بتن سبک کف‌سازی لیکا FL1200",
+          "desc": "بتن سبک برای کف‌سازی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کف‌سازی",
+            "شیب‌بندی"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "FL1200"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-fl1200.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-fl2200",
+          "group": "بتن سبک",
+          "name": "بتن سبک کف‌سازی لیکا FL2200",
+          "desc": "بتن سبک برای کف‌سازی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کف‌سازی",
+            "شیب‌بندی"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "FL2200"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-fl2200.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-sc1400",
+          "group": "بتن سبک",
+          "name": "بتن سبک سازه‌ای لیکا SC1400",
+          "desc": "بتن سبک سازه‌ای؛ نیازمند طرح اختلاط تأییدشده.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاربرد سازه‌ای"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "SC1400"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-sc1400.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-sc1600",
+          "group": "بتن سبک",
+          "name": "بتن سبک سازه‌ای لیکا SC1600",
+          "desc": "بتن سبک سازه‌ای؛ نیازمند طرح اختلاط تأییدشده.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاربرد سازه‌ای"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "SC1600"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-sc1600.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-sc1800",
+          "group": "بتن سبک",
+          "name": "بتن سبک سازه‌ای لیکا SC1800",
+          "desc": "بتن سبک سازه‌ای؛ نیازمند طرح اختلاط تأییدشده.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاربرد سازه‌ای"
+          ],
+          "specs": [
+            {
+              "k": "کد محصول",
+              "v": "SC1800"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-sc1800.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-lecamix-family",
+          "group": "ملات و مخلوط خشک",
+          "name": "لیکامیکس — خانوادهٔ مخلوط‌های خشک آماده",
+          "desc": "خانواده‌ی مخلوط‌های خشک آماده.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "سهولت اجرا",
+            "کاهش اتلاف مصالح"
+          ],
+          "specs": [
+            {
+              "k": "نوع عرضه",
+              "v": "مخلوط خشک آماده"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-m200.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-floor-concrete-family",
+          "group": "بتن سبک",
+          "name": "بتن سبک کف‌سازی لیکا — خانوادهٔ محصول",
+          "desc": "بتن سبک برای کف‌سازی و شیب‌بندی.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کف‌سازی",
+            "شیب‌بندی"
+          ],
+          "specs": [
+            {
+              "k": "کدهای مشاهده‌شده در دفترچه",
+              "v": "FL400، FL700، FL1200، FL2200"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-floor-concrete-product.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "family",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-structural-concrete-family",
+          "group": "بتن سبک",
+          "name": "بتن سبک سازه‌ای لیکا — خانوادهٔ محصول",
+          "desc": "بتن سبک برای کاربردهای سازه‌ای.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "نیازمند طرح اختلاط تأییدشده"
+          ],
+          "specs": [
+            {
+              "k": "کدهای مشاهده‌شده در دفترچه",
+              "v": "SC1400، SC1600، SC1800"
+            }
+          ],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-structural-concrete-product.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-lecapoon",
+          "group": "کشاورزی",
+          "name": "لیکاپون — سبکدانه برای فضای سبز و کشاورزی",
+          "desc": "سبکدانه برای گلدان، بام سبز و فضای سبز.",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "bag",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "زهکشی",
+            "حفظ رطوبت"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-lecapoon-product.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "family",
+          "publicationStatus": "published"
+        },
+        {
+          "id": "leca-geotech-family",
+          "group": "زیرساخت",
+          "name": "سبکدانه لیکا برای ژئوتکنیک و زیرساخت",
+          "desc": "سبکدانه برای خاک‌ریزی سبک و ژئوتکنیک.",
+          "unit": "متر مکعب",
+          "price": null,
+          "mode": "vol",
+          "perM2": null,
+          "catalog": "",
+          "page": "https://leca.ir/",
+          "availability": "داخلی",
+          "confidence": "review",
+          "source": "دفترچه رسمی لیکا؛ صفحه مرتبط",
+          "lastVerified": "",
+          "features": [
+            "کاهش وزن خاکریز",
+            "کاهش فشار جانبی خاک"
+          ],
+          "specs": [],
+          "standards": [],
+          "speed": null,
+          "durability": null,
+          "sourceImageUrl": "/materials/images/leca-geotech-application.webp",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "published"
+        }
+      ],
+      "site": "https://leca.ir/",
+      "features": [
+        "سبکدانه از رس منبسط‌شده در کوره‌ی دوار و حدود ۱۲۰۰ درجه‌ی سانتی‌گراد ساخته می‌شود",
+        "به اعلام شرکت، ضریب هدایت حرارتی سبکدانه‌ی لیکا ۰٫۰۹ تا ۰٫۱۰۱ W/m·K است (تأییدیه‌ی مرکز تحقیقات راه، مسکن و شهرسازی)",
+        "خانواده‌ی بلوک: بلوک لیکا، ترمو بلوک، بلوک سبز و بلوک سوپرساند",
+        "نکته‌ی خرید: محصولات با حواله‌ی کالای هولوگرام‌دار عرضه می‌شود؛ اصالت کالا را از واحد تحویل لیکا استعلام کن"
+      ],
+      "links": [
+        {
+          "t": "لیست مشخصات فنی محصولات",
+          "u": "https://leca.ir/%D9%84%DB%8C%D8%B3%D8%AA-%D9%85%D8%B4%D8%AE%D8%B5%D8%A7%D8%AA-%D9%81%D9%86%DB%8C-%D9%85%D8%AD%D8%B5%D9%88%D9%84%D8%A7%D8%AA-%D9%84%DB%8C%DA%A9%D8%A7/"
+        },
+        {
+          "t": "راهنمای اطلاعات فنی",
+          "u": "https://leca.ir/%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%A7%D8%B7%D9%84%D8%A7%D8%B9%D8%A7%D8%AA-%D9%81%D9%86%DB%8C-%D9%84%DB%8C%D9%83%D8%A7/"
+        },
+        {
+          "t": "پرسش‌های متداول",
+          "u": "https://leca.ir/%D8%B3%D8%A6%D9%88%D8%A7%D9%84%D8%A7%D8%AA-%D9%85%D8%AA%D8%AF%D8%A7%D9%88%D9%84/"
+        }
+      ],
+      "logoLicense": {
+        "status": "review-required",
+        "source": "",
+        "rightsHolder": "",
+        "approvedAt": ""
       }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": 5,
-     "surf": "floor",
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
     },
     {
-     "id": "leca4",
-     "group": "زیرساخت",
-     "name": "سبکدانه لیکا در زیرساخت و ژئوتکنیک",
-     "desc": "مناسب خاک‌ریزی سبک و برخی کاربردهای ژئوتکنیکی.",
-     "unit": "متر مکعب",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — بخش کاربردها (لیکا در زیرساخت‌ها)",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "خاک‌ریزی سبک",
-      "کاربرد ژئوتکنیکی"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
-    },
-    {
-     "id": "leca2",
-     "group": "بلوک",
-     "name": "بلوک سبک لیکا",
-     "desc": "بلوک دیواری سبک برای کاهش وزن مرده ساختمان.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — صفحه‌ی بلوک لیکا",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "وزن دیوار چیده‌شده با آن، به اعلام شرکت، ۲٫۵ برابر کمتر از مصالح سنتی مثل آجر است",
-      "بالاترین مقاومت صوتی در رده‌ی بلوک‌های سبک، به استناد آزمایش مطابق استاندارد ملی ۸۵۶۸ و ISO 140-3 (به اعلام شرکت)",
-      "نکته‌ی اجرایی: قطعات بلندتر از ۲۰ سانتی‌متر (مثل پنل) با ملات به‌تنهایی مهار نمی‌شوند و مهاربندی جداگانه می‌خواهند"
-     ],
-     "specs": [
-      {
-       "k": "حداقل مقاومت فشاری",
-       "v": "20 kg/cm²"
+      "id": "gach",
+      "name": "گچ ماشینی شرق",
+      "en": "",
+      "cat": "گچ و پوشش دیوار",
+      "sponsor": false,
+      "catalog": "",
+      "desc": "تولید انواع گچ ساختمانی و پانل گچی",
+      "products": [
+        {
+          "id": "g1",
+          "group": "گچ",
+          "name": "گچ سفید",
+          "desc": "مناسب سفیدکاری و رویه",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "g2",
+          "group": "گچ",
+          "name": "گچ خاکی",
+          "desc": "مناسب زیرسازی و کشیدن سطوح",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "g3",
+          "group": "گچ",
+          "name": "گچ دوسرنده",
+          "desc": "گچ دوسرنده ساختمانی",
+          "unit": "کیسه",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "g4",
+          "group": "پانل",
+          "name": "پانل (دیواره) گچی",
+          "desc": "دیواره‌ی گچی پیش‌ساخته؛ مصرف بر متر مربع",
+          "unit": "متر مربع",
+          "price": null,
+          "mode": "area",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "surf": "wall",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        }
+      ],
+      "logoLicense": {
+        "status": "review-required",
+        "source": "",
+        "rightsHolder": "",
+        "approvedAt": ""
       }
-     ],
-     "standards": [
-      {
-       "code": "استاندارد ملی ایران ۷۷۸۲ (حداقل مقاومت بلوک)",
-       "verified": "1405/07/08"
-      },
-      {
-       "code": "استاندارد ملی ایران ۸۵۶۸ و ISO 140-3 (آکوستیک)",
-       "verified": "1405/07/08"
+    },
+    {
+      "id": "markiz",
+      "name": "Markiz",
+      "en": "MARKIZ",
+      "cat": "بهداشتی و شیرآلات",
+      "sponsor": false,
+      "catalog": "",
+      "desc": "سرویس بهداشتی، شیرآلات، تجهیزات و اکسسوری",
+      "products": [
+        {
+          "id": "m1",
+          "group": "سنگ و کابین",
+          "name": "سنگ روشویی",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m2",
+          "group": "سنگ و کابین",
+          "name": "مجموعه کابین روشویی",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m3",
+          "group": "توالت",
+          "name": "توالت ایرانی",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m4",
+          "group": "توالت",
+          "name": "توالت فرنگی",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m5",
+          "group": "توالت",
+          "name": "توالت وال‌هنگ",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m6",
+          "group": "شیرآلات",
+          "name": "شیرآلات اسمارت",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m7",
+          "group": "شیرآلات",
+          "name": "شیرآلات فلت",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m8",
+          "group": "شیرآلات",
+          "name": "شیرآلات شانل",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m9",
+          "group": "شیرآلات",
+          "name": "شیرآلات یونیورست",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m10",
+          "group": "شیرآلات",
+          "name": "سردوش",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m11",
+          "group": "تجهیزات و اکسسوری",
+          "name": "استراکچر و کلید",
+          "desc": "",
+          "unit": "ست",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m12",
+          "group": "تجهیزات و اکسسوری",
+          "name": "فلاش‌تانک",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m13",
+          "group": "تجهیزات و اکسسوری",
+          "name": "جادستمالی",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        },
+        {
+          "id": "m14",
+          "group": "تجهیزات و اکسسوری",
+          "name": "جامایع",
+          "desc": "",
+          "unit": "عدد",
+          "price": null,
+          "mode": "count",
+          "perM2": null,
+          "def": null,
+          "catalog": "",
+          "verification": {
+            "datasheetUrl": "",
+            "page": "",
+            "reviewedAt": "",
+            "reviewer": ""
+          },
+          "mediaLicense": {
+            "status": "review-required",
+            "source": "",
+            "rightsHolder": "",
+            "approvedAt": ""
+          },
+          "imageKind": "product",
+          "publicationStatus": "draft",
+          "lastVerified": "",
+          "confidence": "review"
+        }
+      ],
+      "logoLicense": {
+        "status": "review-required",
+        "source": "",
+        "rightsHolder": "",
+        "approvedAt": ""
       }
-     ],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca6",
-     "group": "بلوک",
-     "name": "ترمو بلوک لیکا",
-     "desc": "بلوک چندلایه برای بهبود عملکرد حرارتی دیوار.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D8%AA%D8%B1%D9%85%D9%88-%D8%A8%D9%84%D9%88%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — صفحه‌ی ترمو بلوک",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "ساختار چندلایه",
-      "بهبود عملکرد حرارتی"
-     ],
-     "specs": [
-      {
-       "k": "ساختار",
-       "v": "۳ لایه بتن سبکدانه + ۲ لایه فیلم هوا"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca7",
-     "group": "بلوک",
-     "name": "بلوک سبز لیکا",
-     "desc": "بلوک چندلایه با تمرکز بر عایق حرارتی و صوتی.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D8%B3%D8%A8%D8%B2-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — صفحه‌ی بلوک سبز",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "عایق حرارتی",
-      "عایق صوتی"
-     ],
-     "specs": [
-      {
-       "k": "ضریب انتقال حرارت",
-       "v": "0.45 W/m²·K"
-      },
-      {
-       "k": "مقاومت صوتی",
-       "v": "حدود 54 dB"
-      },
-      {
-       "k": "ساختار",
-       "v": "۸ لایه بتن سبک + ۷ لایه فیلم هوا"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca8",
-     "group": "بلوک",
-     "name": "بلوک سوپرساند لیکا",
-     "desc": "بلوک سبک؛ مشخصات نهایی با کاتالوگ جاری تطبیق داده شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D8%A8%D9%84%D9%88%DA%A9-%D8%B3%D9%88%D9%BE%D8%B1%D8%B3%D8%A7%D9%86%D8%AF-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "",
-     "source": "سایت رسمی لیکا (leca.ir) — صفحه‌ی بلوک سوپرساند (مشخصات فنی دریافت نشد)",
-     "lastVerified": "1405/07/08",
-     "features": [],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca9",
-     "group": "بتن",
-     "name": "بتن سبک لیکا",
-     "desc": "بتن سبک بر پایه سبکدانه لیکا؛ طرح اختلاط باید تأیید شود.",
-     "unit": "متر مکعب",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — پرسش‌های متداول",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "تعریف «بتن سبک سازه‌ای» در پرسش‌های متداول لیکا: چگالی کمتر از ۱۸۰۰ kg/m³ و مقاومت فشاری بیش از ۱۷ MPa، فقط با سبکدانه‌ی سبک و مقاوم (تعریف عمومی؛ تضمین این محصول نیست)"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
-    },
-    {
-     "id": "leca1",
-     "group": "ملات و مخلوط خشک",
-     "name": "ملات پلاستر (اندودکاری) لیکا",
-     "desc": "ملات خشک آماده برای اندودکاری.",
-     "unit": "بسته ۲۵ لیتری",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — مخلوط‌های خشک؛ عدد بسته از متن ملات لیکا در صفحه‌ی فروشنده",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "بسته‌ی ۲۵ لیتری؛ هر بسته با ۶ تا ۸ لیتر آب مخلوط می‌شود",
-      "سبکدانه آب اضافی ملات را جذب و در زمان گیرش پس می‌دهد («عمل‌آوری داخلی») و ترک انقباضی را کم می‌کند"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca10",
-     "group": "ملات و مخلوط خشک",
-     "name": "ملات بنایی (آجرچینی) لیکا",
-     "desc": "ملات خشک آماده برای بنایی و بلوک‌چینی.",
-     "unit": "بسته ۲۵ لیتری",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — مخلوط‌های خشک؛ عدد بسته از متن ملات لیکا در صفحه‌ی فروشنده",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "بسته‌ی ۲۵ لیتری؛ هر بسته با ۶ تا ۸ لیتر آب مخلوط می‌شود"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca11",
-     "group": "ملات و مخلوط خشک",
-     "name": "ملات با جذب آب کم لیکا",
-     "desc": "مخلوط خشک آماده؛ کاربرد دقیق با دیتاشیت تطبیق داده شود.",
-     "unit": "بسته ۲۵ لیتری",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "سایت رسمی لیکا (leca.ir) — مخلوط‌های خشک؛ عدد بسته از متن ملات لیکا در صفحه‌ی فروشنده",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "بسته‌ی ۲۵ لیتری؛ هر بسته با ۶ تا ۸ لیتر آب مخلوط می‌شود"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca5",
-     "group": "کشاورزی",
-     "name": "سبکدانه‌ی کشاورزی لیکا",
-     "desc": "سبکدانه برای بستر کشت و زهکشی گلدان.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/",
-     "availability": "داخلی",
-     "confidence": "",
-     "source": "سایت رسمی لیکا (leca.ir) — بخش کاربردها (لیکا در کشاورزی)",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "بستر کشت",
-      "زهکشی"
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "def": null,
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
-    },
-    {
-     "id": "leca-bv01",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×8×20 سانتی‌متر، 7.2 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×8×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "7.2 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv02",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×10×20 سانتی‌متر، 9.5 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×10×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "9.5 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv03",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 40×7×20 سانتی‌متر، 4.1 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "40×7×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "4.1 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv04",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 40×10×20 سانتی‌متر، 5.8 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "40×10×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "5.8 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv05",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 24×17.5×20 سانتی‌متر، 6.5 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "24×17.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "6.5 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv06",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 24×19×20 سانتی‌متر، 5.7 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "24×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "5.7 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv07",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 24×12×20 سانتی‌متر، 4.8 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "24×12×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "4.8 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv08",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 24×14.5×20 سانتی‌متر، 4.7 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "24×14.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "4.7 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv09",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 40×19×20 سانتی‌متر، 7.7 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "40×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "7.7 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv10",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 8 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "8 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv11",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 20×10×5 سانتی‌متر، 1.25 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "20×10×5 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "1.25 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv12",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 20×10×20 سانتی‌متر، 4 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 9؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "20×10×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "4 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv13",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 39×19×20 سانتی‌متر، 9.5 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "39×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "9.5 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv14",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 13 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "13 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv15",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×25×20 سانتی‌متر، 20 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×25×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "20 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv16",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 11 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×14.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "11 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv17",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 12 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "12 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv19",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×12×20 سانتی‌متر، 9.2 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×12×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "9.2 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv20",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 9.5 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×14.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "9.5 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv21",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×19×20 سانتی‌متر، 14.8 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×19×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "14.8 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv22",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 40×10×20 سانتی‌متر، 6.5 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "40×10×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "6.5 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv23",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×17.5×20 سانتی‌متر، 12 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×17.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "12 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-bv24",
-     "group": "بلوک",
-     "name": "بلوک لیکا — 49×14.5×20 سانتی‌متر، 10.7 کیلوگرم",
-     "desc": "ابعاد و وزن ثبت‌شده در دفترچه؛ موجودی روز استعلام شود.",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/block",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 10؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بلوک‌ها را برای دیوارهای جداکننده، پیرامونی و بین واحدها معرفی می‌کند؛ کاربرد دقیق این گونه باید از روی نقشهٔ محصول تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "ابعاد درج‌شده در دفترچه",
-       "v": "49×14.5×20 سانتی‌متر"
-      },
-      {
-       "k": "وزن درج‌شده در دفترچه",
-       "v": "10.7 کیلوگرم"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-block.webp"
-    },
-    {
-     "id": "leca-pl-pl31",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL31",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL31"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl21",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL21",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL21"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl30",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL30",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL30"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl20",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL20",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL20"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl110",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL110",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL110"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl111",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL111",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL111"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl180",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL180",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL180"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-pl-pl181",
-     "group": "ملات و مخلوط خشک",
-     "name": "اندود آماده ساختمانی لیکا PL181",
-     "desc": "اندود آماده ساختمانی؛ دیتاشیت روز را بررسی کن.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 14؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچهٔ ارسالی چهار دسته اندود آماده را برای کاربردهای متفاوت معرفی می‌کند. این کد و عرضهٔ جاری باید با سایت یا دیتاشیت روز تأیید شود."
-     ],
-     "specs": [
-      {
-       "k": "کد درج‌شده در دفترچه",
-       "v": "PL181"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-fl400",
-     "group": "بتن سبک",
-     "name": "بتن سبک کف‌سازی لیکا FL400",
-     "desc": "بتن سبک کف‌سازی؛ انتخاب نهایی بر اساس دیتاشیت.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 15؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه این گروه را برای ایجاد سطح کف‌سازی و شیب‌بندی روی تأسیسات معرفی می‌کند."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "FL400"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-floor-concrete.webp"
-    },
-    {
-     "id": "leca-fl700",
-     "group": "بتن سبک",
-     "name": "بتن سبک کف‌سازی لیکا FL700",
-     "desc": "بتن سبک کف‌سازی؛ انتخاب نهایی بر اساس دیتاشیت.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 15؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه این گروه را برای ایجاد سطح کف‌سازی و شیب‌بندی روی تأسیسات معرفی می‌کند."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "FL700"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-floor-concrete.webp"
-    },
-    {
-     "id": "leca-fl1200",
-     "group": "بتن سبک",
-     "name": "بتن سبک کف‌سازی لیکا FL1200",
-     "desc": "بتن سبک کف‌سازی؛ انتخاب نهایی بر اساس دیتاشیت.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 15؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه این گروه را برای ایجاد سطح کف‌سازی و شیب‌بندی روی تأسیسات معرفی می‌کند."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "FL1200"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-floor-concrete.webp"
-    },
-    {
-     "id": "leca-fl2200",
-     "group": "بتن سبک",
-     "name": "بتن سبک کف‌سازی لیکا FL2200",
-     "desc": "بتن سبک کف‌سازی؛ انتخاب نهایی بر اساس دیتاشیت.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 15؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه این گروه را برای ایجاد سطح کف‌سازی و شیب‌بندی روی تأسیسات معرفی می‌کند."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "FL2200"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-floor-concrete.webp"
-    },
-    {
-     "id": "leca-sc1400",
-     "group": "بتن سبک",
-     "name": "بتن سبک سازه‌ای لیکا SC1400",
-     "desc": "بتن سبک سازه‌ای؛ مشخصات طراحی باید از دیتاشیت تأیید شود.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 16؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "برای کاربرد سازه‌ای، طراحی و پذیرش باید بر اساس طرح اختلاط تأییدشده، آزمون‌ها و نظر مهندس مسئول انجام شود."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "SC1400"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-structural-concrete.webp"
-    },
-    {
-     "id": "leca-sc1600",
-     "group": "بتن سبک",
-     "name": "بتن سبک سازه‌ای لیکا SC1600",
-     "desc": "بتن سبک سازه‌ای؛ مشخصات طراحی باید از دیتاشیت تأیید شود.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 16؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "برای کاربرد سازه‌ای، طراحی و پذیرش باید بر اساس طرح اختلاط تأییدشده، آزمون‌ها و نظر مهندس مسئول انجام شود."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "SC1600"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-structural-concrete.webp"
-    },
-    {
-     "id": "leca-sc1800",
-     "group": "بتن سبک",
-     "name": "بتن سبک سازه‌ای لیکا SC1800",
-     "desc": "بتن سبک سازه‌ای؛ مشخصات طراحی باید از دیتاشیت تأیید شود.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 16؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "برای کاربرد سازه‌ای، طراحی و پذیرش باید بر اساس طرح اختلاط تأییدشده، آزمون‌ها و نظر مهندس مسئول انجام شود."
-     ],
-     "specs": [
-      {
-       "k": "کد محصول درج‌شده در دفترچه",
-       "v": "SC1800"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-structural-concrete.webp"
-    },
-    {
-     "id": "leca-lecamix-family",
-     "group": "ملات و مخلوط خشک",
-     "name": "لیکامیکس — خانوادهٔ مخلوط‌های خشک آماده",
-     "desc": "خانواده مخلوط‌های خشک آماده لیکا.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 11؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه بر آماده‌سازی کنترل‌شده در محل، کاهش اتلاف مصالح و سهولت حمل تأکید می‌کند."
-     ],
-     "specs": [
-      {
-       "k": "نوع عرضه",
-       "v": "مخلوط خشک آماده"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-drymix.webp"
-    },
-    {
-     "id": "leca-floor-concrete-family",
-     "group": "بتن سبک",
-     "name": "بتن سبک کف‌سازی لیکا — خانوادهٔ محصول",
-     "desc": "بتن سبک برای لایه‌های کف‌سازی.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 15؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "برای کف‌سازی و شیب‌بندی؛ سازگاری با سیستم کف و الزامات پروژه باید بررسی شود."
-     ],
-     "specs": [
-      {
-       "k": "کدهای مشاهده‌شده در دفترچه",
-       "v": "FL400، FL700، FL1200، FL2200"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-floor-concrete.webp"
-    },
-    {
-     "id": "leca-structural-concrete-family",
-     "group": "بتن سبک",
-     "name": "بتن سبک سازه‌ای لیکا — خانوادهٔ محصول",
-     "desc": "بتن سبک برای کاربردهای سازه‌ای؛ نیازمند بررسی فنی.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/%D9%85%D8%AE%D9%84%D9%88%D8%B7-%D9%87%D8%A7%DB%8C-%D8%AE%D8%B4%DA%A9-%D9%84%DB%8C%DA%A9%D8%A7/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 16؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "برای استفاده سازه‌ای، بدون طرح اختلاط تأییدشده و نتایج آزمون به‌عنوان مشخصات طراحی استفاده نشود."
-     ],
-     "specs": [
-      {
-       "k": "کدهای مشاهده‌شده در دفترچه",
-       "v": "SC1400، SC1600، SC1800"
-      }
-     ],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-structural-concrete.webp"
-    },
-    {
-     "id": "leca-lecapoon",
-     "group": "کشاورزی",
-     "name": "لیکاپون — سبکدانه برای فضای سبز و کشاورزی",
-     "desc": "سبکدانه برای کاربردهای کشاورزی و فضای سبز.",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "bag",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 19؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه کاربردهایی مانند روف‌گاردن، گلدان‌ها، فضاهای سبز و زمین‌های ورزشی را معرفی می‌کند."
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
-    },
-    {
-     "id": "leca-geotech-family",
-     "group": "زیرساخت",
-     "name": "سبکدانه لیکا برای ژئوتکنیک و زیرساخت",
-     "desc": "سبکدانه برای خاک‌ریزی سبک و کاربردهای ژئوتکنیکی.",
-     "unit": "متر مکعب",
-     "price": null,
-     "mode": "vol",
-     "perM2": null,
-     "catalog": "",
-     "page": "https://leca.ir/",
-     "availability": "داخلی",
-     "confidence": "review",
-     "source": "دفترچهٔ معرفی محصولات لیکا (فایل PDF ارسالی کاربر) — صفحهٔ چاپی 17؛ وضعیت عرضهٔ فعلی باید با سایت روز تطبیق داده شود",
-     "lastVerified": "1405/07/08",
-     "features": [
-      "دفترچه به وزن کم، زهکشی و کاهش فشار جانبی خاک در برخی کاربردها اشاره می‌کند؛ عملکرد وابسته به طرح و شرایط پروژه است."
-     ],
-     "specs": [],
-     "standards": [],
-     "speed": null,
-     "durability": null,
-     "sourceImageUrl": "/materials/images/leca-aggregate.webp"
     }
-   ],
-   "site": "https://leca.ir/",
-   "features": [
-    "سبکدانه از رس منبسط‌شده در کوره‌ی دوار و حدود ۱۲۰۰ درجه‌ی سانتی‌گراد ساخته می‌شود",
-    "به اعلام شرکت، ضریب هدایت حرارتی سبکدانه‌ی لیکا ۰٫۰۹ تا ۰٫۱۰۱ W/m·K است (تأییدیه‌ی مرکز تحقیقات راه، مسکن و شهرسازی)",
-    "خانواده‌ی بلوک: بلوک لیکا، ترمو بلوک، بلوک سبز و بلوک سوپرساند",
-    "نکته‌ی خرید: محصولات با حواله‌ی کالای هولوگرام‌دار عرضه می‌شود؛ اصالت کالا را از واحد تحویل لیکا استعلام کن"
-   ],
-   "links": [
+  ],
+  "packs": [
     {
-     "t": "لیست مشخصات فنی محصولات",
-     "u": "https://leca.ir/%D9%84%DB%8C%D8%B3%D8%AA-%D9%85%D8%B4%D8%AE%D8%B5%D8%A7%D8%AA-%D9%81%D9%86%DB%8C-%D9%85%D8%AD%D8%B5%D9%88%D9%84%D8%A7%D8%AA-%D9%84%DB%8C%DA%A9%D8%A7/"
+      "id": "pk1",
+      "title": "سرویس بهداشتی کامل",
+      "desc": "توالت فرنگی، کابین روشویی، شیرآلات و سردوش",
+      "items": [
+        {
+          "p": "m4",
+          "q": 1
+        },
+        {
+          "p": "m2",
+          "q": 1
+        },
+        {
+          "p": "m6",
+          "q": 1
+        },
+        {
+          "p": "m10",
+          "q": 1
+        },
+        {
+          "p": "m12",
+          "q": 1
+        }
+      ]
     },
     {
-     "t": "راهنمای اطلاعات فنی",
-     "u": "https://leca.ir/%D8%B1%D8%A7%D9%87%D9%86%D9%85%D8%A7%DB%8C-%D8%A7%D8%B7%D9%84%D8%A7%D8%B9%D8%A7%D8%AA-%D9%81%D9%86%DB%8C-%D9%84%DB%8C%D9%83%D8%A7/"
+      "id": "pk2",
+      "title": "سرویس ایرانی اقتصادی",
+      "desc": "توالت ایرانی، سنگ روشویی و شیرآلات",
+      "items": [
+        {
+          "p": "m3",
+          "q": 1
+        },
+        {
+          "p": "m1",
+          "q": 1
+        },
+        {
+          "p": "m7",
+          "q": 1
+        }
+      ]
     },
     {
-     "t": "پرسش‌های متداول",
-     "u": "https://leca.ir/%D8%B3%D8%A6%D9%88%D8%A7%D9%84%D8%A7%D8%AA-%D9%85%D8%AA%D8%AF%D8%A7%D9%88%D9%84/"
+      "id": "pk3",
+      "title": "سبک‌سازی کف",
+      "desc": "کف‌سازی با سبکدانه لیکا (متراژ و ضخامت را وارد کن)",
+      "items": [
+        {
+          "p": "leca3",
+          "q": 20
+        }
+      ]
+    },
+    {
+      "id": "pk4",
+      "title": "تیغه‌بندی گچی",
+      "desc": "پانل گچی و گچ سفید برای دیوارها",
+      "items": [
+        {
+          "p": "g4",
+          "q": 30
+        },
+        {
+          "p": "g1",
+          "q": 10
+        }
+      ]
     }
-   ]
-  },
-  {
-   "id": "gach",
-   "name": "گچ ماشینی شرق",
-   "en": "",
-   "cat": "گچ و پوشش دیوار",
-   "sponsor": false,
-   "catalog": "",
-   "desc": "تولید انواع گچ ساختمانی و پانل گچی",
-   "products": [
-    {
-     "id": "g1",
-     "group": "گچ",
-     "name": "گچ سفید",
-     "desc": "مناسب سفیدکاری و رویه",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "g2",
-     "group": "گچ",
-     "name": "گچ خاکی",
-     "desc": "مناسب زیرسازی و کشیدن سطوح",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "g3",
-     "group": "گچ",
-     "name": "گچ دوسرنده",
-     "desc": "گچ دوسرنده ساختمانی",
-     "unit": "کیسه",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "g4",
-     "group": "پانل",
-     "name": "پانل (دیواره) گچی",
-     "desc": "دیواره‌ی گچی پیش‌ساخته؛ مصرف بر متر مربع",
-     "unit": "متر مربع",
-     "price": null,
-     "mode": "area",
-     "perM2": 1,
-     "def": null,
-     "catalog": "",
-     "surf": "wall"
-    }
-   ]
-  },
-  {
-   "id": "markiz",
-   "name": "Markiz",
-   "en": "MARKIZ",
-   "cat": "بهداشتی و شیرآلات",
-   "sponsor": false,
-   "catalog": "",
-   "desc": "سرویس بهداشتی، شیرآلات، تجهیزات و اکسسوری",
-   "products": [
-    {
-     "id": "m1",
-     "group": "سنگ و کابین",
-     "name": "سنگ روشویی",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m2",
-     "group": "سنگ و کابین",
-     "name": "مجموعه کابین روشویی",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m3",
-     "group": "توالت",
-     "name": "توالت ایرانی",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m4",
-     "group": "توالت",
-     "name": "توالت فرنگی",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m5",
-     "group": "توالت",
-     "name": "توالت وال‌هنگ",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m6",
-     "group": "شیرآلات",
-     "name": "شیرآلات اسمارت",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m7",
-     "group": "شیرآلات",
-     "name": "شیرآلات فلت",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m8",
-     "group": "شیرآلات",
-     "name": "شیرآلات شانل",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m9",
-     "group": "شیرآلات",
-     "name": "شیرآلات یونیورست",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m10",
-     "group": "شیرآلات",
-     "name": "سردوش",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m11",
-     "group": "تجهیزات و اکسسوری",
-     "name": "استراکچر و کلید",
-     "desc": "",
-     "unit": "ست",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m12",
-     "group": "تجهیزات و اکسسوری",
-     "name": "فلاش‌تانک",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m13",
-     "group": "تجهیزات و اکسسوری",
-     "name": "جادستمالی",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    },
-    {
-     "id": "m14",
-     "group": "تجهیزات و اکسسوری",
-     "name": "جامایع",
-     "desc": "",
-     "unit": "عدد",
-     "price": null,
-     "mode": "count",
-     "perM2": null,
-     "def": null,
-     "catalog": ""
-    }
-   ]
-  }
- ],
- "packs": [
-  {
-   "id": "pk1",
-   "title": "سرویس بهداشتی کامل",
-   "desc": "توالت فرنگی، کابین روشویی، شیرآلات و سردوش",
-   "items": [
-    {
-     "p": "m4",
-     "q": 1
-    },
-    {
-     "p": "m2",
-     "q": 1
-    },
-    {
-     "p": "m6",
-     "q": 1
-    },
-    {
-     "p": "m10",
-     "q": 1
-    },
-    {
-     "p": "m12",
-     "q": 1
-    }
-   ]
-  },
-  {
-   "id": "pk2",
-   "title": "سرویس ایرانی اقتصادی",
-   "desc": "توالت ایرانی، سنگ روشویی و شیرآلات",
-   "items": [
-    {
-     "p": "m3",
-     "q": 1
-    },
-    {
-     "p": "m1",
-     "q": 1
-    },
-    {
-     "p": "m7",
-     "q": 1
-    }
-   ]
-  },
-  {
-   "id": "pk3",
-   "title": "سبک‌سازی کف",
-   "desc": "کف‌سازی با سبکدانه لیکا (متراژ و ضخامت را وارد کن)",
-   "items": [
-    {
-     "p": "leca3",
-     "q": 20
-    }
-   ]
-  },
-  {
-   "id": "pk4",
-   "title": "تیغه‌بندی گچی",
-   "desc": "پانل گچی و گچ سفید برای دیوارها",
-   "items": [
-    {
-     "p": "g4",
-     "q": 30
-    },
-    {
-     "p": "g1",
-     "q": 10
-    }
-   ]
-  }
- ],
- "seedRev": 1
+  ],
+  "seedRev": 2,
+  "showIncompleteProducts": false
 }

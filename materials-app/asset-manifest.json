@@ -1,0 +1,46 @@
+{
+  "modules/admin": {
+    "file": "modules/admin.d36079fd5c9b.js",
+    "sha256": "d36079fd5c9b45a685806f1ca88bf82352c98b97b325ce5fbd35ab136b1d581e"
+  },
+  "modules/catalog": {
+    "file": "modules/catalog.7105fe54c6dd.js",
+    "sha256": "7105fe54c6dd86b7ef84ee3810fca66dc7c8cef59ef5560854f7d1815fd1b128"
+  },
+  "modules/core": {
+    "file": "modules/core.c300f78a2bee.js",
+    "sha256": "c300f78a2beed41fb30f8bf1450127d367039de1a86342ebb815dd6e0486f586"
+  },
+  "modules/glossary": {
+    "file": "modules/glossary.c3ed4ab0d3b8.js",
+    "sha256": "c3ed4ab0d3b8e0a19f4d7772f8e81c174b2dca60141d906ecd6c8679a5867624"
+  },
+  "modules/projects": {
+    "file": "modules/projects.5db5b2f585dc.js",
+    "sha256": "5db5b2f585dc69b79a0a6cbd57adb693d03212c89d965fa29a1f2aebe8e249b6"
+  },
+  "modules/tools-calc": {
+    "file": "modules/tools-calc.a777a7481ac6.js",
+    "sha256": "a777a7481ac6303418f058c0d7847868f1fc4dc4a2ac98b03bf756c934c3819a"
+  },
+  "modules/tools-room": {
+    "file": "modules/tools-room.6ed7586b4670.js",
+    "sha256": "6ed7586b46702339d4aa508df0792c486e41a95f0dac75bdcfe951b58bc0c656"
+  },
+  "base": {
+    "file": "base.446293b7ba3d.css",
+    "sha256": "446293b7ba3d72e42ba2a1102ddca5820462fb0312ea51b532c4c4d49369b3ec"
+  },
+  "mat": {
+    "file": "mat.242f31cd3329.css",
+    "sha256": "242f31cd332949238cd63c8876d73eb26ce82e8571edf2419939764a10a79e4e"
+  },
+  "calc-core": {
+    "file": "calc-core.fa52d579f9c8.js",
+    "sha256": "fa52d579f9c83ab0e6a2bbf82310a586066e57f0e0558496057f4ff78387fa1a"
+  },
+  "script": {
+    "file": "script.395533c5a740.js",
+    "sha256": "395533c5a740e4bb4f36bae7d1b4956e7df7315520c7e147ee0f58ec9f349635"
+  }
+}
