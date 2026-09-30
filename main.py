@@ -3286,8 +3286,8 @@ async def handle_export(message: Message):
 async def handle_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    # به‌جای گرفتنِ متن به‌صورتِ آرگومانِ دستور (که استایل‌ها/بولد/کوتیشن/لینک را از دست می‌داد چون
-    # command.args فقط رشته‌ی خام است و entities را در بر نمی‌گیرد)، همان مسیرِ مطمئنِ پنل را فعال می‌کنیم:
+    # به‌جای گرفتنِ متن به‌صورتِ آرگومانِ دستور (که استایل‌ها/بولد/کوتیشن/لینک را از دست
+    # می‌داد چون command.args فقط رشته‌ی خام است و entities را در بر نمی‌گیرد)، همان مسیرِ مطمئنِ پنل را فعال می‌کنیم:
     # پیامِ بعدیِ ادمین با bot.copy_message ارسال می‌شود که عیناً و با تمامِ استایل‌ها
     # (بولد، ایتالیک، کوتیشن، لینک، اسپویلر، کد و...) و حتی رسانه، بدون هیچ تغییری کپی می‌شود.
     await state.set_state(BroadcastStates.waiting_for_text)
@@ -9306,6 +9306,8 @@ _MAT_CONF = ("datasheet", "field", "review")
 
 def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
     out = {k: v for k, v in p.items() if k != "images"}
+
+    # --- مشخصات فنی (key/value) ---
     specs = []
     if isinstance(out.get("specs"), list):
         for x in out["specs"][:40]:
@@ -9314,22 +9316,51 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
                 if k and v:
                     specs.append({"k": k, "v": v})
     out["specs"] = specs
+
+    # --- استانداردهای ملی ---
+    standards = []
+    if isinstance(out.get("standards"), list):
+        for x in out["standards"][:10]:
+            if isinstance(x, dict):
+                code = str(x.get("code", "")).strip()[:80]
+                verified = str(x.get("verified", "")).strip()[:30]
+                if code:
+                    standards.append({"code": code, "verified": verified})
+    out["standards"] = standards
+
+    # --- گواهی فنی مرکز تحقیقات راه، مسکن و شهرسازی ---
+    tc_raw = out.get("techCert") if isinstance(out.get("techCert"), dict) else {}
+    out["techCert"] = {
+        "no": str(tc_raw.get("no", "")).strip()[:80],
+        "until": str(tc_raw.get("until", "")).strip()[:30],
+    }
+
+    # --- ردیف فهرست بها ---
+    out["feHesab"] = str(out.get("feHesab") or "").strip()[:80]
+
+    # --- قابل تهیه در ایران / نشان اطمینان ---
     if out.get("availability") not in _MAT_AVAIL:
         out["availability"] = ""
     if out.get("confidence") not in _MAT_CONF:
         out["confidence"] = ""
     for f in ("source", "lastVerified"):
         out[f] = str(out.get(f) or "").strip()[:120]
+
+    # --- سطح/رده ---
     if out.get("surf") not in _MAT_SURF:
         out["surf"] = ""
     if out.get("tier") not in _MAT_TIER:
         out["tier"] = ""
-    for f in ("speed", "durability"):                # امتیاز ۱ تا ۵؛ غیرمعتبر → ثبت‌نشده
+
+    # --- امتیازها (۱ تا ۵؛ غیرمعتبر → None) ---
+    for f in ("speed", "durability"):
         try:
             v = int(round(float(out.get(f) or 0)))
         except (TypeError, ValueError):
             v = 0
         out[f] = v if 1 <= v <= 5 else None
+
+    # --- ویژگی‌ها ---
     feats = []
     if isinstance(out.get("features"), list):
         for x in out["features"]:
@@ -9339,9 +9370,14 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
             if len(feats) >= 20:
                 break
     out["features"] = feats
+
     out["images"] = old_images
+
+    # --- اعتبارسنجی: هر عدد فنی/قیمتی باید منبع و نشان داشته باشد ---
+    has_numbers = specs or standards or feats or out.get("price") or out.get("speed") or out.get("durability")
+    has_trace = out["source"] and out["confidence"]
     err = ""
-    if (specs or feats or out.get("price") or out.get("speed") or out.get("durability")) and not (out["source"] and out["confidence"]):
+    if has_numbers and not has_trace:
         err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات/ویژگی‌ها، منبع و نشان اطمینان لازم است"
     return out, err
 

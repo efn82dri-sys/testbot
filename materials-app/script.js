@@ -33,6 +33,11 @@ const logoBox = (c, cls) => c.logo && c.logo.key ? `<div class="${cls} has-logo"
 const thumb = (c, p) => { const m = (p.images || [])[0]; return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" decoding="async"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
 const specsText = a => (a || []).map(x => x.k + ': ' + x.v).join('\n');
 const parseSpecs = t => String(t || '').split('\n').map(l => { const i = l.search(/[:：]/); return i > 0 ? { k: l.slice(0, i).trim(), v: l.slice(i + 1).trim() } : null; }).filter(x => x && x.k && x.v);
+const standardsText = a => (a || []).map(x => x.code + (x.verified ? ' | ' + x.verified : '')).join('\n');
+const parseStandards = t => String(t || '').split('\n').map(l => {
+  const parts = l.split('|').map(x => x.trim());
+  return parts[0] ? { code: parts[0].slice(0, 80), verified: (parts[1] || '').slice(0, 30) } : null;
+}).filter(Boolean).slice(0, 10);
 const noImg = () => D.companies.reduce((n, c) => n + c.products.filter(p => !(p.images || []).length).length, 0);
 const link = id => S.bot ? `https://t.me/${S.bot}?start=mat_${id}` : '';
 const reload = () => api('data').then(r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; });
@@ -84,6 +89,7 @@ function openBrand(id) {
   S.cur = id;
 }
 const ratings = p => (p.speed || p.durability) ? `<div class="grp">امتیازهای رواق</div><table class="spt">${p.durability ? `<tr><td>دوام</td><td>${fa(p.durability)} از ۵</td></tr>` : ''}${p.speed ? `<tr><td>سرعت اجرا</td><td>${fa(p.speed)} از ۵</td></tr>` : ''}</table>` : '';
+
 function openProd(pid) {
   const [c, p] = find(pid); if (!p) return;
   S.cur = c.id; S.curP = pid;
@@ -91,10 +97,28 @@ function openProd(pid) {
   const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
   const specs = (p.specs || []).length ? `<table class="spt">${p.specs.map(x => `<tr><td>${esc(x.k)}</td><td>${esc(x.v)}</td></tr>`).join('')}</table>` : '<div class="pc no">مشخصات فنی: استعلام</div>';
+
+  /* --- استانداردهای ملی --- */
+  const stds = (p.standards || []).filter(x => x && x.code);
+  const stdsHtml = stds.length
+    ? `<div class="grp">استانداردهای ملی</div><table class="spt">${stds.map(x => `<tr><td>${esc(x.code)}</td><td>${x.verified ? 'آخرین بررسی: ' + esc(x.verified) : '<span class="src-note">تاریخ ثبت نشده</span>'}</td></tr>`).join('')}</table>`
+    : '';
+
+  /* --- گواهی فنی مرکز تحقیقات راه، مسکن و شهرسازی --- */
+  const tc = p.techCert || {};
+  const tcHtml = (tc.no || tc.until)
+    ? `<div class="grp">گواهی فنی (مرکز تحقیقات راه، مسکن و شهرسازی)</div><table class="spt">${tc.no ? `<tr><td>شماره‌ی گواهی</td><td>${esc(tc.no)}</td></tr>` : ''}${tc.until ? `<tr><td>اعتبار تا</td><td>${esc(tc.until)}</td></tr>` : ''}</table>`
+    : '';
+
+  /* --- ردیف فهرست بها --- */
+  const feHtml = p.feHesab
+    ? `<div class="grp">فهرست بها</div><table class="spt"><tr><td>ردیف مرتبط</td><td>${esc(p.feHesab)}</td></tr></table>`
+    : '';
+
   const trace = (p.confidence || p.source || p.lastVerified || p.availability) ? `<div class="tr">${p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span> ` : ''}${p.availability ? `<div>قابل تهیه در ایران: ${esc(p.availability)}</div>` : ''}${p.source ? `<div>منبع: ${esc(p.source)}</div>` : ''}${p.lastVerified ? `<div>آخرین بررسی: ${esc(p.lastVerified)}</div>` : ''}</div>` : '<div class="tr">منبع و تاریخ بررسی برای این محصول هنوز ثبت نشده است.</div>';
   const feats = (p.features || []).length ? `<div class="grp">ویژگی‌ها</div><ul class="fts">${p.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const on = S.fav.includes(p.id);
-  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${ratings(p)}${trace}
+  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
   <div class="sd-bar" style="margin-top:12px"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}</div>`);
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
@@ -147,19 +171,62 @@ function summary() {
 
 /* ---------- فرم ادمین ---------- */
 const CF = [['name', 'نام برند'], ['en', 'نام لاتین'], ['cat', 'دسته‌بندی'], ['desc', 'توضیح کوتاه', 'area'], ['catalog', 'لینک کاتالوگ (https://…)'], ['sponsor', 'حامی رواق', 'chk']];
-const PF = [['name', 'نام محصول'], ['group', 'گروه'], ['desc', 'توضیح', 'area'], ['unit', 'واحد (عدد، کیسه، م²…)'], ['price', 'قیمت روز (تومان)'], ['mode', 'نوع محاسبه', 'sel', [['count', 'تعدادی'], ['area', 'بر اساس متراژ'], ['vol', 'حجمی (متراژ × ضخامت)']]], ['perM2', 'مصرف هر م²'], ['def', 'ضخامت پیش‌فرض (cm)'], ['catalog', 'لینک کاتالوگ محصول'], ['availability', 'قابل تهیه در ایران؟', 'sel', [['', 'نامشخص'], ['داخلی', 'تولید داخل'], ['وارداتی', 'وارداتی'], ['معادل ایرانی', 'معادل ایرانی دارد']]], ['confidence', 'نشان اطمینان', 'sel', [['', 'انتخاب کن'], ['datasheet', 'تأییدشده با دیتاشیت'], ['field', 'تجربه‌ی اجرایی'], ['review', 'نیازمند بررسی']]], ['source', 'منبع (مثلاً دیتاشیت شرکت، نسخه)'], ['lastVerified', 'آخرین بررسی (مثلاً ۱۴۰۵/۰۷/۰۱)'], ['surf', 'سطح پیش‌فرض در متره', 'sel', [['', 'خودکار'], ['floor', 'کف'], ['wall', 'دیوار'], ['ceiling', 'سقف']]], ['tier', 'رده برای سناریو', 'sel', [['', 'بدون رده (بر اساس قیمت)'], ['eco', 'اقتصادی'], ['mid', 'متوسط'], ['lux', 'لوکس']]], ['speed', 'سرعت اجرا (۱ تا ۵؛ ۵ = سریع‌ترین)'], ['durability', 'دوام (۱ تا ۵؛ ۵ = بادوام‌ترین)'], ['featuresT', 'ویژگی‌ها — هر خط یک ویژگی (از کاتالوگ)', 'area'], ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']];
+const PF = [
+  ['name', 'نام محصول'],
+  ['group', 'گروه'],
+  ['desc', 'توضیح', 'area'],
+  ['unit', 'واحد (عدد، کیسه، م²…)'],
+  ['price', 'قیمت روز (تومان)'],
+  ['mode', 'نوع محاسبه', 'sel', [['count', 'تعدادی'], ['area', 'بر اساس متراژ'], ['vol', 'حجمی (متراژ × ضخامت)']]],
+  ['perM2', 'مصرف هر م²'],
+  ['def', 'ضخامت پیش‌فرض (cm)'],
+  ['catalog', 'لینک کاتالوگ محصول'],
+  ['availability', 'قابل تهیه در ایران؟', 'sel', [['', 'نامشخص'], ['داخلی', 'تولید داخل'], ['وارداتی', 'وارداتی'], ['معادل ایرانی', 'معادل ایرانی دارد']]],
+  ['confidence', 'نشان اطمینان', 'sel', [['', 'انتخاب کن'], ['datasheet', 'تأییدشده با دیتاشیت'], ['field', 'تجربه‌ی اجرایی'], ['review', 'نیازمند بررسی']]],
+  ['source', 'منبع (مثلاً دیتاشیت شرکت، نسخه)'],
+  ['lastVerified', 'آخرین بررسی (مثلاً ۱۴۰۵/۰۷/۰۱)'],
+  ['standardsT', 'استانداردهای ملی — هر خط: «کد | تاریخ بررسی»\nمثال: INSO 7782 | 1405/06/01', 'area'],
+  ['techCertNo', 'شماره گواهی فنی مرکز تحقیقات راه، مسکن و شهرسازی'],
+  ['techCertUntil', 'اعتبار گواهی فنی (تاریخ)'],
+  ['feHesab', 'ردیف فهرست بهای مرتبط'],
+  ['surf', 'سطح پیش‌فرض در متره', 'sel', [['', 'خودکار'], ['floor', 'کف'], ['wall', 'دیوار'], ['ceiling', 'سقف']]],
+  ['tier', 'رده برای سناریو', 'sel', [['', 'بدون رده (بر اساس قیمت)'], ['eco', 'اقتصادی'], ['mid', 'متوسط'], ['lux', 'لوکس']]],
+  ['speed', 'سرعت اجرا (۱ تا ۵؛ ۵ = سریع‌ترین)'],
+  ['durability', 'دوام (۱ تا ۵؛ ۵ = بادوام‌ترین)'],
+  ['featuresT', 'ویژگی‌ها — هر خط یک ویژگی (از کاتالوگ)', 'area'],
+  ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']
+];
 function form(title, F, v, ok, back, val) {
-  sheet(`<h3 style="margin:4px 0 10px;color:var(--ink)">${title}</h3><div class="rw">${F.map(([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`).join('')}</div><div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
+  sheet(`<h3 style="margin:4px 0 10px;color:var(--ink)">${title}</h3><div class="rw">${F.map(([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l.replace(/\n/g, '<br>')}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`).join('')}</div><div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
   S.ok = ok; S.val = val || null;
 }
 const readForm = () => { const o = {}; document.querySelectorAll('#sdPanel [data-f]').forEach(e => o[e.dataset.f] = e.type === 'checkbox' ? e.checked : e.value.trim()); return o; };
 const rate = v => { const n = Math.round(num(v)); return n >= 1 && n <= 5 ? n : null; };
-const cleanP = o => { const r = { ...o, speed: rate(o.speed), durability: rate(o.durability), price: num(o.price) || null, perM2: num(o.perM2) || null, def: num(o.def) || null, catalog: safe(o.catalog), specs: parseSpecs(o.specsT), features: String(o.featuresT || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20) }; delete r.specsT; delete r.featuresT; return r; };
-const valP = o => (parseSpecs(o.specsT).length || String(o.featuresT || '').trim() || num(o.price) || rate(o.speed) || rate(o.durability)) && !(o.source && o.confidence) ? 'برای قیمت یا مشخصات، «منبع» و «نشان اطمینان» را وارد کن' : '';
+const cleanP = o => {
+  const r = {
+    ...o,
+    speed: rate(o.speed),
+    durability: rate(o.durability),
+    price: num(o.price) || null,
+    perM2: num(o.perM2) || null,
+    def: num(o.def) || null,
+    catalog: safe(o.catalog),
+    specs: parseSpecs(o.specsT),
+    features: String(o.featuresT || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 20),
+    standards: parseStandards(o.standardsT),
+    techCert: {
+      no: String(o.techCertNo || '').trim().slice(0, 80),
+      until: String(o.techCertUntil || '').trim().slice(0, 30)
+    },
+    feHesab: String(o.feHesab || '').trim().slice(0, 80)
+  };
+  ['specsT', 'featuresT', 'standardsT', 'techCertNo', 'techCertUntil', 'feHesab'].forEach(k => delete r[k]);
+  return r;
+};
+const valP = o => (parseSpecs(o.specsT).length || parseStandards(o.standardsT).length || String(o.featuresT || '').trim() || num(o.price) || rate(o.speed) || rate(o.durability)) && !(o.source && o.confidence) ? 'برای قیمت یا مشخصات، «منبع» و «نشان اطمینان» را وارد کن' : '';
 
 /* ================================================================
    فاز ۲ — متره‌ی اتاق‌محور، سه سناریو، مقایسه‌گر، ماشین‌حساب‌ها، برگه‌ی پیشنهاد
-   اصل: هیچ عدد فنی/قیمتی ساخته نمی‌شود؛ هر عدد یا از داده‌ی ثبت‌شده می‌آید یا کاربر وارد می‌کند.
    ================================================================ */
 const P = v => Math.max(0, num(v));
 const R2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -172,7 +239,6 @@ const defSurf = p => (SURF[p.surf] ? p.surf : p.mode === 'vol' ? 'floor' : 'wall
 const newRoom = n => ({ id: uid(), name: 'اتاق ' + fa(n), n: 1, L: '', W: '', H: '', dn: '', dw: '', dh: '', wn: '', ww: '', wh: '', items: [] });
 const $$ = s => document.querySelectorAll(s);
 
-/* ---------- هسته‌ی محاسبه (خالص و قابل‌تست) ---------- */
 function geom(r) {
   const L = P(r.L), W = P(r.W), H = P(r.H), per = 2 * (L + W), gross = per * H;
   const open = P(r.dn) * P(r.dw) * P(r.dh) + P(r.wn) * P(r.ww) * P(r.wh);
@@ -223,11 +289,10 @@ function scoreCmp(ps) {
   out.score = sw ? out.score.map(s => s / sw * 100) : null; return out;
 }
 const specNum = s => { const m = String(s == null ? '' : s).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace('٫', '.').replace(/[,٬،]/g, '').match(/-?\d+(?:\.\d+)?/); return m ? parseFloat(m[0]) : null; };
-/* ماشین‌حساب‌ها */
 const CDEF = {
   floor: { t: 'کف سبک و بار مرده', f: [['A', 'مساحت کف (م²)'], ['T', 'ضخامت لایه (cm)'], ['dl', 'چگالی سبکدانه — kg/m³ (از دیتاشیت)'], ['dt', 'چگالی مصالح سنتی — kg/m³ (مقایسه)'], ['bag', 'حجم هر کیسه (لیتر) — اختیاری'], ['w', 'ضایعات (٪)']] },
   block: { t: 'بلوک و ملات', f: [['A', 'مساحت دیوار (م²)'], ['o', 'بازشو (م²)'], ['bl', 'طول بلوک (cm)'], ['bh', 'ارتفاع بلوک (cm)'], ['bt', 'ضخامت بلوک (cm)'], ['j', 'ضخامت ملات (mm) — فرض قابل‌ویرایش'], ['w', 'ضایعات (٪)']] },
-  gyp: { t: 'گچ و پانل', f: [['A', 'مساحت سطح گچ‌کاری (م²)'], ['t', 'ضخامت متوسط (mm)'], ['ref', 'مصرف مرجع — kg بر م² به‌ازای هر ۱cm (دیتاشیت)'], ['bag', 'وزن هر کیسه (kg)'], ['Ap', 'مساحت دیوار پانلی (م²)'], ['pw', 'عرض پانل (م)'], ['ph', 'ارتفاع پانل (م)'], ['po', 'بازشو (م²)'], ['w', 'ضایعات (٪)']] }
+  gyp: { t: 'گچ و پانل', f: [['A', 'مساحت سطح گچ‌کاری (م²)'], ['t', 'ضخامت متوسط (mm)'], ['ref', 'مصرف مرجع — kg بر م² به‌ازای هر ۱cm (دیتاشیت)'], ['bag', 'وزن هر کیسه (kg)'], ['Ap', 'مساحت دیوار پانلی (م²)'], ['pw', 'عرض پانل (m)'], ['ph', 'ارتفاع پانل (m)'], ['po', 'بازشو (م²)'], ['w', 'ضایعات (٪)']] }
 };
 function calcRun(k, v) {
   const w = 1 + P(v.w) / 100, o = [];
@@ -252,7 +317,6 @@ function calcRun(k, v) {
 }
 window.RQ = { geom, itemQty, calcRun, scoreCmp, takeoff, specNum, S };
 
-/* ---------- انتخابگر محصول (شیت) ---------- */
 function pickList() {
   const q = S.pick.q.trim(), f = S.pick.filter;
   const h = D.companies.map(c => { const ps = c.products.filter(p => f(p, c) && (!q || (p.name + c.name + (p.group || '')).includes(q))); return ps.length ? `<div class="grp">${esc(c.name)}</div>` + ps.map(p => `<button type="button" class="pkr" data-x="pk" data-pid="${p.id}">${thumb(c, p)}<span><b>${esc(p.name)}</b><small>${esc(p.group || '')} · ${esc(p.unit)}</small></span></button>`).join('') : ''; }).join('');
@@ -262,8 +326,6 @@ function pick(title, filter, cb, note) {
   S.pick = { q: '', filter, cb };
   sheet(`<h3 style="margin:4px 0 8px;color:var(--ink)">${title}</h3>${note ? `<p class="hint">${note}</p>` : ''}<div class="fl" style="margin-bottom:8px"><input type="search" data-i="ps" placeholder="جست‌وجو…" autocomplete="off"></div><div id="pkL">${pickList()}</div>`);
 }
-
-/* ---------- متره ---------- */
 function roomCard(r) {
   const F = (k, l) => `<label class="fl"><span>${l}</span><input inputmode="decimal" data-i="room" data-rid="${r.id}" data-k="${k}" value="${esc(r[k])}"></label>`;
   const G = (k, l) => `<span>${l} <b data-g="${r.id}:${k}"></b></span>`;
@@ -369,11 +431,13 @@ function paintCalc() {
   b.innerHTML = S.cres.length ? S.cres.map((o, i) => `<div class="co"><span>${o.l}</span><b>${nf(o.v)} ${o.u}</b>${o.add ? `<button type="button" class="sq pl" data-x="cadd" data-o="${i}" aria-label="افزودن به برآورد">＋</button>` : ''}</div>`).join('') : '<div class="hint" style="margin:0">ورودی‌ها را کامل کن تا نتیجه نمایش داده شود.</div>';
 }
 
-/* ---------- برگه‌ی پیشنهاد (بوم → JPEG → PDF روی سرور با Pillow) ---------- */
+/* ---------- برگه‌ی پیشنهاد ---------- */
 const loadImg = u => new Promise(res => { const i = new Image(); const t = setTimeout(() => res(null), 6000); i.onload = () => { clearTimeout(t); res(i); }; i.onerror = () => { clearTimeout(t); res(null); }; i.src = u; });
 async function makeSheet(tk) {
   const WD = 1240, HT = 1754, M = 72, IN = WD - 2 * M, F = "'Vazirmatn',Tahoma,sans-serif", INK = '#1A1714', DIM = '#5A5347', AC = '#0B8468', LN = '#DAD3C7';
-  try { await document.fonts.load('700 28px Vazirmatn'); await document.fonts.load('400 22px Vazirmatn'); } catch (e) {}
+  try {
+    await Promise.all([400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 28px Vazirmatn`)));
+  } catch (e) {}
   const T = takeoff(tk), all = TIERS.map(([k, l]) => ({ k, l, ...takeoff(k) })), pages = []; let cv, x, y;
   const imgs = {}; await Promise.all(T.lines.map(async l => { const m = (l.p.images || [])[0]; imgs[l.p.id] = m ? await loadImg(mUrl(m, 't')) : null; }));
   const tx = (s, xr, yy, sz, wt, col, al, mw) => { x.font = `${wt || 400} ${sz}px ${F}`; x.fillStyle = col || INK; x.textAlign = al || 'right'; x.direction = 'rtl'; let t = String(s); if (mw) while (x.measureText(t).width > mw && t.length > 3) t = t.slice(0, -2); x.fillText(t === String(s) ? t : t + '…', xr, yy); };
@@ -507,7 +571,18 @@ document.addEventListener('click', e => {
   if (d.rm) { S.est = S.est.filter(l => l.id !== d.rm); persist(); return render(); }
   if (d.rmimg) { if (confirm('این عکس حذف شود؟')) rmMedia(S.cur, S.curP, d.rmimg).then(() => openProd(S.curP)); return; }
   const c = D.companies.find(x => x.id === (d.id || S.cur));
-  if (d.ep) { const p = c.products.find(x => x.id === d.ep); return form('ویرایش محصول', PF, { ...p, specsT: specsText(p.specs), featuresT: (p.features || []).join('\n') }, o => { Object.assign(p, cleanP(o)); saveData(); }, () => openBrand(c.id), valP); }
+  if (d.ep) {
+    const p = c.products.find(x => x.id === d.ep);
+    return form('ویرایش محصول', PF, {
+      ...p,
+      specsT: specsText(p.specs),
+      featuresT: (p.features || []).join('\n'),
+      standardsT: standardsText(p.standards),
+      techCertNo: (p.techCert && p.techCert.no) || '',
+      techCertUntil: (p.techCert && p.techCert.until) || '',
+      feHesab: p.feHesab || ''
+    }, o => { Object.assign(p, cleanP(o)); saveData(); }, () => openBrand(c.id), valP);
+  }
   if (d.dp) { if (confirm('این محصول حذف شود؟')) { c.products = c.products.filter(x => x.id !== d.dp); S.fav = S.fav.filter(x => x !== d.dp); saveData(); persist(); openBrand(c.id); } return; }
   switch (d.a) {
     case 'tobrand': return openBrand(S.cur);

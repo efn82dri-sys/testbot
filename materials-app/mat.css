@@ -66,6 +66,8 @@
 .spt{width:100%;border-collapse:collapse;font-size:13px}
 .spt td{padding:8px 4px;border-bottom:1px solid var(--line);color:var(--ink)}
 .spt td:first-child{color:var(--ink-dim);width:42%}
+.spt tr td:last-child{font-variant-numeric:tabular-nums}
+.src-note{color:var(--ink-faint);font-size:11px}
 .cf{display:inline-block;font-size:11px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-dim)}
 .cf.datasheet{color:var(--accent-text);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
 .cf.field{color:#E3B26F;border-color:color-mix(in srgb,#E3B26F 45%,transparent)}
