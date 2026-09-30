@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
-from materials_catalog_rules import verification_is_valid, license_is_valid, has_product_image, visible_products
+from materials_catalog_rules import verification_is_valid, license_is_valid, has_product_image, visible_products, product_is_publishable, parse_bulk_media_filename, media_gap_counts
 from urllib.parse import quote, parse_qsl
 
 import jdatetime
@@ -170,6 +170,8 @@ PROMPTS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_prompt_media"
 #   https://t.me/<BOT_USERNAME>?start=<MATERIALS_START_PAYLOAD>
 # ویرایش فقط برای ADMIN_IDS (از داخلِ خودِ مینی‌اپ، با اعتبارسنجیِ initData).
 MATERIALS_DIR = Path(__file__).parent / "materials-app"
+# image = عکس واقعی کافی است (پیش‌فرض، مثل نسخه‌ی قبل)؛ strict = عکس + دیتاشیت تأییدشده + مجوز approved
+MATERIALS_PUBLISH_MODE = os.environ.get("MATERIALS_PUBLISH_MODE", "image").strip().lower()
 MATERIALS_SEED_FILE = MATERIALS_DIR / "data" / "materials.json"      # دیتای اولیه (داخلِ ریپو)
 MATERIALS_LIVE_FILE = Path(__file__).parent / "data" / "materials.json"  # دیتای زنده (ویرایش‌های ادمین)
 MATERIALS_STORAGE = os.environ.get("MATERIALS_STORAGE", "json").strip().lower()
@@ -9518,7 +9520,7 @@ def _mat_sanitize_loaded_data(data: dict) -> dict:
             if not isinstance(product, dict): continue
             try:
                 item, _ = _mat_clean_product(product, product.get("images") if isinstance(product.get("images"), list) else [])
-                item["publicationStatus"] = "published" if product_is_publishable(item) else "draft"
+                item["publicationStatus"] = "published" if product_is_publishable(item, MATERIALS_PUBLISH_MODE) else "draft"
                 cleaned.append(item)
             except Exception:
                 # Keep a malformed legacy row visible to admins for repair, but never mark it verified.
@@ -9685,7 +9687,7 @@ async def handle_materials_data(request: web.Request) -> web.Response:
     response_data = copy.deepcopy(data)
     if not admin:
         for company in response_data.get("companies", []):
-            company["products"] = visible_products(company.get("products", []), show_incomplete)
+            company["products"] = visible_products(company.get("products", []), show_incomplete, MATERIALS_PUBLISH_MODE)
     etag_source = json.dumps({"data": response_data, "showIncomplete": show_incomplete}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     etag = '"' + hashlib.sha256(etag_source.encode("utf-8")).hexdigest()[:24] + ("-a" if admin else "-u") + '"'
     if request.headers.get("If-None-Match") == etag:
@@ -10093,7 +10095,7 @@ async def handle_materials_review(request: web.Request) -> web.Response:
             if not product:
                 return web.json_response({"ok": False, "error": "محصول لازم است"}, status=400)
             requested = str(body.get("status") or "draft")
-            if requested == "published" and not product_is_publishable(product):
+            if requested == "published" and not product_is_publishable(product, MATERIALS_PUBLISH_MODE):
                 return web.json_response({"ok": False, "error": "انتشار عمومی نیازمند تصویر واقعی، دیتاشیت تأییدشده و مجوز رسانه‌ی approved است."}, status=400)
             product["publicationStatus"] = "published" if requested == "published" else "draft"
         else:

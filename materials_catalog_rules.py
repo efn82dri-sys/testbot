@@ -20,9 +20,11 @@ def has_product_image(product):
     images=product.get('images')
     return isinstance(images, list) and any(isinstance(x,dict) and (x.get('key') or x.get('fid')) for x in images)
 
-def product_is_publishable(product):
-    """Public publication requires a real image, complete verified datasheet review, and approved media license."""
+def product_is_publishable(product, mode="strict"):
+    """mode="image": a real product image is enough (legacy behaviour).
+    mode="strict": real image + verified datasheet review + approved media license."""
     if not has_product_image(product): return False
+    if str(mode or "").strip().lower() != "strict": return True
     verification=product.get("verification") if isinstance(product.get("verification"),dict) else {}
     license_data=product.get("mediaLicense") if isinstance(product.get("mediaLicense"),dict) else {}
     return bool(
@@ -32,18 +34,18 @@ def product_is_publishable(product):
         and license_is_valid(license_data)
     )
 
-def visible_products(products, show_incomplete=False):
+def visible_products(products, show_incomplete=False, mode="strict"):
     visible=[]
     for original in products if isinstance(products,list) else []:
         if not isinstance(original,dict): continue
         item=dict(original)
-        if product_is_publishable(item):
+        if product_is_publishable(item, mode):
             item['publicationStatus']='published'
             visible.append(item)
         elif show_incomplete:
             item['publicationStatus']='incomplete'
             license_data=item.get('mediaLicense') if isinstance(item.get('mediaLicense'),dict) else {}
-            if license_data.get('status')!='approved' or not license_is_valid(license_data):
+            if str(mode or '').strip().lower()=='strict' and (license_data.get('status')!='approved' or not license_is_valid(license_data)):
                 # Never expose unapproved media even when the admin enables incomplete product cards.
                 item.pop('images',None); item.pop('sourceImageUrl',None); item.pop('cdnImageUrl',None); item.pop('cdnLqip',None)
             visible.append(item)
