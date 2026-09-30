@@ -134,3 +134,30 @@
 
 .qi{width:64px;min-width:0;height:38px;text-align:center;padding:0 4px;border-radius:11px;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);font:inherit;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;outline:0}
 .qi:focus{border-color:var(--accent)}
+
+/* ================= فاز ۵ — نظم بصری و میزکار محتوا ================= */
+.idx{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:2px 1px 10px;margin:10px 0 2px;scroll-snap-type:x proximity}
+.idx::-webkit-scrollbar{display:none}
+.tile{flex:0 0 auto;min-height:46px;padding:8px 13px;border-radius:13px;display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px;scroll-snap-align:start}
+.tile b{font-size:10px;opacity:.72}
+.hero{padding-bottom:12px}
+.hero.compact{padding-top:8px;padding-bottom:4px}
+.hero.compact>.eyebrow,.hero.compact>h1,.hero.compact>p{display:none}
+.tools-intro,.admin-welcome{margin:8px 0 14px;padding:18px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 10%,var(--bg-elev)),var(--glass));}
+.tools-intro h2,.admin-welcome h2{font-size:20px;line-height:1.6;margin:4px 0 2px;color:var(--ink)}
+.tools-intro p,.admin-welcome p{font-size:12.5px;line-height:1.9;color:var(--ink-dim);margin:4px 0 0}
+.tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.tool-card{position:relative;min-height:130px;text-align:right;padding:15px;border:1px solid var(--line);border-radius:17px;background:var(--glass);color:var(--ink);display:flex;flex-direction:column;gap:7px;font:inherit;cursor:pointer;transition:transform .18s ease,border-color .18s ease}
+.tool-card:active{transform:scale(.98)}.tool-card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.tool-no{font-size:10px;color:var(--accent-text);font-weight:800;letter-spacing:.08em}
+.tool-card b{font-size:13px;line-height:1.7}.tool-card small{font-size:11px;line-height:1.8;color:var(--ink-dim);padding-left:10px}.tool-arrow{position:absolute;bottom:11px;left:13px;color:var(--accent-text);font-size:17px}
+.admin-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:14px}
+.admin-metrics>div{display:flex;flex-direction:column;gap:3px;padding:10px 5px;text-align:center;border:1px solid var(--line);border-radius:12px;background:var(--glass)}
+.admin-metrics b{font-size:19px;color:var(--accent-text);font-variant-numeric:tabular-nums}.admin-metrics small{font-size:10px;color:var(--ink-dim)}
+.admin-actions{display:grid;gap:8px}
+.admin-action{display:flex;flex-direction:column;gap:4px;text-align:right;padding:14px;border:1px solid var(--line);border-radius:15px;background:var(--glass);color:var(--ink);font:inherit;cursor:pointer}
+.admin-action b{font-size:13px}.admin-action small{font-size:11.5px;color:var(--ink-dim);line-height:1.8}.admin-action span{font-size:11px;color:var(--accent-text);font-weight:800;margin-top:4px}
+.admin-missing{border-right:3px solid #E3B26F}
+@media(min-width:620px){.tool-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.admin-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:360px){.tool-grid{grid-template-columns:1fr}.admin-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.tile{padding:8px 10px}}
+@media(prefers-reduced-motion:reduce){.tool-card{transition:none}}

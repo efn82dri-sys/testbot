@@ -9716,11 +9716,26 @@ def _mat_event(event: str, company: str = "", product: str = "", query: str = ""
     data["events"] = data["events"][-20000:]
     _mat_json_write(MATERIALS_EVENTS_FILE, data)
 
+# محدودسازی ساده‌ی نرخ درخواست برای جلوگیری از اسپم فرم‌ها و رشد بی‌رویه‌ی JSONها.
+# این محدودیت در سطح هر پردازه است؛ برای چند worker باید rate limit مشترک استفاده شود.
+_MAT_RATE_BUCKETS: dict[str, list[float]] = {}
+def _mat_rate_limited(key: str, limit: int, window_seconds: int) -> bool:
+    now = datetime.now(timezone.utc).timestamp()
+    recent = [stamp for stamp in _MAT_RATE_BUCKETS.get(key, []) if now - stamp < window_seconds]
+    if len(recent) >= limit:
+        _MAT_RATE_BUCKETS[key] = recent
+        return True
+    recent.append(now)
+    _MAT_RATE_BUCKETS[key] = recent
+    return False
+
 async def handle_materials_projects(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     if not user:
         return web.json_response({"ok": False, "error": "برای ذخیره‌ی پروژه، مینی‌اپ را از تلگرام باز کن."}, status=401)
     uid = str(int(user.get("id", 0)))
+    if request.method != "GET" and _mat_rate_limited(f"projects:{uid}", 30, 3600):
+        return web.json_response({"ok": False, "error": "تعداد ذخیره‌سازی‌ها زیاد است؛ کمی بعد دوباره تلاش کن."}, status=429)
     data = _mat_json_read(MATERIALS_PROJECTS_FILE, {})
     if request.method == "GET":
         return web.json_response({"ok": True, "projects": data.get(uid, [])})
@@ -9772,6 +9787,8 @@ async def handle_materials_quote(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     if not user:
         return web.json_response({"ok": False, "error": "برای استعلام، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    if _mat_rate_limited(f"quote:{int(user.get('id', 0))}", 5, 3600):
+        return web.json_response({"ok": False, "error": "در هر ساعت حداکثر ۵ استعلام می‌توانی ثبت کنی."}, status=429)
     try: body = await request.json()
     except Exception: return web.json_response({"ok": False, "error": "bad json"}, status=400)
     name = str(body.get("product") or "")[:120]
@@ -9798,6 +9815,8 @@ async def handle_materials_quote(request: web.Request) -> web.Response:
 async def handle_materials_event(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     if not user: return web.json_response({"ok": False}, status=401)
+    if _mat_rate_limited(f"event:{int(user.get('id', 0))}", 180, 3600):
+        return web.json_response({"ok": False, "error": "محدودیت ثبت رویداد"}, status=429)
     try: body = await request.json()
     except Exception: body = {}
     ev = str(body.get("event") or "view")
@@ -9826,6 +9845,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     if not user:
         return web.json_response({"ok": False, "error": "برای ثبت تجربه، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    uid_for_limit = int(user.get("id", 0))
     data = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []})
     if request.method == "GET":
         public = []
@@ -9836,7 +9856,11 @@ async def handle_materials_community(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "items": public[-100:], "mine": mine[-30:]})
     try:
         body = await request.json()
-        if body.get("action") == "vote":
+        is_vote = body.get("action") == "vote"
+        if _mat_rate_limited(f"community-vote:{uid_for_limit}" if is_vote else f"community-submit:{uid_for_limit}", 100 if is_vote else 3, 86400):
+            message = "تعداد رأی‌های امروز زیاد است؛ فردا دوباره تلاش کن." if is_vote else "در هر روز حداکثر ۳ تجربه می‌توانی ثبت کنی."
+            return web.json_response({"ok": False, "error": message}, status=429)
+        if is_vote:
             item_id = str(body.get("id") or "")[:40]; voter = int(user.get("id", 0))
             target = next((x for x in data.get("items", []) if x.get("id") == item_id and x.get("status") == "approved"), None)
             if not target: return web.json_response({"ok": False, "error": "تجربه‌ی منتشرشده پیدا نشد."}, status=404)

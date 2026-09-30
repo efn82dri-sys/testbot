@@ -36,7 +36,7 @@ let D = { companies: [], packs: [] };
 
 /* ---------- ابزارها ---------- */
 let tt; const toast = t => { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => e.classList.remove('show'), 1800); };
-const api = (p, o = {}) => fetch('/materials/api/' + p, { ...o, headers: { 'Content-Type': 'application/json', 'X-Init-Data': TG ? TG.initData : '' } }).then(r => r.json());
+const api = (p, o = {}) => fetch('/materials/api/' + p, { cache: 'no-store', ...o, headers: { 'Content-Type': 'application/json', 'X-Init-Data': TG ? TG.initData : '', ...(o.headers||{}) } }).then(async r => { const data = await r.json(); if (!r.ok && !data.error) data.error = 'خطای سرور (' + r.status + ')'; return data; });
 const find = id => { for (const c of D.companies) for (const p of c.products) if (p.id === id) return [c, p]; return []; };
 const persist = () => { sv(K.est, S.est); sv(K.fav, S.fav); sv(K.cfg, S.cfg); };
 const qty = l => l.mode === 'area' ? l.q * l.per * (1 + S.cfg.waste / 100) : l.mode === 'vol' ? l.q * l.th / 100 * (1 + S.cfg.waste / 100) : l.q;
@@ -58,7 +58,7 @@ const parseStandards = t => String(t || '').split('\n').map(l => {
 }).filter(Boolean).slice(0, 10);
 const noImg = () => D.companies.reduce((n, c) => n + c.products.filter(p => !(p.images || []).length).length, 0);
 const link = id => S.bot ? `https://t.me/${S.bot}?start=mat_${id}` : '';
-const reload = () => api('data').then(r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; });
+const reload = () => api('data').then(r => { if (!r || !r.data) throw new Error('داده در دسترس نیست'); D = r.data; sv('rq.mat.catalog.cache', D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; });
 const reqUpload = async (kind, co, pid, extra = {}) => { try { const r = await api('upload-request', { method: 'POST', body: JSON.stringify({ kind, co, pid: pid || '', ...extra }) }); if (r.ok) { toast(kind === 'file' ? 'فایل را در چت ربات بفرست' : 'عکس را در چت ربات بفرست'); setTimeout(() => { try { TG.close(); } catch (e) {} }, 900); } else toast('ناموفق: ' + (r.error || '')); } catch (e) { toast('خطا در ارتباط'); } };
 const rmMedia = async (co, pid, key) => { try { const r = await api('media-remove', { method: 'POST', body: JSON.stringify({ co, pid, key }) }); if (!r.ok) toast('حذف نشد'); await reload(); render(); } catch (e) { toast('خطا در ارتباط'); } };
 
@@ -68,16 +68,37 @@ const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); doc
 
 /* ---------- نما ---------- */
 function tabs() {
-  const T = [['cat', 'کاتالوگ برندها', fa(D.companies.length)], ['room', 'متره‌ی اتاق‌محور', fa(S.rooms.length)], ['cmp', 'مقایسه‌گر', fa(S.cmp.length)], ['calc', 'ماشین‌حساب', fa(3)], ['est', 'برآورد پروژه', fa(S.est.length)], ['fav', 'ذخیره‌شده‌ها', fa(S.fav.length)], ['library', 'کتابخانه فایل', 'CAD'], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['prices', 'روند قیمت', '↗'], ['dealers', 'نمایندگی‌ها', '⌖'], ['wizard', 'مشاور مسئله‌محور', '۳؟'], ['education', 'آموزش اجرا', '۳۰ث'], ['community', 'تجربه‌های اجرایی', '✎']];
-  if (S.admin) { T.push(['sponsor', 'داشبورد حامیان', '۳۰روز']); T.push(['market', 'شاخص بازار', '۳۰روز']); }
-  $('#index').innerHTML = T.map((t, i) => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
+  // معماری اطلاعات ساده‌تر: پنج مقصد اصلی؛ ابزارهای تخصصی در یک صفحه‌ی منظم گروه‌بندی شده‌اند.
+  const T = [['cat', 'کاتالوگ', fa(D.companies.length)], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['tools', 'ابزارها', '۰۷'], ['education', 'راهنمای اجرا', 'آموزش'], ['community', 'تجربه‌ها', 'جامعه']];
+  if (S.admin) T.push(['manage', 'مدیریت محتوا', 'ادمین']);
+  $('#index').innerHTML = T.map(t => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
   $('#filters').hidden = S.tab !== 'cat';
   $('#editBtn').hidden = !S.admin; $('#editBtn').setAttribute('aria-pressed', S.edit);
+  const hero = document.querySelector('.hero'); if (hero) hero.classList.toggle('compact', S.tab !== 'cat');
+}
+function toolsView() {
+ const cards = [
+  ['room','متره‌ی اتاق‌محور','محاسبه‌ی سطح کف، دیوار و سقف'],['est','برآورد پروژه','صورت‌حساب اقلام انتخابی'],['cmp','مقایسه‌گر مصالح','مشاهده‌ی مشخصات کنار هم'],['calc','ماشین‌حساب‌ها','محاسبات تخصصی دسته‌ها'],['wizard','مشاور انتخاب مصالح','شروع از مسئله‌ی پروژه'],['library','کتابخانه‌ی فایل‌ها','DWG، PDF، BIM و دفترچه‌ها'],['prices','تاریخچه‌ی قیمت','منبع و تاریخ آخرین ثبت'],['dealers','نمایندگی و استعلام','اطلاعات تماس و درخواست قیمت'],['fav','ذخیره‌شده‌ها','محصولات نشان‌شده'],['recent','اخیراً دیده‌شده','بازگشت سریع به شناسنامه‌ها']
+ ];
+ return `<div class="tools-intro"><span class="eyebrow">جعبه‌ابزار رواق</span><h2>از کجا شروع می‌کنی؟</h2><p>ابزار موردنیاز را انتخاب کن؛ امکانات تخصصی از صفحه‌ی اصلی جدا شده‌اند تا کاتالوگ خلوت بماند.</p></div><div class="tool-grid">${cards.map(([id,title,desc],i)=>`<button class="tool-card" data-tab="${id}"><span class="tool-no">${String(i+1).padStart(2,'0')}</span><b>${title}</b><small>${desc}</small><span class="tool-arrow">←</span></button>`).join('')}</div>`;
+}
+function recentView() {
+ const ids = ld('rq.mat.recent', []); const rows = ids.map(id=>{const [c,p]=find(id);return c&&p?{c,p}:null}).filter(Boolean);
+ return rows.length ? `<div class="tools-intro"><h2>اخیراً دیده‌شده</h2><p>آخرین شناسنامه‌هایی که باز کرده‌ای.</p></div>${rows.map(({c,p})=>`<div class="ln"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><button class="act act-primary" data-prod="${esc(p.id)}">بازکردن شناسنامه</button></div>`).join('')}` : '<div class="empty"><h3>هنوز محصولی باز نکرده‌ای</h3><p>وقتی شناسنامه‌ای را باز کنی، برای دسترسی سریع اینجا ذخیره می‌شود.</p><button class="act act-primary" data-tab="cat">رفتن به کاتالوگ</button></div>';
+}
+function manageView() {
+ if (!S.admin) return '<div class="empty"><p>این بخش فقط برای مدیران رواق است.</p></div>';
+ const products=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>products.push({c,p})));
+ const missingImage=products.filter(x=>!(x.p.images||[]).length); const needsWork=products.filter(x=>!(x.p.images||[]).length || (!x.p.source && !(x.p.specs||[]).length)); const pending=(S.communityData&&S.communityData.items||[]).filter(x=>x.status==='pending').length;
+ return `<div class="admin-welcome"><span class="eyebrow">میزکار مدیر</span><h2>مدیریت محتوا، بدون گشتن در منوها</h2><p>کارهای مهم را از اینجا شروع کن. تغییرات فقط پس از ذخیره روی کاتالوگ اعمال می‌شوند.</p><div class="admin-metrics"><div><b>${fa(D.companies.length)}</b><small>برند</small></div><div><b>${fa(products.length)}</b><small>محصول</small></div><div><b>${fa(missingImage.length)}</b><small>بدون تصویر</small></div><div><b>${S.communityData ? fa(pending) : '—'}</b><small>تجربه‌ی در انتظار</small></div></div></div>
+ <div class="admin-actions"><button class="admin-action" data-x="admin-catalog"><b>۱. ویرایش برندها و محصولات</b><small>افزودن محصول، تصویر، مشخصات و فایل</small><span>ورود به کاتالوگ ←</span></button><button class="admin-action" data-x="community-admin"><b>۲. بررسی تجربه‌های کاربران</b><small>تأیید، رد یا مدیریت نشان کارشناسی</small><span>بررسی ارسال‌ها ←</span></button><button class="admin-action" data-tab="market"><b>۳. شاخص بازار</b><small>بازدیدها، جست‌وجوهای بی‌نتیجه و استعلام‌ها</small><span>مشاهده گزارش ←</span></button><button class="admin-action" data-tab="sponsor"><b>۴. گزارش حامیان</b><small>رویدادهای ثبت‌شده برای برندهای حامی</small><span>مشاهده گزارش ←</span></button></div>
+ <div class="grp">موارد نیازمند تکمیل</div>${needsWork.length?needsWork.slice(0,10).map(({c,p})=>`<div class="ln admin-missing"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><div class="meta"><span>تصویر ندارد</span>${!p.source&&!(p.specs||[]).length?'<span>منبع/مشخصات ناقص</span>':''}</div><div class="ft"><button class="act act-primary" data-prod="${esc(p.id)}">بازکردن محصول</button><button class="act" data-x="admin-edit-product" data-id="${esc(c.id)}" data-pid="${esc(p.id)}">ویرایش اطلاعات</button></div></div>`).join(''):'<div class="empty"><p>همه‌ی محصولات تصویر دارند. برای انتشار، منبع و مشخصات فنی را هم بررسی کن.</p></div>'}
+ <div class="ft"><button class="act act-primary" data-x="admin-save">ذخیره‌ی تغییرات</button><button class="act" data-x="admin-refresh">بازخوانی از سرور</button></div>`;
 }
 function render() {
   tabs();
   const L = $('#list');
-  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView }[S.tab] || catView)();
+  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView, tools: toolsView, recent: recentView, manage: manageView }[S.tab] || catView)();
   if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
@@ -115,6 +136,7 @@ const ratings = p => (p.speed || p.durability) ? `<div class="grp">امتیاز�
 
 function openProd(pid) {
   const [c, p] = find(pid); if (!p) return;
+  const recent = ld('rq.mat.recent', []).filter(x => x !== pid); recent.unshift(pid); sv('rq.mat.recent', recent.slice(0, 8));
   S.cur = c.id; S.curP = pid;
   phase3Track('view', c.name, p.name);
   const imgs = p.images || [];
@@ -639,6 +661,10 @@ function addItem(r, p, q) { r.items.push({ id: uid(), pid: p.id, q: q || 1, on: 
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-x]'); if (!t) return; const d = t.dataset, r = rm(d.rid);
   switch (d.x) {
+    case 'admin-catalog': S.tab='cat'; S.edit=true; render(); toast('حالت ویرایش فعال شد'); return;
+    case 'admin-save': return saveData();
+    case 'admin-refresh': return reload().then(()=>{render();toast('اطلاعات از سرور به‌روز شد')}).catch(()=>toast('بازخوانی ناموفق بود'));
+    case 'admin-edit-product': { const co=D.companies.find(x=>x.id===d.id); const p=co&&(co.products||[]).find(x=>x.id===d.pid); if(!co||!p)return; return form('ویرایش محصول', PF, {...p,specsT:specsText(p.specs),featuresT:(p.features||[]).join('\n'),standardsT:standardsText(p.standards),techCertNo:(p.techCert&&p.techCert.no)||'',techCertUntil:(p.techCert&&p.techCert.until)||'',feHesab:p.feHesab||'',model3dUrl:p.model3d&&typeof p.model3d==='object'?(p.model3d.url||''):(typeof p.model3d==='string'?p.model3d:''),installStepsT:(p.install&&p.install.steps||[]).join('\n'),installMistakesT:(p.install&&p.install.mistakes||[]).join('\n'),installSource:p.install&&p.install.source||'',installVideoUrl:p.install&&p.install.video_url||'',installVerifiedBy:p.install&&p.install.verifiedBy||'',installVerifiedAt:p.install&&p.install.verifiedAt||''}, o=>{Object.assign(p,cleanP(o));saveData();},()=>{S.tab='manage';render();},valP); }
     case 'radd': S.rooms.push(newRoom(S.rooms.length + 1)); break;
     case 'rn': if (r) r.n = Math.max(1, (P(r.n) || 1) + Number(d.d)); break;
     case 'rdup': if (r) { const c = JSON.parse(JSON.stringify(r)); c.id = uid(); c.name = r.name + ' (کپی)'; c.items.forEach(i => (i.id = uid())); S.rooms.splice(S.rooms.indexOf(r) + 1, 0, c); } break;
@@ -708,7 +734,7 @@ document.addEventListener('click', e => {
   if (id === 'toTop') return scrollTo({ top: 0, behavior: 'smooth' });
   if (d.logo) { S.brand = S.brand === d.logo ? '' : d.logo; hp(); return render(); }
   if (d.prod) { hp(); return openProd(d.prod); }
-  if (d.tab) { S.tab = d.tab; hp(); render(); return scrollTo({ top: 0 }); }
+  if (d.tab) { S.tab = d.tab; hp(); if (d.tab === 'community' && !S.communityData) S.communityLoading = false; render(); return scrollTo({ top: 0 }); }
   if (d.cat) { S.cat = S.cat === d.cat ? '' : d.cat; hp(); return render(); }
   if (d.brand) { hp(); return openBrand(d.brand); }
   if (d.add) { const [c, p] = find(d.add); if (p) phase3Track('estimate', c.name, p.name); addLine(p, c); hp('medium'); toast(`«${p.name}» به برآورد اضافه شد`); return tabs(); }
@@ -767,6 +793,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => { const t=e.target; if(t && t.dataset && t.dataset.i==='wizard'){ S.wizard[t.dataset.k]=t.value; phase4Track('wizard','','', {query:S.wizard.problem}); render(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
+addEventListener('online',()=>toast('اتصال اینترنت برقرار شد')); addEventListener('offline',()=>toast('حالت آفلاین؛ فقط اطلاعات ذخیره‌شده در دسترس است'));
 try { const th = localStorage.getItem(K.th); th && document.documentElement.setAttribute('data-theme', th); } catch (e) {}
 
 /* ---------- شروع ---------- */
@@ -774,5 +801,5 @@ render();
 const deep = () => { try { const p = new URLSearchParams(location.search).get('p'); if (p && find(p)[1]) openProd(p); } catch (e) {} };
 addEventListener('error', e => { const i = e.target; if (!i || i.tagName !== 'IMG') return; if (!i.dataset.r) { i.dataset.r = '1'; i.src = i.src + (i.src.includes('?') ? '&' : '?') + 'r=' + Date.now(); } else { i.style.display = 'none'; i.parentElement && i.parentElement.classList.add('bad'); } }, true);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !S.admin) return; const cp = S.curP, open = !$('#sd').hidden; reload().then(() => { render(); if (open && cp && find(cp)[1]) openProd(cp); }).catch(() => {}); });
-api('data').then(async r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); }).catch(() => fetch('/materials/data/materials.json').then(r => r.json()).then(d => { D = d; render(); deep(); }));
+api('data').then(async r => { if(!r || !r.data) throw new Error('catalog unavailable'); D = r.data; sv('rq.mat.catalog.cache',D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); }).catch(() => { const cached=ld('rq.mat.catalog.cache',null); if(cached&&cached.companies){D=cached;render();deep();toast('نسخه‌ی ذخیره‌شده نمایش داده می‌شود؛ اتصال برقرار نیست');return;} fetch('/materials/data/materials.json',{cache:'no-store'}).then(r => r.json()).then(d => { D = d; sv('rq.mat.catalog.cache',D); render(); deep(); }).catch(()=>{D={companies:[],packs:[]};render();toast('اتصال برقرار نیست و داده‌ای برای نمایش ذخیره نشده');}); });
 })();
