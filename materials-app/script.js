@@ -31,7 +31,7 @@ const K = { est: 'rq.mat.est', fav: 'rq.mat.fav', cfg: 'rq.mat.cfg', th: 'rq.mat
 const ld = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 const COL = ['#6FE3C4', '#E3B26F', '#8AA2FF', '#E36F9A', '#B58AFF', '#7FD1E8'];
-const S = { tab: 'cat', q: '', cat: '', edit: false, admin: false, est: ld(K.est, []), fav: ld(K.fav, []), cfg: ld(K.cfg, { waste: 5, labor: 0 }), back: null, brand: '', bot: 'irarchitps_bot', start: 'materials', curP: '', rooms: ld(K.rooms, []), scn: ld(K.scn, {}), px: ld(K.px, {}), cmp: ld(K.cmp, []), w: ld(K.w, { price: 3, dur: 3, spd: 3, av: 3 }), dir: ld(K.dir, {}), proj: ld(K.proj, { name: '', client: '' }), cc: ld(K.cc, { k: 'floor', v: { floor: { w: 5 }, block: { j: 10, w: 5 }, gyp: { w: 5 } } }), pick: null, cres: [] };
+const S = { tab: 'cat', q: '', cat: '', edit: false, admin: false, est: ld(K.est, []), fav: ld(K.fav, []), cfg: ld(K.cfg, { waste: 5, labor: 0 }), back: null, brand: '', bot: 'irarchitps_bot', start: 'materials', curP: '', rooms: ld(K.rooms, []), scn: ld(K.scn, {}), px: ld(K.px, {}), cmp: ld(K.cmp, []), w: ld(K.w, { price: 3, dur: 3, spd: 3, av: 3 }), dir: ld(K.dir, {}), proj: ld(K.proj, { name: '', client: '' }), cc: ld(K.cc, { k: 'floor', v: { floor: { w: 5 }, block: { j: 10, w: 5 }, gyp: { w: 5 } } }), pick: null, cres: [], projects: [], sponsorData: null };
 let D = { companies: [], packs: [] };
 
 /* ---------- ابزارها ---------- */
@@ -59,7 +59,7 @@ const parseStandards = t => String(t || '').split('\n').map(l => {
 const noImg = () => D.companies.reduce((n, c) => n + c.products.filter(p => !(p.images || []).length).length, 0);
 const link = id => S.bot ? `https://t.me/${S.bot}?start=mat_${id}` : '';
 const reload = () => api('data').then(r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; });
-const reqUpload = async (kind, co, pid) => { try { const r = await api('upload-request', { method: 'POST', body: JSON.stringify({ kind, co, pid: pid || '' }) }); if (r.ok) { toast('عکس را در چت ربات بفرست'); setTimeout(() => { try { TG.close(); } catch (e) {} }, 900); } else toast('ناموفق: ' + (r.error || '')); } catch (e) { toast('خطا در ارتباط'); } };
+const reqUpload = async (kind, co, pid, extra = {}) => { try { const r = await api('upload-request', { method: 'POST', body: JSON.stringify({ kind, co, pid: pid || '', ...extra }) }); if (r.ok) { toast(kind === 'file' ? 'فایل را در چت ربات بفرست' : 'عکس را در چت ربات بفرست'); setTimeout(() => { try { TG.close(); } catch (e) {} }, 900); } else toast('ناموفق: ' + (r.error || '')); } catch (e) { toast('خطا در ارتباط'); } };
 const rmMedia = async (co, pid, key) => { try { const r = await api('media-remove', { method: 'POST', body: JSON.stringify({ co, pid, key }) }); if (!r.ok) toast('حذف نشد'); await reload(); render(); } catch (e) { toast('خطا در ارتباط'); } };
 
 /* ---------- شیت ---------- */
@@ -68,7 +68,8 @@ const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); doc
 
 /* ---------- نما ---------- */
 function tabs() {
-  const T = [['cat', 'کاتالوگ برندها', fa(D.companies.length)], ['room', 'متره‌ی اتاق‌محور', fa(S.rooms.length)], ['cmp', 'مقایسه‌گر', fa(S.cmp.length)], ['calc', 'ماشین‌حساب', fa(3)], ['est', 'برآورد پروژه', fa(S.est.length)], ['fav', 'ذخیره‌شده‌ها', fa(S.fav.length)]];
+  const T = [['cat', 'کاتالوگ برندها', fa(D.companies.length)], ['room', 'متره‌ی اتاق‌محور', fa(S.rooms.length)], ['cmp', 'مقایسه‌گر', fa(S.cmp.length)], ['calc', 'ماشین‌حساب', fa(3)], ['est', 'برآورد پروژه', fa(S.est.length)], ['fav', 'ذخیره‌شده‌ها', fa(S.fav.length)], ['library', 'کتابخانه فایل', 'CAD'], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['prices', 'روند قیمت', '↗'], ['dealers', 'نمایندگی‌ها', '⌖']];
+  if (S.admin) T.push(['sponsor', 'داشبورد حامیان', '۳۰روز']);
   $('#index').innerHTML = T.map((t, i) => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
   $('#filters').hidden = S.tab !== 'cat';
   $('#editBtn').hidden = !S.admin; $('#editBtn').setAttribute('aria-pressed', S.edit);
@@ -76,7 +77,7 @@ function tabs() {
 function render() {
   tabs();
   const L = $('#list');
-  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView }[S.tab] || catView)();
+  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView }[S.tab] || catView)();
   if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
@@ -105,7 +106,7 @@ function openBrand(id) {
   <p style="color:var(--ink-dim);font-size:13px;margin:6px 0 4px">${esc(c.desc)}</p>
   ${(c.features || []).length ? `<ul class="fts" style="margin:8px 0">${c.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
   ${(safe(c.site) || (c.links || []).some(x => safe(x.u))) ? `<div class="ft" style="margin:8px 0">${safe(c.site) ? `<a class="act" data-stop href="${esc(safe(c.site))}" target="_blank" rel="noopener">وب‌سایت رسمی</a>` : ''}${(c.links || []).filter(x => safe(x.u)).map(x => `<a class="act" data-stop href="${esc(safe(x.u))}" target="_blank" rel="noopener">${esc(x.t)}</a>`).join('')}</div>` : ''}
-  ${S.edit ? `<div class="ft"><button type="button" class="act" data-a="editco" data-id="${c.id}">✎ ویرایش برند</button><button type="button" class="act act-primary" data-a="addp" data-id="${c.id}">+ محصول</button><button type="button" class="act" data-a="uplogo" data-id="${c.id}">🖼 لوگو از ربات</button>${c.logo ? `<button type="button" class="act" data-a="rmlogo" data-id="${c.id}" style="color:var(--danger)">حذف لوگو</button>` : ''}<button type="button" class="act" data-a="delco" data-id="${c.id}" style="color:var(--danger)">حذف برند</button></div>` : ''}
+  ${S.edit ? `<div class="ft"><button type="button" class="act" data-a="editco" data-id="${c.id}">✎ ویرایش برند</button><button type="button" class="act act-primary" data-a="addp" data-id="${c.id}">+ محصول</button><button type="button" class="act" data-a="uplogo" data-id="${c.id}">🖼 لوگو از ربات</button><button type="button" class="act" data-a="dealers-edit" data-id="${c.id}">⌖ مدیریت نمایندگی‌ها</button>${c.logo ? `<button type="button" class="act" data-a="rmlogo" data-id="${c.id}" style="color:var(--danger)">حذف لوگو</button>` : ''}<button type="button" class="act" data-a="delco" data-id="${c.id}" style="color:var(--danger)">حذف برند</button></div>` : ''}
   ${Object.entries(gs).map(([g, ps]) => `<div class="grp">${esc(g)}</div>${ps.map(p => prodRow(c, p)).join('')}`).join('') || '<div class="empty"><p>هنوز محصولی ثبت نشده</p></div>'}
   <div class="sd-bar" style="margin-top:12px">${cat ? `<a class="act act-primary" href="${esc(cat)}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ شرکت</span></a>` : ''}<button type="button" class="act" data-a="goest">${I.calc}<span>برآورد (${fa(S.est.length)})</span></button></div>`, () => openBrand(id));
   S.cur = id;
@@ -115,6 +116,7 @@ const ratings = p => (p.speed || p.durability) ? `<div class="grp">امتیاز�
 function openProd(pid) {
   const [c, p] = find(pid); if (!p) return;
   S.cur = c.id; S.curP = pid;
+  phase3Track('view', c.name, p.name);
   const imgs = p.images || [];
   const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" ${k ? 'loading="lazy" ' : ''}decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
@@ -141,10 +143,51 @@ function openProd(pid) {
   const trace = (p.confidence || p.source || p.lastVerified || p.availability) ? `<div class="tr">${p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span> ` : ''}${sd != null && sd > 90 ? '<span class="cf review">بررسی قدیمی؛ دوباره تأیید شود</span> ' : ''}${p.availability ? `<div>قابل تهیه در ایران: ${esc(p.availability)}</div>` : ''}${p.source ? `<div>منبع: ${esc(p.source)}</div>` : ''}${p.lastVerified ? `<div>آخرین بررسی: ${esc(p.lastVerified)}</div>` : ''}${p.catalogVer ? `<div>نسخه‌ی کاتالوگ: ${esc(p.catalogVer)}</div>` : ''}</div>` : '<div class="tr">منبع و تاریخ بررسی برای این محصول هنوز ثبت نشده است.</div>';
   const feats = (p.features || []).length ? `<div class="grp">ویژگی‌ها</div><ul class="fts">${p.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const on = S.fav.includes(p.id);
-  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}
+  const docs = (p.docs||[]).filter(x=>x&&x.fid);
+  const docsHtml = `<div class="grp">کتابخانه‌ی فایل‌های اجرایی</div>${docs.length ? docs.map(d=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(d.version||'')} ${esc(d.date||'')}</small><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت</button></div>`).join('') : '<p class="hint">فایل اجرایی هنوز ثبت نشده است.</p>'}${S.edit ? `<button type="button" class="act" data-a="upfile" data-id="${esc(c.id)}" data-pid="${esc(p.id)}">＋ افزودن فایل CAD/BIM/Texture/PDF از ربات</button>` : ''}`;
+  const hist = (p.priceLog||[]).slice(-8).reverse();
+  const histHtml = `<div class="grp">تاریخچه‌ی قیمت</div>${hist.length?`<table class="spt">${hist.map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${x.price?fa(x.price)+' تومان':'استعلام'}</td><td>${esc(x.source||'منبع ثبت نشده')}</td></tr>`).join('')}</table>`:'<p class="hint">هنوز تاریخچه‌ی قیمت ثبت نشده است.</p>'}`;
+  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}${histHtml}${docsHtml}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
-  <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
+  <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button><button type="button" class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="${esc(p.id)}">استعلام قیمت</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
+}
+function phase3Track(event, c, p) { api('event', {method:'POST', body:JSON.stringify({event, company:c || '', product:p || ''})}).catch(()=>{}); }
+function libraryView() {
+  const rows=[];
+  D.companies.forEach(c=>(c.products||[]).forEach(p=>(p.docs||[]).forEach(d=>rows.push({c,p,d}))));
+  if (!rows.length) return `<div class="empty"><div class="empty-icon">📚</div><h3>کتابخانه‌ی فایل‌های اجرایی</h3><p>دیتیل DWG/PDF، فمیلی رویت، فایل اسکچاپ، تکسچر و دفترچه‌ی محصول پس از ثبت ادمین اینجا نمایش داده می‌شود.</p></div>`;
+  return `<div class="grp">${fa(rows.length)} فایل ثبت‌شده</div>`+rows.map(({c,p,d})=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(c.name)} · ${esc(p.name)}</small><div class="meta">${d.version?`<span>نسخه ${esc(d.version)}</span>`:''}${d.date?`<span>${esc(d.date)}</span>`:''}${d.size?`<span>${fa(Math.round(d.size/1024))} KB</span>`:''}</div><div class="ft"><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت ربات</button><button type="button" class="act" data-prod="${esc(p.id)}">مشاهده محصول</button></div></div>`).join('');
+}
+function projectsView() {
+  const rows=S.projects||[];
+  return `<div class="tot"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft"><button class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button class="act" data-x="project-new">پروژه‌ی جدید</button><button class="act" data-x="project-refresh">همگام‌سازی</button></div></div>`+(rows.length?rows.map(pr=>`<div class="ln"><h4><span>${esc(pr.name||'پروژه بدون نام')}</span><em>${esc((pr.updatedAt||'').slice(0,10))}</em></h4>${pr.client?`<small>کارفرما: ${esc(pr.client)}</small>`:''}${pr.notes?`<p>${esc(pr.notes)}</p>`:''}<div class="meta"><span>${fa((pr.rooms||[]).length)} فضا</span><span>${fa((pr.estimate||[]).length)} قلم برآورد</span></div><div class="ft"><button class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div></div>`).join(''):'<div class="empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>');
+}
+function pricesView() {
+  const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if((p.priceLog||[]).length) rows.push({c,p,log:p.priceLog});}));
+  if(!rows.length) return '<div class="empty"><div class="empty-icon">↗</div><h3>تاریخچه‌ی قیمت</h3><p>روند قیمت پس از ثبت تغییر قیمت توسط ادمین و همراه تاریخ نمایش داده می‌شود. قیمت ثبت‌نشده به‌معنای «استعلام» است.</p></div>';
+  return rows.map(({c,p,log})=>{const last=log[log.length-1], stale=staleDays(last.date);return `<div class="ln"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><div class="pc">${last.price?fa(last.price)+' تومان':'استعلام'} <small>/ ${esc(last.unit||p.unit)}</small></div><div class="meta"><span>آخرین ثبت: ${esc(last.date||'نامشخص')}</span>${stale!=null&&stale>30?'<span class="wr">قدیمی‌تر از ۳۰ روز</span>':''}</div><table class="spt">${log.slice(-6).reverse().map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${x.price?fa(x.price)+' تومان':'استعلام'}</td><td>${esc(x.source||'منبع ثبت نشده')}</td></tr>`).join('')}</table><button class="act" data-prod="${esc(p.id)}">شناسنامه‌ی محصول</button></div>`}).join('');
+}
+function dealersView() {
+  const rows=[]; D.companies.forEach(c=>{(c.dealers||[]).forEach(d=>rows.push({c,d}));});
+  return rows.length?rows.map(({c,d})=>`<div class="ln"><h4><span>${esc(d.name||c.name)}</span><em>${esc(d.city||'شهر ثبت نشده')}</em></h4>${d.address?`<p>${esc(d.address)}</p>`:''}${d.phone?`<div class="ft"><a class="act act-primary" href="tel:${esc(d.phone.replace(/[^+\d]/g,''))}">تماس با نمایندگی</a><button class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="">استعلام قیمت</button></div>`:`<button class="act act-primary" data-x="quote-open" data-co="${esc(c.id)}">درخواست معرفی نمایندگی</button>`}</div>`).join(''):'<div class="empty"><div class="empty-icon">⌖</div><h3>نمایندگی‌ها</h3><p>اطلاعات نمایندگی هنوز ثبت نشده. می‌توانی از داخل شناسنامه‌ی محصول درخواست استعلام بفرستی؛ اطلاعات تماس فقط پس از تأیید ثبت می‌شود.</p>'+D.companies.map(c=>`<button class="act" data-x="quote-open" data-co="${esc(c.id)}">استعلام از ${esc(c.name)}</button>`).join(' ')+'</div>';
+}
+function sponsorView() {
+  if(!S.sponsorData) { if(!S.sponsorLoading) { S.sponsorLoading=true; api('sponsor-dashboard').then(r=>{S.sponsorData=r;}).catch(()=>{S.sponsorData={ok:false};}).finally(()=>{S.sponsorLoading=false;if(S.tab==='sponsor')render();}); } return '<div class="empty"><p>در حال دریافت آمار…</p></div>'; }
+  const d=S.sponsorData; if(!d.ok) return '<div class="empty"><p>دریافت آمار ممکن نشد.</p></div>';
+  const ag=(title,arr)=>`<div class="grp">${title}</div>`+(arr||[]).slice(0,10).map(x=>`<div class="ln"><h4><span>${esc(x.name)}</span><em>${fa(x.count)}</em></h4></div>`).join('');
+  return `<div class="tot"><div class="r"><span>بازه</span><b>${esc(d.period)}</b></div><div class="r"><span>رویدادهای ثبت‌شده</span><b>${fa(d.events)}</b></div><div class="r"><span>درخواست‌های استعلام</span><b>${fa(d.quotes)}</b></div><p class="hint">این آمار بر اساس رویدادهای ثبت‌شده در مینی‌اپ است و معادل کاربران یکتا یا فروش نیست.</p><button class="act" data-x="sponsor-refresh">به‌روزرسانی</button></div>${ag('بر اساس برند',d.byCompany)}${ag('بر اساس نوع رویداد',d.byEvent)}${ag('محصولات پرتکرار',d.byProduct)}`;
+}
+async function saveProjects() {
+  const name=(S.proj.name||'').trim()||'پروژه‌ی '+new Date().toLocaleDateString('fa-IR');
+  const current={id:S.activeProject||uid(),name,client:S.proj.client||'',notes:S.proj.notes||'',estimate:S.est,rooms:S.rooms};
+  let arr=[...(S.projects||[])]; const i=arr.findIndex(x=>x.id===current.id); if(i>=0) arr[i]=current; else arr.unshift(current);
+  try { const r=await api('projects',{method:'POST',body:JSON.stringify({projects:arr})}); if(!r.ok) return toast(r.error||'ذخیره انجام نشد'); S.projects=r.projects||arr; S.activeProject=current.id; toast('پروژه روی سرور ذخیره شد ✓'); render(); } catch(e) { toast('ذخیره‌ی سروری ناموفق بود؛ اتصال تلگرام را بررسی کن.'); }
+}
+async function loadProjects() { try { const r=await api('projects'); if(r.ok) S.projects=r.projects||[]; } catch(e) {} }
+function quoteSheet(coId,pid) {
+ const c=D.companies.find(x=>x.id===coId)||{}, p=(c.products||[]).find(x=>x.id===pid);
+ sheet(`<h3>استعلام قیمت</h3><p class="hint">درخواست به مدیران رواق ارسال می‌شود؛ قیمت یا موجودی تا زمان پاسخ، تأییدشده محسوب نمی‌شود.</p><label class="fl">برند<input id="qCompany" value="${esc(c.name||'')}" readonly></label><label class="fl">محصول<input id="qProduct" value="${esc(p?p.name:'')}" placeholder="نام محصول"></label><label class="fl">شهر<input id="qCity" placeholder="مثلاً مشهد"></label><label class="fl">مقدار و واحد<input id="qQty" placeholder="مثلاً ۲۰ متر مربع"></label><label class="fl">راه تماس (اختیاری)<input id="qContact" placeholder="شماره تماس یا ترجیح ارتباط"></label><label class="fl">توضیحات<textarea id="qNote" rows="3" placeholder="شرایط پروژه یا سوال شما"></textarea></label><div class="sd-bar"><button class="act" data-x="scok">انصراف</button><button class="act act-primary" data-x="quote-submit" data-co="${esc(c.name||'')}" data-pid="${esc(p?p.name:'')}">ارسال درخواست</button></div>`);
 }
 function favView() {
   const items = S.fav.map(find).filter(x => x[1]);
@@ -542,7 +585,7 @@ async function sendSheet(tk) {
 const persist2 = () => { sv(K.rooms, S.rooms); sv(K.scn, S.scn); sv(K.px, S.px); sv(K.cmp, S.cmp); sv(K.w, S.w); sv(K.dir, S.dir); sv(K.proj, S.proj); sv(K.cc, S.cc); };
 const rm = id => S.rooms.find(r => r.id === id), itm = (r, id) => r && r.items.find(i => i.id === id);
 function addItem(r, p, q) { r.items.push({ id: uid(), pid: p.id, q: q || 1, on: defSurf(p) }); }
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const t = e.target.closest('[data-x]'); if (!t) return; const d = t.dataset, r = rm(d.rid);
   switch (d.x) {
     case 'radd': S.rooms.push(newRoom(S.rooms.length + 1)); break;
@@ -562,13 +605,22 @@ document.addEventListener('click', e => {
     case 'xgo': closeSheet(); sendSheet(d.t); return;
     case 'tgclose': try { TG.close(); } catch (x) {} return;
     case 'pk': { const p = find(d.pid)[1], cb = S.pick && S.pick.cb; if (p && cb) cb(p, find(d.pid)[0]); return; }
-    case 'cmp': { const i = S.cmp.indexOf(d.pid); if (i >= 0) S.cmp.splice(i, 1); else if (S.cmp.length >= 3) return toast('حداکثر ۳ محصول را می‌شود مقایسه کرد'); else S.cmp.push(d.pid); persist2(); hp(); if (t.classList.contains('sq') && S.tab !== 'cmp') t.classList.toggle('on', i < 0); if (S.tab === 'cmp') paintCmp(); tabs(); return toast(i >= 0 ? 'از مقایسه برداشته شد' : 'به مقایسه اضافه شد'); }
+    case 'cmp': { const pair = find(d.pid); if (pair[1]) phase3Track('compare', pair[0].name, pair[1].name); const i = S.cmp.indexOf(d.pid); if (i >= 0) S.cmp.splice(i, 1); else if (S.cmp.length >= 3) return toast('حداکثر ۳ محصول را می‌شود مقایسه کرد'); else S.cmp.push(d.pid); persist2(); hp(); if (t.classList.contains('sq') && S.tab !== 'cmp') t.classList.toggle('on', i < 0); if (S.tab === 'cmp') paintCmp(); tabs(); return toast(i >= 0 ? 'از مقایسه برداشته شد' : 'به مقایسه اضافه شد'); }
     case 'cmpadd': return pick('افزودن به مقایسه', p => !S.cmp.includes(p.id), p => { if (S.cmp.length < 3) S.cmp.push(p.id); persist2(); closeSheet(); paintCmp(); tabs(); });
     case 'cmpclr': S.cmp = []; persist2(); paintCmp(); return tabs();
     case 'dir': S.dir[d.k] = S.dir[d.k] === 'hi' ? 'lo' : S.dir[d.k] === 'lo' ? '' : 'hi'; persist2(); return paintCmp();
     case 'cc': S.cc.k = d.k; persist2(); return render();
     case 'cfill': { const h = densHint(); if (h) { S.cc.v.floor.dl = String(h.v); persist2(); render(); toast('چگالی از شناسنامه برداشته شد'); } return; }
-    case 'cadd': { const o = S.cres[Number(d.o)]; if (!o) return; return pick('افزودن «' + esc(o.l) + '» به برآورد', p => p.unit === o.u, (p, c) => { addLine({ ...p, mode: 'count', price: priceOf(p) }, c, R2(o.v)); persist(); closeSheet(); toast('به برآورد اضافه شد'); tabs(); }, `مقدار ${nf(o.v)} ${o.u}؛ فقط محصولاتی با واحد «${o.u}» نشان داده می‌شوند.`); }
+    case 'sendfile': { try { const r=await api('send-file',{method:'POST',body:JSON.stringify({doc_id:d.docid})}); if(r.ok){toast('فایل در چت ربات ارسال شد');hp('medium');} else toast(r.error||'ارسال فایل ناموفق بود'); } catch(e){toast('خطا در ارسال فایل');} return; }
+    case 'project-save': return saveProjects();
+    case 'project-refresh': await loadProjects(); render(); return toast('همگام‌سازی انجام شد');
+    case 'project-new': S.activeProject=''; S.proj={name:'',client:'',notes:''}; S.rooms=[]; S.est=[]; persist(); persist2(); render(); return toast('پروژه‌ی جدید آماده است');
+    case 'project-load': { const pr=S.projects.find(x=>x.id===d.pid); if(!pr)return; S.activeProject=pr.id; S.proj={name:pr.name||'',client:pr.client||'',notes:pr.notes||''}; S.rooms=Array.isArray(pr.rooms)?pr.rooms:[]; S.est=Array.isArray(pr.estimate)?pr.estimate:[]; persist(); persist2(); S.tab='room'; render(); return toast('پروژه بارگذاری شد'); }
+    case 'project-delete': { const arr=S.projects.filter(x=>x.id!==d.pid); try {const r=await api('projects',{method:'POST',body:JSON.stringify({projects:arr})}); if(r.ok){S.projects=r.projects||arr;render();toast('پروژه حذف شد');}else toast(r.error||'حذف نشد');}catch(e){toast('ارتباط با سرور برقرار نشد');} return; }
+    case 'sponsor-refresh': S.sponsorData=null; render(); return;
+    case 'quote-open': { const coId=d.co||S.cur; const pid=d.pid||''; return quoteSheet(coId,pid); }
+    case 'quote-submit': { const v=id=>document.getElementById(id)?.value||''; const body={company:v('qCompany')||d.co,product:v('qProduct')||d.pid,city:v('qCity'),quantity:v('qQty'),contact:v('qContact'),note:v('qNote')}; if(!body.product.trim())return toast('نام محصول را وارد کن'); try{const r=await api('quote',{method:'POST',body:JSON.stringify(body)});if(r.ok){closeSheet();toast('درخواست برای مدیران رواق ارسال شد ✓');}else toast(r.error||'درخواست ارسال نشد');}catch(e){toast('خطا در ارسال درخواست');} return; }
+        case 'cadd': { const o = S.cres[Number(d.o)]; if (!o) return; return pick('افزودن «' + esc(o.l) + '» به برآورد', p => p.unit === o.u, (p, c) => { addLine({ ...p, mode: 'count', price: priceOf(p) }, c, R2(o.v)); persist(); closeSheet(); toast('به برآورد اضافه شد'); tabs(); }, `مقدار ${nf(o.v)} ${o.u}؛ فقط محصولاتی با واحد «${o.u}» نشان داده می‌شوند.`); }
     default: return;
   }
   persist2(); render();
@@ -601,7 +653,7 @@ document.addEventListener('click', e => {
   if (d.tab) { S.tab = d.tab; hp(); render(); return scrollTo({ top: 0 }); }
   if (d.cat) { S.cat = S.cat === d.cat ? '' : d.cat; hp(); return render(); }
   if (d.brand) { hp(); return openBrand(d.brand); }
-  if (d.add) { const [c, p] = find(d.add); addLine(p, c); hp('medium'); toast(`«${p.name}» به برآورد اضافه شد`); return tabs(); }
+  if (d.add) { const [c, p] = find(d.add); if (p) phase3Track('estimate', c.name, p.name); addLine(p, c); hp('medium'); toast(`«${p.name}» به برآورد اضافه شد`); return tabs(); }
   if (d.fav) { const i = S.fav.indexOf(d.fav); i < 0 ? S.fav.push(d.fav) : S.fav.splice(i, 1); persist(); hp(); t.classList.toggle('on', i < 0); t.setAttribute('aria-pressed', i < 0); tabs(); if (S.tab === 'fav') render(); return; }
   if (d.pack) { const k = D.packs.find(x => x.id === d.pack); let n = 0; k.items.forEach(it => { const [c, p] = find(it.p); if (p) { addLine(p, c, it.q); n++; } }); hp('medium'); toast(`${fa(n)} قلم اضافه شد`); return render(); }
   if (d.st) { const l = S.est.find(x => x.id === d.st); l.q = Math.max(1, l.q + Number(d.d)); persist(); hp(); return render(); }
@@ -625,6 +677,7 @@ document.addEventListener('click', e => {
     case 'tobrand': return openBrand(S.cur);
     case 'uplogo': return reqUpload('logo', c.id);
     case 'upimg': return reqUpload('image', c.id, t.dataset.pid);
+    case 'upfile': { const title=prompt('عنوان فایل (مثلاً دیتیل اجرایی یا Family رویت)'); if(!title)return; const typ=prompt('نوع فایل: dwg / pdf / rvt / skp / texture / manual / other','pdf')||'document'; const version=prompt('نسخه (اختیاری)','')||''; const date=prompt('تاریخ/نسخه انتشار (اختیاری)','')||''; return reqUpload('file',c.id,t.dataset.pid,{title,doc_type:typ,version,date}); }
     case 'rmlogo': if (confirm('لوگو حذف شود؟')) rmMedia(c.id, '', c.logo && c.logo.key).then(() => openBrand(c.id)); return;
     case 'shareprod': { const pp = find(t.dataset.pid)[1]; const u = 'https://t.me/share/url?url=' + encodeURIComponent(link(t.dataset.pid)) + '&text=' + encodeURIComponent(pp ? pp.name : ''); TG && TG.openTelegramLink ? TG.openTelegramLink(u) : window.open(u, '_blank'); return; }
     case 'goest': closeSheet(); S.tab = 'est'; render(); return scrollTo({ top: 0 });
@@ -633,6 +686,7 @@ document.addEventListener('click', e => {
     case 'addco': return form('برند جدید', CF, { sponsor: false }, o => { const n = { id: uid(), products: [], ...cleanC(o) }; D.companies.push(n); saveData(); render(); });
     case 'editco': return form('ویرایش برند', CF, coVals(c), o => { Object.assign(c, cleanC(o)); saveData(); render(); }, () => openBrand(c.id));
     case 'spectpl': { const ta = document.querySelector('#sdPanel [data-f=specsT]'); if (!ta) return; const g = (document.querySelector('#sdPanel [data-f=group]') || {}).value || '', nm = (document.querySelector('#sdPanel [data-f=name]') || {}).value || '', co = D.companies.find(x => x.id === S.cur) || {}; const have = ta.value.split('\n').map(l => l.split(/[:：]/)[0].trim()); const add = specTplFor(g + ' ' + nm, co.cat).filter(k => !have.includes(k)).map(k => k + ': '); ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + add.join('\n'); ta.rows = 8; hp(); return toast('عنوان‌ها درج شد؛ فقط مقدارهایی را که داری پر کن، بقیه خالی بماند'); }
+    case 'dealers-edit': { const raw=(c.dealers||[]).map(x=>[x.city||'',x.name||'',x.phone||'',x.address||''].join(' | ')).join('\n'); const val=prompt('هر نمایندگی در یک خط با قالب شهر | نام | تلفن | نشانی\nبرای پاک‌کردن، ورودی را خالی بگذار.',raw); if(val===null)return; c.dealers=val.split('\n').map(line=>line.split('|').map(x=>x.trim())).filter(a=>a[1]).slice(0,100).map(a=>({city:(a[0]||'').slice(0,80),name:(a[1]||'').slice(0,100),phone:(a[2]||'').slice(0,40),address:(a[3]||'').slice(0,200)})); saveData(); return openBrand(c.id); }
     case 'delco': if (confirm('این برند و همه‌ی محصولاتش حذف شود؟')) { D.companies = D.companies.filter(x => x !== c); saveData(); closeSheet(); render(); } return;
     case 'addp': return form('محصول جدید', PF, { mode: 'count' }, o => { c.products.push({ id: uid(), ...cleanP(o) }); saveData(); }, () => openBrand(c.id), valP);
     case 'fok': { const o = readForm(); if (!o.name) return toast('نام را وارد کن'); const er = S.val && S.val(o); if (er) return toast(er); const b = S.back, ok = S.ok; ok(o); if (b) b(); else closeSheet(); return render(); }
@@ -654,5 +708,5 @@ render();
 const deep = () => { try { const p = new URLSearchParams(location.search).get('p'); if (p && find(p)[1]) openProd(p); } catch (e) {} };
 addEventListener('error', e => { const i = e.target; if (!i || i.tagName !== 'IMG') return; if (!i.dataset.r) { i.dataset.r = '1'; i.src = i.src + (i.src.includes('?') ? '&' : '?') + 'r=' + Date.now(); } else { i.style.display = 'none'; i.parentElement && i.parentElement.classList.add('bad'); } }, true);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !S.admin) return; const cp = S.curP, open = !$('#sd').hidden; reload().then(() => { render(); if (open && cp && find(cp)[1]) openProd(cp); }).catch(() => {}); });
-api('data').then(r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; render(); deep(); }).catch(() => fetch('/materials/data/materials.json').then(r => r.json()).then(d => { D = d; render(); deep(); }));
+api('data').then(async r => { D = r.data; S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); }).catch(() => fetch('/materials/data/materials.json').then(r => r.json()).then(d => { D = d; render(); deep(); }));
 })();

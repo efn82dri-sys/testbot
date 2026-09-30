@@ -176,6 +176,9 @@ _prompt_send_last: dict[int, float] = {}       # ضدِ اسپمِ دکمه‌ی
 _prompt_media_locks: dict[int, asyncio.Lock] = {}
 _prompt_media_dl_locks: dict[str, asyncio.Lock] = {}
 MATERIALS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_materials_media"
+MATERIALS_PROJECTS_FILE = Path(__file__).parent / "data" / "materials_projects.json"
+MATERIALS_EVENTS_FILE = Path(__file__).parent / "data" / "materials_events.json"
+MATERIALS_QUOTES_FILE = Path(__file__).parent / "data" / "materials_quotes.json"
 MAT_IMAGES_MAX = 6                       # حداکثر عکس برای هر محصول
 MAT_TG_LIMIT = 20 * 1024 * 1024          # سقف دانلود فایل توسط ربات
 MAT_PENDING_TTL = 20 * 60                # مهلت انتظار برای عکس بعد از «افزودن عکس» (ثانیه)
@@ -4712,6 +4715,32 @@ async def materials_image_received(message: Message):
     uid = message.from_user.id
     pend = _mat_pending_for(uid)
     if not pend:
+        return
+    if pend.get("kind") == "file":
+        doc = message.document
+        if not doc:
+            await message.answer("❗️ برای کتابخانه، فایل را به‌صورت «فایل/Document» بفرست؛ عکس یا پیام معمولی قابل ثبت نیست.")
+            return
+        if (doc.file_size or 0) > MAT_TG_LIMIT:
+            await message.answer("❗️ حجم فایل بیشتر از ۲۰ مگابایت است؛ فایل را فشرده کن.")
+            return
+        async with _mat_lock:
+            data = load_materials_data()
+            co = next((c for c in data.get("companies", []) if c.get("id") == pend.get("co")), None)
+            pr = next((p for p in (co or {}).get("products", []) if p.get("id") == pend.get("pid")), None)
+            if not pr:
+                _mat_pending.pop(uid, None)
+                await message.answer("❗️ محصول پیدا نشد؛ آپلود لغو شد.")
+                return
+            docs = pr.setdefault("docs", [])
+            if len(docs) >= 20:
+                await message.answer("❗️ برای هر محصول حداکثر ۲۰ فایل قابل ثبت است.")
+                return
+            name = (doc.file_name or "file").replace("\\", "_").replace("/", "_")[:160]
+            docs.append({"id": uuid.uuid4().hex[:12], "title": str(pend.get("title") or Path(name).stem)[:120], "type": str(pend.get("doc_type") or "document")[:20], "fid": doc.file_id, "file_name": name, "size": int(doc.file_size or 0), "version": str(pend.get("version") or "").strip()[:40], "date": str(pend.get("date") or "").strip()[:30], "addedAt": datetime.now(timezone.utc).isoformat()})
+            _mat_write(data)
+        _mat_pending.pop(uid, None)
+        await message.answer("✅ فایل به کتابخانه‌ی محصول اضافه شد. در مینی‌اپ دوباره باز کن.")
         return
     fo = None
     if message.photo:
@@ -9527,7 +9556,18 @@ async def handle_materials_save(request: web.Request) -> web.Response:
             oprods = {p.get("id"): p for p in oc.get("products", [])}
             cleaned = []
             for p in c.get("products", []):
-                np_, _ = _mat_clean_product(p, (oprods.get(p.get("id")) or {}).get("images") or [])
+                op = oprods.get(p.get("id")) or {}
+                np_, _ = _mat_clean_product(p, op.get("images") or [])
+                # فایل‌ها و تاریخچه‌ی قیمت فقط از APIهای اختصاصی/ثبت قیمت مدیریت می‌شوند.
+                np_["docs"] = op.get("docs", p.get("docs", [])) if isinstance(op.get("docs", p.get("docs", [])), list) else []
+                history = op.get("priceLog", p.get("priceLog", []))
+                history = history if isinstance(history, list) else []
+                old_price, new_price = op.get("price"), np_.get("price")
+                if new_price and str(new_price) != str(old_price):
+                    today = jdatetime.date.today().strftime("%Y/%m/%d")
+                    history = (history + [{"date": today, "price": new_price, "unit": np_.get("unit", ""), "source": np_.get("priceSource") or "ثبت ادمین", "confidence": np_.get("confidence") or "review"}])[-60:]
+                np_["priceLog"] = history
+                np_["dealers"] = op.get("dealers", p.get("dealers", [])) if isinstance(op.get("dealers", p.get("dealers", [])), list) else []
                 cleaned.append(np_)
             c["products"] = cleaned
         _mat_write({
@@ -9611,15 +9651,15 @@ async def handle_materials_upload_request(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "bad json"}, status=400)
     data = load_materials_data()
     co = next((c for c in data.get("companies", []) if c.get("id") == co_id), None)
-    if kind not in ("logo", "image") or not co:
+    if kind not in ("logo", "image", "file") or not co:
         return web.json_response({"ok": False, "error": "bad target"}, status=400)
-    if kind == "image" and not any(p.get("id") == pid for p in co.get("products", [])):
+    if kind in ("image", "file") and not any(p.get("id") == pid for p in co.get("products", [])):
         return web.json_response({"ok": False, "error": "محصول ذخیره نشده؛ اول ذخیره کن"}, status=400)
-    _mat_pending[uid] = {"kind": kind, "co": co_id, "pid": pid, "ts": datetime.now(timezone.utc).timestamp()}
-    what = f"لوگوی «{co.get('name', '')}»" if kind == "logo" else "عکس‌های این محصول"
+    _mat_pending[uid] = {"kind": kind, "co": co_id, "pid": pid, "title": str(body.get("title") or "")[:120], "doc_type": str(body.get("doc_type") or "document")[:20], "version": str(body.get("version") or "")[:40], "date": str(body.get("date") or "")[:30], "ts": datetime.now(timezone.utc).timestamp()}
+    what = f"لوگوی «{co.get('name', '')}»" if kind == "logo" else ("فایل اجرایی این محصول" if kind == "file" else "عکس‌های این محصول")
     try:
-        await bot.send_message(uid, f"📷 {what} رو همین‌جا بفرست (JPG / PNG / WebP / AVIF؛ برای کیفیت بهتر و فرمت AVIF حتماً به‌صورت «فایل»).\n"
-                                     f"تا {to_persian_num(MAT_PENDING_TTL // 60)} دقیقه منتظرم.")
+        msg = (f"📎 {what} رو به‌صورت فایل/Document بفرست.\n" if kind == "file" else f"📷 {what} رو همین‌جا بفرست (JPG / PNG / WebP / AVIF؛ برای کیفیت بهتر و فرمت AVIF حتماً به‌صورت «فایل»).\n")
+        await bot.send_message(uid, msg + f"تا {to_persian_num(MAT_PENDING_TTL // 60)} دقیقه منتظرم.")
     except Exception as e:
         logger.warning("پیامِ آپلودِ مصالح به %s ارسال نشد: %s", uid, e)
         _mat_pending.pop(uid, None)
@@ -9654,6 +9694,131 @@ async def handle_materials_media_remove(request: web.Request) -> web.Response:
     _mat_purge(gone)
     return web.json_response({"ok": True})
 
+
+# ---------------- فاز ۳: پروژه‌ها، کتابخانه، استعلام و آمار شفاف ----------------
+def _mat_json_read(path: Path, default):
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value
+    except (OSError, json.JSONDecodeError):
+        return default
+
+def _mat_json_write(path: Path, value) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+def _mat_event(event: str, company: str = "", product: str = "") -> None:
+    data = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []})
+    data.setdefault("events", []).append({"event": event[:30], "company": company[:80], "product": product[:100], "at": datetime.now(timezone.utc).isoformat()})
+    data["events"] = data["events"][-20000:]
+    _mat_json_write(MATERIALS_EVENTS_FILE, data)
+
+async def handle_materials_projects(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "برای ذخیره‌ی پروژه، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    uid = str(int(user.get("id", 0)))
+    data = _mat_json_read(MATERIALS_PROJECTS_FILE, {})
+    if request.method == "GET":
+        return web.json_response({"ok": True, "projects": data.get(uid, [])})
+    try:
+        body = await request.json()
+        projects = body.get("projects")
+        if not isinstance(projects, list) or len(projects) > 50:
+            raise ValueError()
+        clean = []
+        for p in projects:
+            if not isinstance(p, dict): continue
+            clean.append({"id": str(p.get("id") or uuid.uuid4().hex[:12])[:40], "name": str(p.get("name") or "پروژه‌ی بدون نام")[:100], "client": str(p.get("client") or "")[:100], "notes": str(p.get("notes") or "")[:3000], "updatedAt": datetime.now(timezone.utc).isoformat(), "estimate": p.get("estimate", []) if isinstance(p.get("estimate", []), list) else [], "rooms": p.get("rooms", []) if isinstance(p.get("rooms", []), list) else []})
+        if len(json.dumps(clean, ensure_ascii=False)) > 500_000:
+            return web.json_response({"ok": False, "error": "حجم اطلاعات پروژه‌ها بیش از حد است."}, status=413)
+    except Exception:
+        return web.json_response({"ok": False, "error": "ساختار پروژه معتبر نیست."}, status=400)
+    data[uid] = clean
+    _mat_json_write(MATERIALS_PROJECTS_FILE, data)
+    return web.json_response({"ok": True, "projects": clean})
+
+async def handle_materials_send_file(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "ابتدا مینی‌اپ را از تلگرام باز کن."}, status=401)
+    try: body = await request.json()
+    except Exception: return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    fid = str(body.get("file_id") or "")
+    data = load_materials_data()
+    found = None
+    for co in data.get("companies", []):
+        for pr in co.get("products", []):
+            for doc in pr.get("docs", []) if isinstance(pr.get("docs"), list) else []:
+                if doc.get("id") == body.get("doc_id") and doc.get("fid"):
+                    found = (co, pr, doc); break
+            if found: break
+        if found: break
+    if not found:
+        return web.json_response({"ok": False, "error": "فایل پیدا نشد."}, status=404)
+    co, pr, doc = found
+    try:
+        await bot.send_document(int(user["id"]), doc["fid"], caption=f"📎 {doc.get('title') or doc.get('file_name') or 'فایل اجرایی'}\n{co.get('name','')} — {pr.get('name','')}\nارسال از کتابخانه‌ی رواق", protect_content=False)
+        _mat_event("download", co.get("name", ""), pr.get("name", ""))
+    except Exception as e:
+        logger.warning("materials file send failed: %s", e)
+        return web.json_response({"ok": False, "error": "ارسال فایل ناموفق بود؛ ابتدا ربات را Start کن."}, status=502)
+    return web.json_response({"ok": True})
+
+async def handle_materials_quote(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "برای استعلام، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    try: body = await request.json()
+    except Exception: return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    name = str(body.get("product") or "")[:120]
+    company = str(body.get("company") or "")[:100]
+    city = str(body.get("city") or "")[:80]
+    qty = str(body.get("quantity") or "")[:80]
+    contact = str(body.get("contact") or "")[:100]
+    note = str(body.get("note") or "")[:700]
+    if not name or not company:
+        return web.json_response({"ok": False, "error": "محصول و برند مشخص نیست."}, status=400)
+    uid = int(user.get("id", 0)); uname = str(user.get("username") or user.get("first_name") or uid)[:80]
+    entry = {"user_id": uid, "user": uname, "company": company, "product": name, "city": city, "quantity": qty, "contact": contact, "note": note, "at": datetime.now(timezone.utc).isoformat()}
+    qdata = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}); qdata.setdefault("quotes", []).append(entry); qdata["quotes"] = qdata["quotes"][-5000:]; _mat_json_write(MATERIALS_QUOTES_FILE, qdata)
+    msg = "📩 <b>استعلام قیمت — رواق</b>\n" + "\n".join([f"برند: {html_escape(company)}", f"محصول: {html_escape(name)}", f"شهر: {html_escape(city or 'ثبت نشده')}", f"مقدار: {html_escape(qty or 'ثبت نشده')}", f"راه تماس: {html_escape(contact or 'از طریق تلگرام')}", f"توضیح: {html_escape(note or '—')}", f"کاربر: {html_escape(uname)} (ID: <code>{uid}</code>)"])
+    sent = 0
+    for admin_id in ADMIN_IDS:
+        try: await bot.send_message(admin_id, msg); sent += 1
+        except Exception: pass
+    _mat_event("quote", company, name)
+    if not sent:
+        return web.json_response({"ok": False, "error": "درخواست ثبت شد، اما ارسال اعلان به مدیران انجام نشد."}, status=502)
+    return web.json_response({"ok": True})
+
+async def handle_materials_event(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user: return web.json_response({"ok": False}, status=401)
+    try: body = await request.json()
+    except Exception: body = {}
+    ev = str(body.get("event") or "view")
+    if ev not in ("view", "compare", "estimate", "catalog", "download", "quote"): ev = "view"
+    _mat_event(ev, str(body.get("company") or ""), str(body.get("product") or ""))
+    return web.json_response({"ok": True})
+
+async def handle_materials_sponsor_dashboard(request: web.Request) -> web.Response:
+    if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    events = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []}).get("events", [])
+    quotes = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}).get("quotes", [])
+    now = datetime.now(timezone.utc); cutoff = now - timedelta(days=30)
+    sponsored = {str(c.get("name") or "") for c in load_materials_data().get("companies", []) if c.get("sponsor")}
+    recent = [e for e in events if e.get("at") and e.get("at") >= cutoff.isoformat() and e.get("company") in sponsored]
+    recent_quotes = [q for q in quotes if q.get("at", "") >= cutoff.isoformat() and q.get("company") in sponsored]
+    def aggregate(items, key):
+        out = {}
+        for item in items:
+            k = item.get(key) or "نامشخص"; out[k] = out.get(k, 0) + 1
+        return sorted([{"name": k, "count": v} for k, v in out.items()], key=lambda x: (-x["count"], x["name"]))[:30]
+    return web.json_response({"ok": True, "period": "۳۰ روز اخیر", "events": len(recent), "quotes": len(recent_quotes), "byCompany": aggregate(recent, "company"), "byEvent": aggregate(recent, "event"), "byProduct": aggregate(recent, "product")})
+
 def create_app() -> web.Application:
     app = web.Application()
 
@@ -9674,6 +9839,12 @@ def create_app() -> web.Application:
     app.router.add_post("/materials/api/sheet", handle_materials_sheet)
     app.router.add_post("/materials/api/upload-request", handle_materials_upload_request)
     app.router.add_post("/materials/api/media-remove", handle_materials_media_remove)
+    app.router.add_route("GET", "/materials/api/projects", handle_materials_projects)
+    app.router.add_route("POST", "/materials/api/projects", handle_materials_projects)
+    app.router.add_post("/materials/api/send-file", handle_materials_send_file)
+    app.router.add_post("/materials/api/quote", handle_materials_quote)
+    app.router.add_post("/materials/api/event", handle_materials_event)
+    app.router.add_get("/materials/api/sponsor-dashboard", handle_materials_sponsor_dashboard)
     app.router.add_get("/materials/m/{key}", handle_materials_media)
     app.router.add_static("/materials/", path=MATERIALS_DIR, name="materials_assets")
 
