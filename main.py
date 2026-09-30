@@ -9656,6 +9656,24 @@ def _mat_clean_company(c: dict) -> None:
                     links.append({"t": t, "u": u})
     c["links"] = links
 
+def _mat_default_catalog_image(company: dict, product: dict) -> str:
+    """تصویر نماینده از دفترچهٔ برند؛ گونه‌های یک خانواده تصویر مشترک دارند."""
+    if str(company.get("id", "")).lower() != "leca" and "لیکا" not in str(company.get("name", "")):
+        return ""
+    pid = str(product.get("id") or "").lower()
+    name = str(product.get("name") or "")
+    group = str(product.get("group") or "")
+    if pid.startswith("leca-bv") or group == "بلوک" or "بلوک" in name or "block" in name.lower():
+        return "/materials/images/leca-block.webp"
+    if pid.startswith("leca-pl") or pid in {"leca1", "leca10", "leca11", "leca-lecamix-family"} or any(x in name.lower() for x in ("plaster", "lecamix")) or any(x in name for x in ("ملات", "اندود", "مخلوط خشک")):
+        return "/materials/images/leca-drymix.webp"
+    if pid.startswith("leca-fl") or "کف" in name and "بتن" in name:
+        return "/materials/images/leca-floor-concrete.webp"
+    if pid.startswith("leca-sc") or "سازه" in name and "بتن" in name:
+        return "/materials/images/leca-structural-concrete.webp"
+    return "/materials/images/leca-aggregate.webp"
+
+
 def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, int]:
     """ادغام امن JSON کاتالوگ در دیتای زنده؛ حذف انجام نمی‌شود و فیلدهای مدیریتی حفظ می‌شوند."""
     if isinstance(payload, dict) and isinstance(payload.get("companies"), list):
@@ -9729,6 +9747,8 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 merged = dict(old_product)
                 for key, value in source_product.items():
                     if key in protected_product_fields:
+                        if key == "sourceImageUrl" and not old_product.get("sourceImageUrl") and value not in (None, "", [], {}):
+                            merged[key] = value
                         continue
                     # مقادیر خالیِ فایل ورودی نباید یادداشت‌ها/مشخصات موجود را بی‌دلیل پاک کنند.
                     if value not in (None, "", [], {}):
@@ -9740,12 +9760,16 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                         merged[key] = old_product[key]
                 clean, _ = _mat_clean_product(merged, old_product.get("images") if isinstance(old_product.get("images"), list) else [])
                 for key in protected_product_fields:
-                    if key in old_product:
+                    if key in old_product and (key != "sourceImageUrl" or old_product.get(key)):
                         clean[key] = old_product[key]
+                if not clean.get("sourceImageUrl") and not clean.get("images"):
+                    clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
                 live_co["products"][index] = clean
                 updated += 1
             else:
                 clean, _ = _mat_clean_product(source_product, source_product.get("images") if isinstance(source_product.get("images"), list) else [])
+                if not clean.get("sourceImageUrl") and not clean.get("images"):
+                    clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
                 live_co["products"].append(clean)
                 product_index[pid] = len(live_co["products"]) - 1
                 added += 1

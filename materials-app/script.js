@@ -55,7 +55,7 @@ const CONF = { datasheet: 'تأییدشده با دیتاشیت', field: 'تجر
 const mUrl = (m, z) => '/materials/m/' + m.key + '?s=' + z;
 const letter = c => esc((c.en || c.name || '').trim()[0] || '؟');
 const logoBox = (c, cls) => c.logo && c.logo.key ? `<div class="${cls} has-logo"><img src="${mUrl(c.logo, 'g')}" alt="${esc(c.name)}" decoding="async"></div>` : `<div class="${cls}">${letter(c)}</div>`;
-const externalProductImage = p => /^https?:\/\//i.test(String(p && p.sourceImageUrl || '')) ? String(p.sourceImageUrl) : '';
+const externalProductImage = p => { const u=String(p && p.sourceImageUrl || '').trim(); return (/^https?:\/\//i.test(u) || /^\/materials\/images\/[a-z0-9._-]+\.(?:webp|png|jpe?g)$/i.test(u)) ? u : ''; };
 const thumb = (c, p) => { const m = (p.images || [])[0]; const ext = externalProductImage(p); return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" loading="lazy" decoding="async"></div>` : ext ? `<div class="im"><img src="${esc(ext)}" alt="${esc(p.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('ph');this.remove()"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
 const specsText = a => (a || []).map(x => x.k + ': ' + x.v).join('\n');
 const parseSpecs = t => String(t || '').split('\n').map(l => { const i = l.search(/[:：]/); return i > 0 ? { k: l.slice(0, i).trim(), v: l.slice(i + 1).trim() } : null; }).filter(x => x && x.k && x.v);
@@ -174,7 +174,8 @@ function openProd(pid) {
   S.cur = c.id; S.curP = pid;
   phase3Track('view', c.name, p.name);
   const imgs = p.images || [];
-  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" ${k ? 'loading="lazy" ' : ''}decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
+  const extImage = externalProductImage(p);
+  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" ${k ? 'loading="lazy" ' : ''}decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : extImage ? `<div class="im big"><img src="${esc(extImage)}" alt="${esc(p.name)}" decoding="async" loading="lazy" onerror="this.parentNode.classList.add('ph');this.remove()"></div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
   const specs = (p.specs || []).length ? `<table class="spt">${p.specs.map(x => `<tr><td>${esc(x.k)}</td><td>${ltrv(x.v)}</td></tr>`).join('')}</table>` : '<div class="pc no">مشخصات فنی: استعلام</div>';
 
