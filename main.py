@@ -9698,7 +9698,7 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
         raise ValueError("ساختار برندهای کاتالوگ زنده معتبر نیست.")
     added = updated = company_count = 0
     protected_company_fields = {"logo", "sponsor", "dealers"}
-    protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes", "sourceImageUrl"}
+    protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes"}
 
     for source_company in incoming_companies:
         if not isinstance(source_company, dict):
@@ -9747,11 +9747,18 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 merged = dict(old_product)
                 for key, value in source_product.items():
                     if key in protected_product_fields:
-                        if key == "sourceImageUrl" and not old_product.get("sourceImageUrl") and value not in (None, "", [], {}):
-                            merged[key] = value
                         continue
-                    # مقادیر خالیِ فایل ورودی نباید یادداشت‌ها/مشخصات موجود را بی‌دلیل پاک کنند.
-                    if value not in (None, "", [], {}):
+                    if key == "sourceImageUrl" and source_product.get("catalogImageUnavailable") is True:
+                        merged[key] = ""
+                        continue
+                    # کاتالوگِ کنترل‌شده می‌تواند توضیحات/ویژگی‌ها/مشخصات را عمداً خالی کند.
+                    if key in ("features", "specs", "standards") and isinstance(value, list):
+                        merged[key] = value
+                    # مسیر تصویرِ دقیقِ داخل دفترچه باید جای تصویر پیش‌فرض قبلی را بگیرد.
+                    elif key == "sourceImageUrl" and isinstance(value, str):
+                        merged[key] = value
+                    # سایر مقادیر خالیِ ورودی، اطلاعات مدیریتی موجود را پاک نمی‌کنند.
+                    elif value not in (None, "", [], {}):
                         merged[key] = value
                     elif key not in merged:
                         merged[key] = value
@@ -9762,13 +9769,13 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 for key in protected_product_fields:
                     if key in old_product and (key != "sourceImageUrl" or old_product.get(key)):
                         clean[key] = old_product[key]
-                if not clean.get("sourceImageUrl") and not clean.get("images"):
+                if not clean.get("sourceImageUrl") and not clean.get("images") and not clean.get("catalogImageUnavailable"):
                     clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
                 live_co["products"][index] = clean
                 updated += 1
             else:
                 clean, _ = _mat_clean_product(source_product, source_product.get("images") if isinstance(source_product.get("images"), list) else [])
-                if not clean.get("sourceImageUrl") and not clean.get("images"):
+                if not clean.get("sourceImageUrl") and not clean.get("images") and not clean.get("catalogImageUnavailable"):
                     clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
                 live_co["products"].append(clean)
                 product_index[pid] = len(live_co["products"]) - 1
