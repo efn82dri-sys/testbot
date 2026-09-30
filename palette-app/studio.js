@@ -1,6 +1,6 @@
 /* ============================================================
-   رواق — استودیو چیدمان (نسخه ۵ — واقع‌گرایی)
-   سبک: نمای روبه‌روی flat illustration، هندسه تمیز
+   رواق — استودیو چیدمان (نسخه ۶ — موتور فوتوریالیستیک)
+   سبک: نمای روبه‌رو، مدل نور چندمنبعی، متریال PBR، پُست‌پروسس
    ============================================================ */
 (() => {
   'use strict';
@@ -24,6 +24,7 @@
   }
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
 
   function hexToRgb(h) {
     const s = String(h).replace('#', '');
@@ -39,6 +40,8 @@
   }
   const lighten = (h, t) => mixHex(h, '#FFFFFF', t);
   const darken  = (h, t) => mixHex(h, '#000000', t);
+  const warm    = (h, t) => mixHex(h, '#F4C58A', t);
+  const cool    = (h, t) => mixHex(h, '#A8C0E0', t);
 
   function srgbToLinear(c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
   function relLum(hex) {
@@ -82,27 +85,152 @@
   }
 
   /* ============================================================
-     متریال — سیستم سبک برای هدایت گرادیان‌ها و هایلایت
+     PBR سبک — متریال‌های واقعی
      ============================================================ */
   const MAT = {
-    wall:      { hl: 0.10, warm: 0.00, rough: 0.95 },
-    wallGloss: { hl: 0.18, warm: 0.02, rough: 0.55 },
-    stucco:    { hl: 0.08, warm: 0.02, rough: 0.95 },
-    concrete:  { hl: 0.10, warm: -0.03, rough: 0.90 },
-    wood:      { hl: 0.16, warm: 0.05, rough: 0.60 },
-    woodDark:  { hl: 0.14, warm: 0.04, rough: 0.60 },
-    marble:    { hl: 0.30, warm: 0.01, rough: 0.30 },
-    tile:      { hl: 0.22, warm: 0.00, rough: 0.30 },
-    fabric:    { hl: 0.08, warm: 0.02, rough: 0.95 },
-    velvet:    { hl: 0.20, warm: 0.05, rough: 0.55 },
-    leather:   { hl: 0.24, warm: 0.04, rough: 0.45 },
-    metal:     { hl: 0.40, warm: 0.02, rough: 0.25 },
-    brass:     { hl: 0.35, warm: 0.10, rough: 0.30 },
-    plant:     { hl: 0.12, warm: 0.00, rough: 0.85 },
-    art:       { hl: 0.18, warm: 0.02, rough: 0.40 },
-    rug:       { hl: 0.06, warm: 0.03, rough: 0.98 },
-    glass:     { hl: 0.55, warm: -0.02, rough: 0.10 },
+    wall:      { hl: 0.10, warm: 0.00, rough: 0.94, spec: 0.02, tex: 'plaster' },
+    wallGloss: { hl: 0.14, warm: 0.02, rough: 0.55, spec: 0.10, tex: 'plaster' },
+    stucco:    { hl: 0.07, warm: 0.02, rough: 0.96, spec: 0.01, tex: 'stucco' },
+    concrete:  { hl: 0.09, warm: -0.04, rough: 0.88, spec: 0.04, tex: 'concrete' },
+    wood:      { hl: 0.14, warm: 0.04, rough: 0.55, spec: 0.10, tex: 'wood' },
+    woodDark:  { hl: 0.12, warm: 0.03, rough: 0.50, spec: 0.14, tex: 'woodDark' },
+    marble:    { hl: 0.26, warm: 0.01, rough: 0.22, spec: 0.55, tex: 'marble' },
+    tile:      { hl: 0.16, warm: 0.00, rough: 0.28, spec: 0.35, tex: 'tile' },
+    fabric:    { hl: 0.06, warm: 0.02, rough: 0.98, spec: 0.00, tex: 'fabric' },
+    velvet:    { hl: 0.18, warm: 0.06, rough: 0.42, spec: 0.06, tex: 'velvet' },
+    leather:   { hl: 0.20, warm: 0.04, rough: 0.38, spec: 0.20, tex: 'leather' },
+    metal:     { hl: 0.32, warm: 0.01, rough: 0.20, spec: 0.70, tex: 'metal' },
+    brass:     { hl: 0.30, warm: 0.12, rough: 0.26, spec: 0.65, tex: 'metal' },
+    plant:     { hl: 0.12, warm: 0.00, rough: 0.82, spec: 0.05, tex: 'leaf' },
+    art:       { hl: 0.14, warm: 0.02, rough: 0.45, spec: 0.10, tex: 'canvas' },
+    rug:       { hl: 0.05, warm: 0.03, rough: 0.99, spec: 0.00, tex: 'rug' },
+    glass:     { hl: 0.55, warm: -0.02, rough: 0.06, spec: 1.00, tex: 'glass' },
+    paper:     { hl: 0.08, warm: 0.02, rough: 0.90, spec: 0.02, tex: 'paper' },
+    terracotta:{ hl: 0.10, warm: 0.05, rough: 0.70, spec: 0.08, tex: 'clay' },
   };
+
+  /* ============================================================
+     موتور بافت — SVG Filters برای متریال‌های واقعی
+     هر تابع، یک <filter> یا <pattern> با id اختصاصی تولید می‌کند
+     ============================================================ */
+  function textureFilters(id) {
+    const f = [];
+    // --- گچ/دیوار: نویز ریز + ناهمواری ملایم ---
+    f.push(`
+      <filter id="${id('tex-plaster')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="3.2" numOctaves="3" seed="17" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.06 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- استوکو: نویز درشت‌تر ---
+    f.push(`
+      <filter id="${id('tex-stucco')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="1.8" numOctaves="4" seed="3" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.55  0 0 0 0 0.55  0 0 0 0.10 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- بتن: نویز چندلایه + درخشش ملایم ---
+    f.push(`
+      <filter id="${id('tex-concrete')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="2.4 2.6" numOctaves="4" seed="9" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.08 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- چوب روشن: رگه‌های افقی جهت‌دار ---
+    f.push(`
+      <filter id="${id('tex-wood')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.015 0.9" numOctaves="4" seed="5" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.35  0 0 0 0 0.22  0 0 0 0 0.10  0 0 0 0.35 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- چوب تیره: رگه‌های تیره‌تر ---
+    f.push(`
+      <filter id="${id('tex-woodDark')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.8" numOctaves="4" seed="11" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.18  0 0 0 0 0.10  0 0 0 0 0.05  0 0 0 0.42 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- مرمر: رگه‌های ارگانیک + درخشش ---
+    f.push(`
+      <filter id="${id('tex-marble')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9 0.14" numOctaves="3" seed="21" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.42  0 0 0 0 0.40  0 0 0 0 0.38  0 0 0 0.45 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- سرامیک: درز + نویز ریز ---
+    f.push(`
+      <filter id="${id('tex-tile')}" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="4" numOctaves="2" seed="13" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.045 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- پارچه: بافتِ تار و پودِ ریز ---
+    f.push(`
+      <filter id="${id('tex-fabric')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="turbulence" baseFrequency="1.2 1.2" numOctaves="2" seed="7" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.10 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- مخمل: بافت جهت‌دارِ نرم + شاین ---
+    f.push(`
+      <filter id="${id('tex-velvet')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.8 2.4" numOctaves="2" seed="4" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.07 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- چرم: بافتِ ارگانیکِ درشت ---
+    f.push(`
+      <filter id="${id('tex-leather')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.6 0.7" numOctaves="3" seed="15" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0 0.25  0 0 0 0.20 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- فلز: براقیت بالا + نویز ریز ---
+    f.push(`
+      <filter id="${id('tex-metal')}" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="6" numOctaves="2" seed="2" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.03 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- برگ: رگبرگ‌های ملایم ---
+    f.push(`
+      <filter id="${id('tex-leaf')}" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.5 2" numOctaves="3" seed="8" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.3  0 0 0 0 0.4  0 0 0 0 0.3  0 0 0 0.18 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- بوم/تابلو: بافتِ کتان درشت ---
+    f.push(`
+      <filter id="${id('tex-canvas')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="turbulence" baseFrequency="1.8 1.8" numOctaves="2" seed="19" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.4  0 0 0 0 0.4  0 0 0 0 0.4  0 0 0 0.14 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- فرش: بافتِ پشمیِ درشت ---
+    f.push(`
+      <filter id="${id('tex-rug')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="1.6 1.4" numOctaves="3" seed="23" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.4  0 0 0 0 0.4  0 0 0 0 0.4  0 0 0 0.16 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- شیشه: تمیز، بدون بافت ---
+    f.push(`<filter id="${id('tex-glass')}" x="-2%" y="-2%" width="104%" height="104%"><feGaussianBlur stdDeviation="0.2"/></filter>`);
+    // --- کاغذ: الیافِ ریز ---
+    f.push(`
+      <filter id="${id('tex-paper')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="5" numOctaves="2" seed="6" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.45  0 0 0 0 0.45  0 0 0 0 0.45  0 0 0 0.06 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    // --- سفال/رس: نویز ریز + لبه‌های گرد ---
+    f.push(`
+      <filter id="${id('tex-clay')}" x="-3%" y="-3%" width="106%" height="106%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="2" numOctaves="3" seed="14" result="n"/>
+        <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.38  0 0 0 0 0.28  0 0 0 0.14 0" result="m"/>
+        <feComposite in="m" in2="SourceGraphic" operator="over"/>
+      </filter>`);
+    return f.join('');
+  }
 
   /* ============================================================
      قاب اتاق — نمای روبه‌رو
@@ -115,97 +243,81 @@
   };
 
   /* ============================================================
-     صحنه‌ها — همه در فریم روبه‌رو، گرید ۸۰۰×۵۰۰
+     صحنه‌ها — با جزئیات معماری بیشتر و سطوحِ پروفیل‌دار
      ============================================================ */
   const SCENES = {
-    /* ------------------------------------------------ نشیمن */
     living: {
       name: 'نشیمنِ مدرن',
       subtitle: 'نمایِ روبه‌رو — پنجره‌یِ جنوبی',
       layers: [
-        // ---- پایه ----
         { id: 'wall',      name: 'دیوار',        role: 'L1', mat: 'wall',
           parts: [FR.wall] },
         { id: 'crown',     name: 'قرنیزِ سقف',   role: 'K',  mat: 'wood',
-          parts: [FR.crown] },
-        { id: 'window',    name: 'پنجره',         role: 'L2', mat: 'glass',
-          parts: ['M80,90 L250,90 L250,300 L80,300 Z'] },
+          parts: ['M0,0 L800,0 L800,10 L0,10 Z','M0,10 L800,10 L800,16 L0,16 Z','M0,16 L800,16 L800,22 L0,22 Z'] },
+        // پنجره با عمقِ قاب
+        { id: 'window_frame_out', name: 'قابِ بیرونیِ پنجره', role: 'L2', mat: 'woodDark',
+          parts: ['M68,80 L262,80 L262,308 L68,308 Z'] },
+        { id: 'window',    name: 'شیشه',          role: 'L2', mat: 'glass',
+          parts: ['M80,92 L250,92 L250,296 L80,296 Z'] },
+        // پرده با چین‌های واقع‌گرایانه
         { id: 'curtain_l', name: 'پرده‌یِ چپ',    role: 'P',  mat: 'fabric',
-          parts: ['M45,75 L95,75 L95,315 L45,315 Z'] },
+          parts: [
+            'M38,72 Q42,180 36,300 L44,314 L96,314 L98,300 Q92,180 96,72 Z',
+            'M62,72 Q58,180 64,300 L92,300 Q88,180 92,72 Z'
+          ] },
         { id: 'curtain_r', name: 'پرده‌یِ راست',  role: 'P',  mat: 'fabric',
-          parts: ['M235,75 L285,75 L285,315 L235,315 Z'] },
+          parts: [
+            'M234,72 Q238,180 232,300 L240,314 L292,314 L294,300 Q288,180 292,72 Z',
+            'M258,72 Q254,180 260,300 L288,300 Q284,180 288,72 Z'
+          ] },
+        // تابلو با قابِ سه‌لایه
+        { id: 'art_frame', name: 'قابِ تابلو',    role: 'K',  mat: 'woodDark',
+          parts: ['M338,102 L462,102 L462,212 L338,212 Z'] },
         { id: 'art',       name: 'تابلو',          role: 'P',  mat: 'art',
-          parts: ['M345,110 L455,110 L455,205 L345,205 Z'] },
+          parts: ['M344,108 L456,108 L456,206 L344,206 Z'] },
         { id: 'floor',     name: 'کف پارکت',      role: 'M',  mat: 'wood',
           parts: [FR.floor], texture: 'wood-plank' },
         { id: 'rug',       name: 'فرش',            role: 'L2', mat: 'rug',
           parts: ['M140,428 L660,428 L700,478 L100,478 Z'] },
-        // ---- مبل ----
-        { id: 'sofa',      name: 'مبل',            role: 'D',  mat: 'fabric',
-          parts: [
-            'M240,255 L560,255 L560,345 L240,345 Z',           // پشتِ مبل
-            'M200,270 Q200,255 215,255 L240,255 L240,410 L200,410 Z', // دسته‌ی چپ
-            'M560,255 L585,255 Q600,255 600,270 L600,410 L560,410 Z', // دسته‌ی راست
-          ] },
+        // مبل با خطِ درزِ واقعی
+        { id: 'sofa_back', name: 'پشتِ مبل',      role: 'D',  mat: 'fabric',
+          parts: ['M240,255 Q240,250 246,250 L554,250 Q560,250 560,255 L560,345 L240,345 Z'] },
+        { id: 'sofa_arm_l', name: 'دسته‌ی چپ',    role: 'D',  mat: 'fabric',
+          parts: ['M200,268 Q200,252 216,252 L240,252 L240,410 L200,410 Z'] },
+        { id: 'sofa_arm_r', name: 'دسته‌ی راست',  role: 'D',  mat: 'fabric',
+          parts: ['M560,252 L584,252 Q600,252 600,268 L600,410 L560,410 Z'] },
         { id: 'sofa_seat', name: 'نشیمنِ مبل',    role: 'L2', mat: 'fabric',
           parts: [
-            'M215,335 L390,335 L390,410 L215,410 Z',
-            'M410,335 L585,335 L585,410 L410,410 Z',
+            'M216,335 L390,335 L390,410 L216,410 Z',
+            'M410,335 L584,335 L584,410 L410,410 Z'
           ] },
-        { id: 'cushions',  name: 'کوسن',           role: 'P',  mat: 'velvet',
-          parts: [
-            'M250,300 L315,300 L322,345 L245,345 Z',
-            'M485,300 L550,300 L557,345 L480,345 Z',
-          ] },
-        // ---- میز و دکور ----
-        { id: 'table',     name: 'میزِ جلومبلی',   role: 'K',  mat: 'woodDark',
-          parts: [
-            'M295,442 L505,442 L520,462 L280,462 Z',
-            'M305,462 L495,462 L495,490 L305,490 Z',
-          ] },
-        { id: 'plant_pot', name: 'گلدان',          role: 'P',  mat: 'plant',
-          parts: ['M690,390 L740,390 L735,458 L695,458 Z'] },
+        { id: 'cushion_l', name: 'کوسنِ چپ',      role: 'P',  mat: 'velvet',
+          parts: ['M250,300 Q252,296 258,296 L308,296 Q314,296 316,300 L322,345 L245,345 Z'] },
+        { id: 'cushion_r', name: 'کوسنِ راست',    role: 'P',  mat: 'velvet',
+          parts: ['M484,300 Q486,296 492,296 L542,296 Q548,296 550,300 L556,345 L480,345 Z'] },
+        // میز با درزِ چوب
+        { id: 'table_top', name: 'رویه‌یِ میز',   role: 'K',  mat: 'woodDark',
+          parts: ['M290,440 Q292,436 296,436 L504,436 Q508,436 510,440 L520,462 L280,462 Z'] },
+        { id: 'table_leg', name: 'پایه‌یِ میز',   role: 'K',  mat: 'woodDark',
+          parts: ['M305,462 L495,462 L495,490 L305,490 Z'] },
+        { id: 'plant_pot', name: 'گلدان',          role: 'P',  mat: 'terracotta',
+          parts: ['M688,388 Q690,382 696,382 L734,382 Q740,382 742,388 L736,458 L694,458 Z'] },
         { id: 'plant_leaf', name: 'برگ‌ها',         role: 'P',  mat: 'plant',
           parts: [
-            'M715,390 Q700,360 685,350 Q705,365 713,388 Z',
-            'M718,390 Q730,355 745,345 Q730,365 722,388 Z',
-            'M716,390 Q718,360 715,340 Q712,362 712,388 Z',
-            'M714,390 Q725,362 735,352 Q722,372 718,388 Z',
+            'M715,382 Q700,352 682,340 Q702,358 712,380 Z',
+            'M718,382 Q732,346 748,336 Q730,358 722,380 Z',
+            'M716,382 Q718,352 714,330 Q712,354 712,380 Z',
+            'M714,382 Q726,354 738,344 Q722,366 718,380 Z'
           ] },
-        { id: 'lamp_base', name: 'پایه‌یِ آباژور',  role: 'K',  mat: 'metal',
-          parts: [
-            'M118,465 L168,465 L168,478 L118,478 Z',
-            'M140,300 L146,300 L146,465 L140,465 Z',
-          ] },
+        { id: 'lamp_base', name: 'پایه‌یِ آباژور', role: 'K',  mat: 'metal',
+          parts: ['M118,464 Q118,460 122,460 L164,460 Q168,460 168,464 L168,478 L118,478 Z','M140,300 L146,300 L146,460 L140,460 Z'] },
         { id: 'lamp_shade', name: 'شفره‌یِ آباژور', role: 'L2', mat: 'fabric',
           parts: ['M112,258 L174,258 L188,300 L98,300 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 412, rx: 200, ry: 8,  op: 0.20 },   // زیر مبل
-        { cx: 400, cy: 492, rx: 110, ry: 6,  op: 0.18 },   // زیر میز
-        { cx: 715, cy: 460, rx: 28,  ry: 5,  op: 0.18 },   // زیر گلدان
-        { cx: 143, cy: 480, rx: 30,  ry: 4,  op: 0.18 },   // زیر آباژور
-      ],
-      details: [
-        // لبه‌یِ بیرونیِ پنجره
-        { d: 'M80,90 L250,90 L250,300 L80,300 Z', stroke: '#000', strokeOp: 0.20, sw: 1.5 },
-        // صلیبِ پنجره
-        { d: 'M165,90 L165,300 M80,195 L250,195', stroke: '#000', strokeOp: 0.18, sw: 1.2 },
-        // خطوطِ داخلِ پرده
-        { d: 'M60,90 Q70,150 60,220 Q50,280 62,310', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        { d: 'M270,90 Q260,150 270,220 Q280,280 268,310', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        // خطِ قابِ تابلو
-        { d: 'M345,110 L455,110 L455,205 L345,205 Z', stroke: '#000', strokeOp: 0.15, sw: 1 },
-        // خطِ قرنیز
-        { d: 'M0,318 L800,318', stroke: '#000', strokeOp: 0.15, sw: 1 },
-        // جداکننده‌یِ کوسن‌های پشتِ مبل
-        { d: 'M400,255 L400,345', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        // خطِ میزِ چوبی
-        { d: 'M280,462 L520,462', stroke: '#000', strokeOp: 0.12, sw: 1 },
-      ],
+      shadows: [],
+      details: [],
     },
 
-    /* ------------------------------------------------ اتاق خواب */
     bedroom: {
       name: 'اتاقِ خوابِ گرم',
       subtitle: 'دیوارِ تخت با تاجِ مخملی — نورِ عصر',
@@ -213,66 +325,43 @@
         { id: 'wall',      name: 'دیوار',        role: 'L1', mat: 'wall',
           parts: [FR.wall] },
         { id: 'accent',    name: 'دیوارِ تأکیدی', role: 'D',  mat: 'wallGloss',
-          parts: ['M180,60 L620,60 L620,340 L180,340 Z'] },
+          parts: ['M180,60 Q180,56 186,56 L614,56 Q620,56 620,60 L620,340 L180,340 Z'] },
         { id: 'crown',     name: 'قرنیزِ سقف',   role: 'K',  mat: 'wood',
-          parts: [FR.crown] },
+          parts: ['M0,0 L800,0 L800,10 L0,10 Z','M0,10 L800,10 L800,18 L0,18 Z'] },
         { id: 'art',       name: 'تابلو',          role: 'P',  mat: 'art',
-          parts: ['M345,90 L455,90 L455,150 L345,150 Z'] },
+          parts: ['M345,88 Q345,84 350,84 L450,84 Q455,84 455,88 L455,150 L345,150 Z'] },
         { id: 'floor',     name: 'کف',             role: 'M',  mat: 'wood',
           parts: [FR.floor], texture: 'wood-plank' },
         { id: 'rug',       name: 'فرش',            role: 'L2', mat: 'rug',
           parts: ['M120,430 L680,430 L710,478 L90,478 Z'] },
-        // ---- تخت ----
         { id: 'headboard', name: 'تاجِ تخت',      role: 'K',  mat: 'velvet',
           parts: [
-            'M200,180 L600,180 L600,285 L200,285 Z',
-            'M200,180 L215,165 L585,165 L600,180 Z',
+            'M200,180 Q200,175 206,175 L594,175 Q600,175 600,180 L600,285 L200,285 Z',
+            'M200,180 L215,163 Q400,155 585,163 L600,180 Z'
           ] },
         { id: 'bedbody',   name: 'بدنه‌یِ تخت',   role: 'D',  mat: 'fabric',
-          parts: ['M200,285 L600,285 L600,410 L200,410 Z'] },
+          parts: ['M200,285 Q200,282 204,282 L596,282 Q600,282 600,285 L600,410 L200,410 Z'] },
         { id: 'duvet',     name: 'روتختی',        role: 'M',  mat: 'fabric',
-          parts: ['M200,310 L600,310 L600,410 L200,410 Z'] },
+          parts: ['M200,310 Q200,307 204,307 L596,307 Q600,307 600,310 L600,410 L200,410 Z'] },
         { id: 'pillow_l',  name: 'بالشِ چپ',      role: 'L1', mat: 'fabric',
-          parts: ['M225,255 L340,255 L345,305 L220,305 Z'] },
+          parts: ['M225,255 Q227,251 232,251 L335,251 Q340,251 342,255 L345,305 L220,305 Z'] },
         { id: 'pillow_r',  name: 'بالشِ راست',    role: 'L1', mat: 'fabric',
-          parts: ['M455,255 L570,255 L575,305 L450,305 Z'] },
+          parts: ['M455,255 Q457,251 462,251 L565,251 Q570,251 572,255 L575,305 L450,305 Z'] },
         { id: 'throw',     name: 'پتویِ تزئینی',  role: 'P',  mat: 'velvet',
-          parts: ['M365,310 L525,310 L535,395 L355,395 Z'] },
-        // ---- پاتختی‌ها ----
+          parts: ['M365,310 Q365,307 370,307 L520,307 Q525,307 525,310 L535,395 L355,395 Z'] },
         { id: 'night_l',   name: 'پاتختی چپ',     role: 'K',  mat: 'wood',
           parts: ['M110,320 L180,320 L180,412 L110,412 Z'] },
         { id: 'night_r',   name: 'پاتختی راست',   role: 'K',  mat: 'wood',
           parts: ['M620,320 L690,320 L690,412 L620,412 Z'] },
-        // ---- آباژورها ----
         { id: 'lamp_l',    name: 'آباژورِ چپ',    role: 'P',  mat: 'brass',
-          parts: [
-            'M138,308 L152,308 L152,320 L138,320 Z',
-            'M120,278 L170,278 L165,308 L125,308 Z',
-          ] },
+          parts: ['M138,308 L152,308 L152,320 L138,320 Z','M120,278 L170,278 L165,308 L125,308 Z'] },
         { id: 'lamp_r',    name: 'آباژورِ راست',  role: 'P',  mat: 'brass',
-          parts: [
-            'M648,308 L662,308 L662,320 L648,320 Z',
-            'M630,278 L680,278 L675,308 L635,308 Z',
-          ] },
+          parts: ['M648,308 L662,308 L662,320 L648,320 Z','M630,278 L680,278 L675,308 L635,308 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 415, rx: 210, ry: 9, op: 0.22 },
-        { cx: 400, cy: 492, rx: 160, ry: 7, op: 0.16 },
-        { cx: 145, cy: 415, rx: 40,  ry: 5, op: 0.18 },
-        { cx: 655, cy: 415, rx: 40,  ry: 5, op: 0.18 },
-      ],
-      details: [
-        { d: 'M200,180 L600,180 L600,285 L200,285 Z', stroke: '#000', strokeOp: 0.12, sw: 1.2 },
-        { d: 'M200,285 L600,285', stroke: '#000', strokeOp: 0.15, sw: 1 },
-        { d: 'M200,310 L600,310', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        { d: 'M0,318 L800,318', stroke: '#000', strokeOp: 0.12, sw: 1 },
-        { d: 'M110,320 L110,412 M180,320 L180,412', stroke: '#000', strokeOp: 0.10, sw: 0.8 },
-        { d: 'M620,320 L620,412 M690,320 L690,412', stroke: '#000', strokeOp: 0.10, sw: 0.8 },
-        { d: 'M345,90 L455,90 L455,150 L345,150 Z', stroke: '#000', strokeOp: 0.15, sw: 1 },
-      ],
+      shadows: [],
+      details: [],
     },
 
-    /* ------------------------------------------------ آشپزخانه */
     kitchen: {
       name: 'آشپزخانه‌یِ مدرن',
       subtitle: 'نمایِ روبه‌رو — نورِ روز',
@@ -283,16 +372,16 @@
           parts: [
             'M40,40 L250,40 L250,140 L40,140 Z',
             'M280,40 L490,40 L490,140 L280,140 Z',
-            'M520,40 L760,40 L760,140 L520,140 Z',
+            'M520,40 L760,40 L760,140 L520,140 Z'
           ] },
         { id: 'splash',    name: 'میان‌کابینتی',   role: 'L1', mat: 'tile',
           parts: ['M40,140 L760,140 L760,220 L40,220 Z'] },
         { id: 'floor',     name: 'کف',             role: 'K',  mat: 'tile',
           parts: [FR.floor], texture: 'tile' },
         { id: 'counter',   name: 'سنگِ کانتر',    role: 'M',  mat: 'marble',
-          parts: ['M20,220 L780,220 L780,242 L20,242 Z'] },
+          parts: ['M20,220 L780,220 L780,244 L20,244 Z'] },
         { id: 'lower',     name: 'کابینتِ پایین', role: 'D',  mat: 'wallGloss',
-          parts: ['M40,242 L760,242 L760,400 L40,400 Z'] },
+          parts: ['M40,244 L760,244 L760,400 L40,400 Z'] },
         { id: 'hardware',  name: 'دستگیره‌ها',    role: 'P',  mat: 'brass',
           parts: [
             'M120,300 L127,300 L127,345 L120,345 Z',
@@ -301,36 +390,22 @@
             'M442,300 L449,300 L449,345 L442,345 Z',
             'M562,300 L569,300 L569,345 L562,345 Z',
             'M604,300 L611,300 L611,345 L604,345 Z',
-            'M720,300 L727,300 L727,345 L720,345 Z',
+            'M720,300 L727,300 L727,345 L720,345 Z'
           ] },
         { id: 'hood',      name: 'هود',            role: 'P',  mat: 'metal',
           parts: ['M320,8 L480,8 L460,45 L340,45 Z'] },
         { id: 'faucet',    name: 'شیرآلات',        role: 'P',  mat: 'brass',
           parts: [
             'M395,200 L405,200 L405,222 L395,222 Z',
-            'M400,200 Q400,178 418,178 L435,178 L435,188 L423,188 Q412,188 412,200 Z',
+            'M400,200 Q400,178 418,178 L435,178 L435,188 L423,188 Q412,188 412,200 Z'
           ] },
         { id: 'rug',       name: 'زیرپایی',        role: 'L2', mat: 'rug',
           parts: ['M300,430 L500,430 L530,478 L270,478 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 402, rx: 380, ry: 6, op: 0.20 },
-        { cx: 400, cy: 482, rx: 130, ry: 5, op: 0.18 },
-      ],
-      details: [
-        // جداکننده‌یِ کابینت‌های بالا
-        { d: 'M250,40 L250,140 M280,40 L280,140 M490,40 L490,140 M520,40 L520,140',
-          stroke: '#000', strokeOp: 0.12, sw: 1 },
-        // خطِ کفِ کابینت‌هایِ بالا
-        { d: 'M40,140 L760,140', stroke: '#000', strokeOp: 0.14, sw: 1 },
-        // لبه‌یِ بالایِ سنگ کانتر
-        { d: 'M20,220 L780,220', stroke: '#000', strokeOp: 0.14, sw: 1 },
-        // جداکننده‌یِ درهایِ کابینتِ پایین
-        { d: 'M250,242 L250,400 M490,242 L490,400', stroke: '#000', strokeOp: 0.10, sw: 1 },
-      ],
+      shadows: [],
+      details: [],
     },
 
-    /* ------------------------------------------------ حمام */
     bathroom: {
       name: 'حمامِ اسپا',
       subtitle: 'دیوارِ کاشی — روشوییِ مرمری',
@@ -340,38 +415,29 @@
         { id: 'accent',   name: 'دیوارِ تأکیدی', role: 'D',  mat: 'tile',
           parts: ['M240,60 L560,60 L560,340 L240,340 Z'] },
         { id: 'mirror',   name: 'آینه',           role: 'L2', mat: 'glass',
-          parts: ['M320,80 L480,80 L480,220 L320,220 Z'] },
+          parts: ['M320,80 Q320,76 324,76 L476,76 Q480,76 480,80 L480,220 L320,220 Z'] },
         { id: 'floor',    name: 'کفِ کاشی',      role: 'M',  mat: 'tile',
           parts: [FR.floor], texture: 'tile' },
         { id: 'vanity',   name: 'کابینتِ روشویی', role: 'L2', mat: 'wood',
-          parts: ['M300,242 L500,242 L500,400 L300,400 Z'] },
+          parts: ['M300,242 Q300,239 304,239 L496,239 Q500,239 500,242 L500,400 L300,400 Z'] },
         { id: 'basin',    name: 'روشویی',         role: 'P',  mat: 'marble',
-          parts: ['M310,225 L490,225 Q495,225 495,235 L495,258 L305,258 L305,235 Q305,225 310,225 Z'] },
+          parts: ['M310,225 Q312,221 318,221 L482,221 Q488,221 490,225 L495,235 L495,258 L305,258 L305,235 Z'] },
         { id: 'faucet',   name: 'شیرآلات',        role: 'P',  mat: 'brass',
           parts: [
             'M395,200 L405,200 L405,228 L395,228 Z',
-            'M400,200 Q400,180 415,180 L430,180 L430,190 L420,190 Q410,190 410,200 Z',
+            'M400,200 Q400,180 415,180 L430,180 L430,190 L420,190 Q410,190 410,200 Z'
           ] },
         { id: 'towel_1',  name: 'حوله‌ها',         role: 'P',  mat: 'fabric',
-          parts: ['M632,155 L682,155 L682,215 L632,215 Z'] },
+          parts: ['M632,155 Q632,152 636,152 L678,152 Q682,152 682,155 L682,215 L632,215 Z'] },
         { id: 'towel_2',  name: 'حوله‌ها',         role: 'P',  mat: 'fabric',
-          parts: ['M635,220 L678,220 L678,285 L635,285 Z'] },
+          parts: ['M635,220 Q635,217 638,217 L674,217 Q678,217 678,220 L678,285 L635,285 Z'] },
         { id: 'mat',      name: 'زیرپایی',         role: 'P',  mat: 'rug',
           parts: ['M310,420 L490,420 L520,470 L280,470 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 405, rx: 130, ry: 7, op: 0.22 },
-        { cx: 400, cy: 475, rx: 120, ry: 5, op: 0.16 },
-      ],
-      details: [
-        { d: 'M320,80 L480,80 L480,220 L320,220 Z', stroke: '#000', strokeOp: 0.18, sw: 1.4 },
-        { d: 'M240,60 L560,60', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        { d: 'M300,242 L500,242', stroke: '#000', strokeOp: 0.12, sw: 1 },
-        { d: 'M632,155 L632,290 M632,155 L695,155', stroke: '#000', strokeOp: 0.20, sw: 1.6 },
-      ],
+      shadows: [],
+      details: [],
     },
 
-    /* ------------------------------------------------ اتاق کار */
     office: {
       name: 'اتاقِ کارِ مینیمال',
       subtitle: 'میزِ چوبی — قفسه‌یِ کتاب',
@@ -379,17 +445,16 @@
         { id: 'wall',      name: 'دیوار',        role: 'L1', mat: 'wall',
           parts: [FR.wall] },
         { id: 'crown',     name: 'قرنیزِ سقف',   role: 'K',  mat: 'wood',
-          parts: [FR.crown] },
+          parts: ['M0,0 L800,0 L800,10 L0,10 Z','M0,10 L800,10 L800,18 L0,18 Z'] },
         { id: 'art',       name: 'تابلو',          role: 'P',  mat: 'art',
-          parts: ['M325,110 L475,110 L475,215 L325,215 Z'] },
+          parts: ['M325,110 Q325,106 330,106 L470,106 Q475,106 475,110 L475,215 L325,215 Z'] },
         { id: 'floor',     name: 'کف',             role: 'M',  mat: 'wood',
           parts: [FR.floor], texture: 'wood-plank' },
         { id: 'rug',       name: 'فرش',            role: 'L2', mat: 'rug',
           parts: ['M230,438 L570,438 L600,483 L200,483 Z'] },
-        // قفسه‌یِ کتاب
         { id: 'shelf',     name: 'کتابخانه',      role: 'K',  mat: 'wood',
           parts: ['M620,80 L760,80 L760,400 L620,400 Z'] },
-        { id: 'books',     name: 'کتاب‌ها',        role: 'P',  mat: 'fabric',
+        { id: 'books',     name: 'کتاب‌ها',        role: 'P',  mat: 'paper',
           parts: [
             'M635,110 L660,110 L660,175 L635,175 Z',
             'M665,120 L685,120 L685,175 L665,175 Z',
@@ -399,59 +464,43 @@
             'M660,210 L680,210 L680,255 L660,255 Z',
             'M685,195 L710,195 L710,255 L685,255 Z',
             'M635,285 L660,285 L660,340 L635,340 Z',
-            'M665,295 L685,295 L685,340 L665,340 Z',
+            'M665,295 L685,295 L685,340 L665,340 Z'
           ] },
-        // میزِ کار
         { id: 'desk',      name: 'میزِ کار',       role: 'D',  mat: 'woodDark',
           parts: [
-            'M170,325 L630,325 L630,342 L170,342 Z',
+            'M170,323 Q170,320 174,320 L626,320 Q630,320 630,323 L630,342 L170,342 Z',
             'M180,342 L192,342 L192,412 L180,412 Z',
-            'M608,342 L620,342 L620,412 L608,412 Z',
+            'M608,342 L620,342 L620,412 L608,412 Z'
           ] },
         { id: 'monitor',   name: 'مانیتور',        role: 'P',  mat: 'metal',
           parts: [
             'M345,240 L455,240 L455,308 L345,308 Z',
             'M392,308 L408,308 L408,320 L392,320 Z',
-            'M365,320 L435,320 L435,328 L365,328 Z',
+            'M365,320 L435,320 L435,328 L365,328 Z'
           ] },
         { id: 'chair',     name: 'صندلی',          role: 'K',  mat: 'velvet',
           parts: [
-            'M365,352 L435,352 L435,398 L365,398 Z',
-            'M355,395 L445,395 L445,415 L355,415 Z',
+            'M365,352 Q365,349 368,349 L432,349 Q435,349 435,352 L435,398 L365,398 Z',
+            'M355,395 Q355,392 360,392 L440,392 Q445,392 445,395 L445,415 L355,415 Z',
             'M370,415 L378,415 L378,440 L370,440 Z',
-            'M422,415 L430,415 L430,440 L422,440 Z',
+            'M422,415 L430,415 L430,440 L422,440 Z'
           ] },
-        { id: 'plant_pot', name: 'گلدان',          role: 'P',  mat: 'plant',
-          parts: ['M90,330 L150,330 L145,412 L95,412 Z'] },
+        { id: 'plant_pot', name: 'گلدان',          role: 'P',  mat: 'terracotta',
+          parts: ['M90,330 Q92,327 96,327 L144,327 Q148,327 150,330 L145,412 L95,412 Z'] },
         { id: 'plant_leaf', name: 'برگ‌ها',         role: 'P',  mat: 'plant',
           parts: [
             'M120,330 Q105,300 88,290 Q108,308 116,328 Z',
             'M122,330 Q135,295 152,285 Q136,308 126,328 Z',
             'M120,330 Q122,300 118,278 Q114,304 114,328 Z',
-            'M121,330 Q132,303 142,295 Q128,315 124,328 Z',
+            'M121,330 Q132,303 142,295 Q128,315 124,328 Z'
           ] },
         { id: 'lamp',      name: 'آباژورِ رومیزی', role: 'L2', mat: 'metal',
-          parts: [
-            'M475,300 L485,300 L485,325 L475,325 Z',
-            'M465,272 L495,272 L490,302 L470,302 Z',
-          ] },
+          parts: ['M475,300 L485,300 L485,325 L475,325 Z','M465,272 L495,272 L490,302 L470,302 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 415, rx: 240, ry: 7, op: 0.20 },
-        { cx: 400, cy: 443, rx: 55,  ry: 5, op: 0.20 },
-        { cx: 690, cy: 403, rx: 80,  ry: 6, op: 0.18 },
-        { cx: 120, cy: 415, rx: 35,  ry: 5, op: 0.18 },
-      ],
-      details: [
-        { d: 'M325,110 L475,110 L475,215 L325,215 Z', stroke: '#000', strokeOp: 0.15, sw: 1 },
-        { d: 'M620,175 L760,175 M620,255 L760,255 M620,340 L760,340', stroke: '#000', strokeOp: 0.10, sw: 1 },
-        { d: 'M170,325 L630,325', stroke: '#000', strokeOp: 0.12, sw: 1 },
-        { d: 'M345,240 L455,240 L455,308 L345,308 Z', stroke: '#000', strokeOp: 0.15, sw: 1.2 },
-        { d: 'M0,318 L800,318', stroke: '#000', strokeOp: 0.12, sw: 1 },
-      ],
+      shadows: [],
+      details: [],
     },
 
-    /* ------------------------------------------------ کافه */
     cafe: {
       name: 'کافه‌یِ گرم',
       subtitle: 'کانترِ چوبی — نورِ آویز',
@@ -462,124 +511,95 @@
           parts: ['M0,0 L800,0 L800,115 L0,115 Z'] },
         { id: 'floor',     name: 'کفِ کافه',     role: 'K',  mat: 'tile',
           parts: [FR.floor], texture: 'tile' },
-        // قفسه و بطری‌ها
         { id: 'shelf',     name: 'قفسه',          role: 'D',  mat: 'woodDark',
           parts: [
             'M120,120 L680,120 L680,140 L120,140 Z',
-            'M120,180 L680,180 L680,200 L120,200 Z',
+            'M120,180 L680,180 L680,200 L120,200 Z'
           ] },
         { id: 'bottles',   name: 'بطری‌ها',        role: 'P',  mat: 'glass',
           parts: [
-            'M150,80 L165,80 L165,120 L150,120 Z',
+            'M150,80 Q152,78 156,78 L162,78 Q166,78 168,80 L168,120 L150,120 Z',
             'M180,90 L195,90 L195,120 L180,120 Z',
             'M215,85 L230,85 L230,120 L215,120 Z',
             'M250,95 L265,95 L265,120 L250,120 Z',
             'M500,85 L515,85 L515,120 L500,120 Z',
             'M540,95 L555,95 L555,120 L540,120 Z',
-            'M575,90 L590,90 L590,120 L575,120 Z',
+            'M575,90 L590,90 L590,120 L575,120 Z'
           ] },
-        // کانتر
         { id: 'counter',   name: 'کانترِ چوبی',  role: 'M',  mat: 'wood',
           parts: ['M80,240 L720,240 L720,398 L80,398 Z'] },
         { id: 'counter_top', name: 'سنگِ کانتر', role: 'L2', mat: 'marble',
           parts: ['M70,228 L730,228 L730,242 L70,242 Z'] },
-        // صندلی‌ها
         { id: 'stool_1',   name: 'صندلی',         role: 'K',  mat: 'leather',
           parts: [
-            'M150,400 L200,400 L200,415 L150,415 Z',
+            'M150,400 Q150,397 154,397 L196,397 Q200,397 200,400 L200,415 L150,415 Z',
             'M158,415 L166,415 L166,465 L158,465 Z',
-            'M184,415 L192,415 L192,465 L184,465 Z',
+            'M184,415 L192,415 L192,465 L184,465 Z'
           ] },
         { id: 'stool_2',   name: 'صندلی',         role: 'K',  mat: 'leather',
           parts: [
-            'M300,400 L350,400 L350,415 L300,415 Z',
+            'M300,400 Q300,397 304,397 L346,397 Q350,397 350,400 L350,415 L300,415 Z',
             'M308,415 L316,415 L316,465 L308,465 Z',
-            'M334,415 L342,415 L342,465 L334,465 Z',
+            'M334,415 L342,415 L342,465 L334,465 Z'
           ] },
         { id: 'stool_3',   name: 'صندلی',         role: 'K',  mat: 'leather',
           parts: [
-            'M450,400 L500,400 L500,415 L450,415 Z',
+            'M450,400 Q450,397 454,397 L496,397 Q500,397 500,400 L500,415 L450,415 Z',
             'M458,415 L466,415 L466,465 L458,465 Z',
-            'M484,415 L492,415 L492,465 L484,465 Z',
+            'M484,415 L492,415 L492,465 L484,465 Z'
           ] },
         { id: 'stool_4',   name: 'صندلی',         role: 'K',  mat: 'leather',
           parts: [
-            'M600,400 L650,400 L650,415 L600,415 Z',
+            'M600,400 Q600,397 604,397 L646,397 Q650,397 650,400 L650,415 L600,415 Z',
             'M608,415 L616,415 L616,465 L608,465 Z',
-            'M634,415 L642,415 L642,465 L634,465 Z',
+            'M634,415 L642,415 L642,465 L634,465 Z'
           ] },
-        // چراغ‌هایِ آویز
         { id: 'pendant_1', name: 'چراغِ آویز',    role: 'P',  mat: 'brass',
-          parts: [
-            'M180,0 L180,55 L184,55 L184,0 Z',
-            'M160,55 L204,55 L212,100 L152,100 Z',
-          ] },
+          parts: ['M180,0 L180,55 L184,55 L184,0 Z','M160,55 L204,55 L212,100 L152,100 Z'] },
         { id: 'pendant_2', name: 'چراغِ آویز',    role: 'P',  mat: 'brass',
-          parts: [
-            'M400,0 L400,55 L404,55 L404,0 Z',
-            'M380,55 L424,55 L432,100 L372,100 Z',
-          ] },
+          parts: ['M400,0 L400,55 L404,55 L404,0 Z','M380,55 L424,55 L432,100 L372,100 Z'] },
         { id: 'pendant_3', name: 'چراغِ آویز',    role: 'P',  mat: 'brass',
-          parts: [
-            'M620,0 L620,55 L624,55 L624,0 Z',
-            'M600,55 L644,55 L652,100 L592,100 Z',
-          ] },
+          parts: ['M620,0 L620,55 L624,55 L624,0 Z','M600,55 L644,55 L652,100 L592,100 Z'] },
       ],
-      shadows: [
-        { cx: 400, cy: 400, rx: 330, ry: 8, op: 0.22 },
-        { cx: 175, cy: 466, rx: 28,  ry: 4, op: 0.20 },
-        { cx: 325, cy: 466, rx: 28,  ry: 4, op: 0.20 },
-        { cx: 475, cy: 466, rx: 28,  ry: 4, op: 0.20 },
-        { cx: 625, cy: 466, rx: 28,  ry: 4, op: 0.20 },
-      ],
-      details: [
-        { d: 'M0,115 L800,115', stroke: '#000', strokeOp: 0.18, sw: 1.5 },
-        { d: 'M120,120 L680,120', stroke: '#000', strokeOp: 0.15, sw: 1 },
-        { d: 'M120,180 L680,180', stroke: '#000', strokeOp: 0.12, sw: 1 },
-        { d: 'M70,228 L730,228 L730,242 L70,242 Z', stroke: '#000', strokeOp: 0.12, sw: 1 },
-        // خطوطِ عمودیِ کانتر
-        { d: 'M240,240 L240,398 M400,240 L400,398 M560,240 L560,398',
-          stroke: '#000', strokeOp: 0.08, sw: 1 },
-      ],
+      shadows: [],
+      details: [],
     },
   };
 
   const LIGHTS = {
-    dawn:  { name: 'صبح', icon: 'sunrise', tint: 'rgba(255, 210, 160, 0.08)' },
-    day:   { name: 'روز',  icon: 'sun',     tint: 'rgba(255, 250, 240, 0.00)' },
-    dusk:  { name: 'عصر', icon: 'sunset',  tint: 'rgba(255, 170, 100, 0.12)' },
-    night: { name: 'شب',  icon: 'moon',    tint: 'rgba(60, 80, 130, 0.28)' },
+    dawn:  { name: 'صبح', icon: 'sunrise' },
+    day:   { name: 'روز',  icon: 'sun' },
+    dusk:  { name: 'عصر',  icon: 'sunset' },
+    night: { name: 'شب',   icon: 'moon' },
   };
 
   /* ============================================================
-     موتور رندر
+     موتور رندر — هسته‌ی اصلی
      ============================================================ */
-  const KELVIN = { 2700: '#FFB46B', 3000: '#FFC98E', 4000: '#FFE3C2', 6500: '#E4EEFF' };
+  const KELVIN = { 2700: '#FFB070', 3000: '#FFC88E', 4000: '#FFE4C6', 6500: '#E6EEFF' };
 
-  function lightOverlay(c, id) {
-    const t = c.t;
-    const sv = t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
-    const k = Math.min(1, sv * 2);
-    const warm = (0.24 * (1 - k) * (t > 13 ? 1.3 : 1)).toFixed(3);
-    const night = (0.32 * (1 - Math.min(1, sv * 3.2))).toFixed(3);
-    const R = (fill) => `<rect width="800" height="500" fill="${fill}" pointer-events="none"/>`;
-    let html = R(`rgba(255,170,100,${warm})`) + R(`rgba(45,65,125,${night})`);
-    if (c.wx === 'ابری') html += R('rgba(140,150,168,0.12)');
-    if (c.dir === 'شمالی') html += R('rgba(110,140,205,0.07)');
-    else if (c.dir === 'جنوبی') html += R('rgba(255,214,150,0.05)');
-    const lampOn = (c.lamp === null || c.lamp === undefined) ? sv < 0.2 : !!c.lamp;
-    let defs = '';
-    if (lampOn) {
-      const col = KELVIN[c.kelvin] || KELVIN[3000];
-      defs = `<radialGradient id="${id('lamp')}" cx="0.5" cy="0" r="0.75"><stop offset="0" stop-color="${col}" stop-opacity="0.85"/><stop offset="0.45" stop-color="${col}" stop-opacity="0.25"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`;
-      html += `<rect width="800" height="500" fill="url(#${id('lamp')})" style="mix-blend-mode:screen" opacity="0.35" pointer-events="none"/>`;
-    }
-    return { defs, html };
+  // نورپردازیِ محیطی بر اساس ساعت روز: شدت، جهت، رنگ
+  function lightParams(t, dir, wx, lampOn, lampKelvin) {
+    const sv = t >= 20 || t < 5 ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
+    const dayAmt = clamp(sv * 1.15, 0, 1);
+    // رنگِ نورِ روز: صبح سرد→طوسی، ظهر خنثی، عصر گرم
+    let skyTint = '#FFFFFF';
+    if (t < 9)      skyTint = mixHex('#B8D0E8', '#FFE8C8', clamp((t - 6) / 3, 0, 1));
+    else if (t < 15) skyTint = mixHex('#FFE8C8', '#FFFFFF', clamp((t - 9) / 6, 0, 1));
+    else if (t < 18) skyTint = mixHex('#FFFFFF', '#FFC088', clamp((t - 15) / 3, 0, 1));
+    else if (t < 20) skyTint = mixHex('#FFC088', '#8A5A48', clamp((t - 18) / 2, 0, 1));
+    else             skyTint = '#3A4460';
+    // جهتِ نور بر اساس جهت پنجره
+    let lx = -1;
+    if (dir === 'شمالی') lx = 0;      // نورِ پراکنده
+    if (dir === 'جنوبی') lx = 0.55;   // روبرو
+    if (dir === 'شرقی')  lx = -0.85;  // از راست
+    if (dir === 'غربی')  lx = 0.85;   // از چپ
+    if (wx === 'ابری') { lx *= 0.5; skyTint = mixHex(skyTint, '#98A0B0', 0.35); }
+    const lampC = lampOn ? (KELVIN[lampKelvin] || KELVIN[3000]) : null;
+    return { dayAmt, skyTint, lx, lampOn, lampC };
   }
 
-  /* ============================================================
-     پکیج واقع‌گرایی — نور، سایه، بازتاب، بافت (نسخه ۵)
-     ============================================================ */
   function rng(seed) { let s = (seed >>> 0) || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
   function bbox(parts) {
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -588,27 +608,58 @@
     return { x0, y0, x1, y1 };
   }
 
+  /* ============================================================
+     پکیجِ واقع‌گرایی — نور، سایه، بازتاب، بافت، AO، پُست‌پروسس
+     ============================================================ */
+  let _svgUid = 0;
+
   function realismKit(scene, asg, pal, opts, id, lite) {
-    const L = opts.light || { t: 13, lamp: null, kelvin: 3000 };
-    const sv = L.t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (L.t - 6) / 14));
-    const lampOn = (L.lamp === null || L.lamp === undefined) ? sv < 0.2 : !!L.lamp;
-    const lampC = KELVIN[L.kelvin] || KELVIN[3000];
+    const L = opts.light || { t: 13, lamp: null, kelvin: 3000, dir: 'جنوبی', wx: 'آفتابی' };
+    const LP = lightParams(L.t, L.dir || 'جنوبی', L.wx || 'آفتابی', L.lamp === null ? (L.t >= 20 || L.t < 5.5) : !!L.lamp, L.kelvin || 3000);
+    const { dayAmt, skyTint, lx, lampOn, lampC } = LP;
+
     const f = n => (+n).toFixed(1);
     const defs = [];
     const byId = {}; scene.layers.forEach(l => byId[l.id] = l);
     const win = byId.window, wb = win ? bbox(win.parts) : null;
-    const lx = wb && (wb.x0 + wb.x1) / 2 > 400 ? 1 : -1;            // سمتِ نور
-    const NOP = ['floor', 'rug', 'wall', 'accent', 'crown', 'window', 'mirror'];
-    const NOB = ['wall', 'floor', 'crown', 'window', 'accent', 'rug'];
-    const isProp = l => { if (NOP.includes(l.id)) return false; const b = bbox(l.parts); return b.y1 > 350 && b.y1 <= 500; };
-    const cpOf = (l, n) => { const c = id('cp-' + n); defs.push(`<clipPath id="${c}">${l.parts.map(d => `<path d="${d}"/>`).join('')}</clipPath>`); return c; };
-    const grad = (n, x1, y1, x2, y2, stops, user) => { defs.push(`<linearGradient id="${id(n)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${user ? ' gradientUnits="userSpaceOnUse"' : ''}>${stops.map(s => `<stop offset="${s[0]}" stop-color="${s[1]}" stop-opacity="${s[2]}"/>`).join('')}</linearGradient>`); return `url(#${id(n)})`; };
-    const rad = (n, cx, cy, r, col, o) => { defs.push(`<radialGradient id="${id(n)}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"><stop offset="0" stop-color="${col}" stop-opacity="${o}"/><stop offset="0.5" stop-color="${col}" stop-opacity="${f(o * 0.3)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`); return `url(#${id(n)})`; };
-    defs.push(`<filter id="${id('rb')}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2"/></filter><filter id="${id('rb4')}" x="-40%" y="-80%" width="180%" height="260%"><feGaussianBlur stdDeviation="6"/></filter>`);
-    const fl = byId.floor;
-    const gl = (opts.gloss && opts.gloss.floor !== undefined) ? opts.gloss.floor : (fl && (MAT[fl.mat] || MAT.wood).rough < 0.55 ? 0.4 : 0.06);
 
-    /* --- کف: تخته/کاشی با پرسپکتیو و تنوع تُن --- */
+    // گروه‌بندی نقش‌ها
+    const NOP = ['floor', 'rug', 'wall', 'accent', 'crown', 'window', 'mirror', 'window_frame_out'];
+    const NOB = ['wall', 'floor', 'crown', 'window', 'accent', 'rug', 'window_frame_out'];
+    const isProp = l => {
+      if (NOP.includes(l.id)) return false;
+      const b = bbox(l.parts);
+      return b.y1 > 350 && b.y1 <= 500;
+    };
+
+    const cpOf = (l, n) => {
+      const c = id('cp-' + n);
+      defs.push(`<clipPath id="${c}">${l.parts.map(d => `<path d="${d}"/>`).join('')}</clipPath>`);
+      return c;
+    };
+
+    // -------- گرادیان‌ها --------
+    const grad = (n, x1, y1, x2, y2, stops, user) => {
+      defs.push(`<linearGradient id="${id(n)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${user ? ' gradientUnits="userSpaceOnUse"' : ''}>${stops.map(s => `<stop offset="${s[0]}" stop-color="${s[1]}" stop-opacity="${s[2]}"/>`).join('')}</linearGradient>`);
+      return `url(#${id(n)})`;
+    };
+    const rad = (n, cx, cy, r, col, o) => {
+      defs.push(`<radialGradient id="${id(n)}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"><stop offset="0" stop-color="${col}" stop-opacity="${o}"/><stop offset="0.5" stop-color="${col}" stop-opacity="${f(o * 0.3)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>`);
+      return `url(#${id(n)})`;
+    };
+
+    // فیلترهای کمکی
+    defs.push(`<filter id="${id('rb')}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.4"/></filter>`);
+    defs.push(`<filter id="${id('rb4')}" x="-40%" y="-80%" width="180%" height="260%"><feGaussianBlur stdDeviation="7"/></filter>`);
+    defs.push(`<filter id="${id('rbL')}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="14"/></filter>`);
+
+    const fl = byId.floor;
+    const gl = (opts.gloss && opts.gloss.floor !== undefined) ? opts.gloss.floor
+              : (fl && (MAT[fl.mat] || MAT.wood).rough < 0.5 ? 0.4 : 0.05);
+
+    /* ========================================================
+       کفِ پرسپکتیو با تخته‌های جهت‌دار و تیرگیِ لبه
+       ======================================================== */
     function floorTex(l) {
       const tile = l.texture === 'tile', rn = rng(tile ? 5 : 9);
       const vx = 400, vy = 150, ya = 340, yb = 500, step = tile ? 110 : 62, zmax = (yb - vy) / (ya - vy);
@@ -623,77 +674,164 @@
         cuts.push(zmax);
         for (let k = 0; k + 1 < cuts.length; k++) {
           const A = yz(cuts[k]), B = yz(cuts[k + 1]), r = rn();
-          const fill = r < 0.5 ? `rgba(0,0,0,${f((0.5 - r) * 0.2)})` : `rgba(255,255,255,${f((r - 0.5) * 0.16)})`;
-          h += `<path d="M${f(px(X0, A))},${f(A)} L${f(px(X1, A))},${f(A)} L${f(px(X1, B))},${f(B)} L${f(px(X0, B))},${f(B)} Z" fill="${fill}" stroke="rgba(0,0,0,${tile ? 0.28 : 0.2})" stroke-width="${tile ? 1.1 : 0.7}"/>`;
+          // تخته‌ی چوبی: نوسانِ تُنِ بیشتر + رگه‌ی افقی
+          const tone = r < 0.5 ? `rgba(0,0,0,${f((0.5 - r) * 0.22)})` : `rgba(255,255,255,${f((r - 0.5) * 0.14)})`;
+          h += `<path d="M${f(px(X0, A))},${f(A)} L${f(px(X1, A))},${f(A)} L${f(px(X1, B))},${f(B)} L${f(px(X0, B))},${f(B)} Z" fill="${tone}" stroke="rgba(0,0,0,${tile ? 0.3 : 0.22})" stroke-width="${tile ? 1.2 : 0.7}"/>`;
+          if (!tile && !lite) {
+            // رگه‌یِ افقیِ نازک برای القای چوب
+            const ym = (A + B) / 2 + (rn() - 0.5) * (B - A) * 0.5;
+            h += `<path d="M${f(px(X0, ym))},${f(ym)} L${f(px(X1, ym))},${f(ym)}" stroke="rgba(0,0,0,0.06)" stroke-width="0.6"/>`;
+          }
         }
       }
       return `<g pointer-events="none" clip-path="url(#${cp})">${h}</g>`;
     }
 
-    /* --- آسمان و منظره‌ی پشتِ پنجره بر پایه‌ی ساعت --- */
+    /* ========================================================
+       آسمان پشت پنجره — بر اساس ساعت، جهت، هوا
+       ======================================================== */
     function sky(l) {
       const b = wb, W = b.x1 - b.x0, H = b.y1 - b.y0, cp = cpOf(l, 'sky');
-      const a = clamp(sv * 4, 0, 1), d = clamp((sv - 0.25) / 0.5, 0, 1);
-      const top = mixHex(mixHex('#0d1633', '#4a4a8a', a), '#4f9be6', d);
-      const bot = mixHex(mixHex('#1b2a55', '#f6b27a', a), '#cfe7fb', d);
+      const a = clamp(dayAmt * 4, 0, 1), d = clamp((dayAmt - 0.25) / 0.5, 0, 1);
+      const top = mixHex(mixHex('#0A1428', '#4A4A8A', a), '#4F9BE6', d);
+      const bot = mixHex(mixHex('#1A2A55', '#F6B27A', a), '#CFE7FB', d);
       const g = grad('sky', 0, 0, 0, 1, [[0, top, 1], [1, bot, 1]]);
       const rr = rng(5); let bld = '', x = b.x0;
-      while (x < b.x1) { const w = 10 + rr() * 22, hh = H * (0.1 + rr() * 0.26); bld += `<rect x="${f(x)}" y="${f(b.y1 - hh)}" width="${f(w)}" height="${f(hh + 2)}"/>`; x += w + 1; }
+      while (x < b.x1) {
+        const w = 10 + rr() * 22, hh = H * (0.1 + rr() * 0.26);
+        bld += `<rect x="${f(x)}" y="${f(b.y1 - hh)}" width="${f(w)}" height="${f(hh + 2)}"/>`;
+        x += w + 1;
+      }
       const ph = clamp((L.t - 6) / 14, 0.05, 0.95);
-      const sun = sv > 0.02 ? `<rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${rad('sun', b.x0 + W * ph, b.y0 + H * (0.8 - 0.6 * Math.sin(Math.PI * ph)), W * 0.9, '#FFF3D6', f(0.35 + sv * 0.6))}"/>` : '';
-      let stars = ''; if (sv < 0.08) for (let i = 0; i < 14; i++) stars += `<circle cx="${f(b.x0 + rr() * W)}" cy="${f(b.y0 + rr() * H * 0.5)}" r="${f(0.5 + rr() * 0.6)}" fill="#fff" opacity="${f(0.4 + rr() * 0.5)}"/>`;
+      const sunPos = [b.x0 + W * ph, b.y0 + H * (0.8 - 0.6 * Math.sin(Math.PI * ph))];
+      const sun = dayAmt > 0.02 ? `<rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${rad('sun', sunPos[0], sunPos[1], W * 1.1, '#FFF3D6', f(0.4 + dayAmt * 0.55))}"/>` : '';
+      let stars = '';
+      if (dayAmt < 0.08) for (let i = 0; i < 14; i++) stars += `<circle cx="${f(b.x0 + rr() * W)}" cy="${f(b.y0 + rr() * H * 0.5)}" r="${f(0.5 + rr() * 0.6)}" fill="#fff" opacity="${f(0.4 + rr() * 0.5)}"/>`;
       const tint = pal[asg.window] || '#fff';
-      return `<g pointer-events="none" clip-path="url(#${cp})"><rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${g}"/>${sun}${stars}<g fill="${mixHex(bot, '#0a0f1e', 0.6)}" opacity="0.9">${bld}</g><rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${tint}" opacity="0.14"/><path d="M${b.x0 + W * 0.15},${b.y1} L${b.x0 + W * 0.45},${b.y0} L${b.x0 + W * 0.62},${b.y0} L${b.x0 + W * 0.32},${b.y1} Z" fill="#fff" opacity="0.10"/></g>`;
+      return `<g pointer-events="none" clip-path="url(#${cp})">
+        <rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${g}"/>
+        ${sun}${stars}
+        <g fill="${mixHex(bot, '#0A0F1E', 0.55)}" opacity="0.85">${bld}</g>
+        <rect x="${b.x0}" y="${b.y0}" width="${W}" height="${H}" fill="${tint}" opacity="0.10"/>
+        <path d="M${b.x0 + W * 0.15},${b.y1} L${b.x0 + W * 0.45},${b.y0} L${b.x0 + W * 0.62},${b.y0} L${b.x0 + W * 0.32},${b.y1} Z" fill="#fff" opacity="0.08"/>
+      </g>`;
     }
 
-    /* --- نقشِ فرش (پرسپکتیو دو‌خطی) --- */
+    /* ========================================================
+       نقشِ فرش — پرسپکتیو د‌وخطی + حاشیه + ترنج
+       ======================================================== */
     function rugMotif(l) {
       const n = l.parts[0].match(/-?\d+\.?\d*/g).map(Number);
       const A = [n[0], n[1]], B = [n[2], n[3]], C = [n[4], n[5]], D = [n[6], n[7]];
-      const P = (u, v) => { const tx = A[0] + (B[0] - A[0]) * u, ty = A[1] + (B[1] - A[1]) * u, bx = D[0] + (C[0] - D[0]) * u, by = D[1] + (C[1] - D[1]) * u; return [tx + (bx - tx) * v, ty + (by - ty) * v]; };
+      const P = (u, v) => {
+        const tx = A[0] + (B[0] - A[0]) * u, ty = A[1] + (B[1] - A[1]) * u;
+        const bx = D[0] + (C[0] - D[0]) * u, by = D[1] + (C[1] - D[1]) * u;
+        return [tx + (bx - tx) * v, ty + (by - ty) * v];
+      };
       const poly = (pts, fill, stroke, sw, op) => `<path d="M${pts.map(p => P(p[0], p[1]).map(f).join(',')).join(' L')} Z" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" opacity="${op}"/>`;
-      const base = pal[asg.rug] || '#888', c1 = lighten(base, 0.32), c2 = darken(base, 0.38), ac = pal[popIndex(pal)] || c1;
-      let h = poly([[.02, .06], [.98, .06], [.98, .94], [.02, .94]], 'none', c1, 2.2, 0.85)
-        + poly([[.06, .16], [.94, .16], [.94, .84], [.06, .84]], darken(base, 0.14), c2, 1.4, 0.55)
-        + poly([[.5, .2], [.72, .5], [.5, .8], [.28, .5]], c1, ac, 1.4, 0.6)
-        + poly([[.5, .32], [.6, .5], [.5, .68], [.4, .5]], ac, 'none', 0, 0.85);
-      [[.14, .3], [.86, .3], [.14, .7], [.86, .7]].forEach(([u, v]) => { h += poly([[u, v - .09], [u + .035, v], [u, v + .09], [u - .035, v]], c1, c2, 0.8, 0.6); });
-      for (let k = 0; k < 24; k++) { const u = 0.04 + k * 0.04; [.075, .885].forEach(v => { h += poly([[u, v], [u + .022, v], [u + .022, v + .04], [u, v + .04]], k % 2 ? ac : c1, 'none', 0, 0.7); }); }
+      const base = pal[asg.rug] || '#888', c1 = lighten(base, 0.30), c2 = darken(base, 0.36), ac = pal[popIndex(pal)] || c1;
+      let h = poly([[.02, .06], [.98, .06], [.98, .94], [.02, .94]], 'none', c1, 2.4, 0.9)
+        + poly([[.06, .16], [.94, .16], [.94, .84], [.06, .84]], darken(base, 0.16), c2, 1.4, 0.55)
+        + poly([[.5, .2], [.72, .5], [.5, .8], [.28, .5]], c1, ac, 1.4, 0.65)
+        + poly([[.5, .32], [.6, .5], [.5, .68], [.4, .5]], ac, 'none', 0, 0.88);
+      [[.14, .3], [.86, .3], [.14, .7], [.86, .7]].forEach(([u, v]) => {
+        h += poly([[u, v - .09], [u + .035, v], [u, v + .09], [u - .035, v]], c1, c2, 0.8, 0.6);
+      });
+      for (let k = 0; k < 24; k++) {
+        const u = 0.04 + k * 0.04;
+        [.075, .885].forEach(v => {
+          h += poly([[u, v], [u + .022, v], [u + .022, v + .04], [u, v + .04]], k % 2 ? ac : c1, 'none', 0, 0.7);
+        });
+      }
       return `<g pointer-events="none">${h}</g>`;
     }
 
-    /* --- سایه‌ی تماسی، پرتوِ خورشید و بازتابِ کف --- */
+    /* ========================================================
+       AO + سایه‌ی تماسی + پرتوِ نور + بازتاب کف
+       ======================================================== */
     function under() {
       let h = '';
-      if (wb && sv > 0.05 && L.wx !== 'ابری') {
-        const sunC = mixHex('#FFD9A0', '#FFF6E6', clamp((sv - 0.2) / 0.5, 0, 1));
-        const g = grad('shaft', 0, 0, 0, 1, [[0, sunC, f(0.42 * sv)], [1, sunC, 0]]);
-        const s = -lx * 150;
-        h += `<path d="M${wb.x0 + 10},342 L${wb.x1 - 10},342 L${wb.x1 - 10 + s},500 L${wb.x0 + 10 + s},500 Z" fill="${g}" filter="url(#${id('rb4')})" style="mix-blend-mode:screen" pointer-events="none"/>`;
+      // پرتویِ نور از پنجره
+      if (wb && dayAmt > 0.05 && L.wx !== 'ابری' && !lite) {
+        const sunC = mixHex(skyTint, '#FFF6E6', 0.35);
+        const g = grad('shaft', 0, 0, 0, 1, [[0, sunC, f(0.45 * dayAmt)], [1, sunC, 0]]);
+        const s = -lx * 180;
+        h += `<path d="M${wb.x0 + 8},342 L${wb.x1 - 8},342 L${wb.x1 - 8 + s},500 L${wb.x0 + 8 + s},500 Z" fill="${g}" filter="url(#${id('rbL')})" style="mix-blend-mode:screen" pointer-events="none"/>`;
       }
-      const dark = 0.5 + 0.5 * Math.max(sv, lampOn ? 0.4 : 0);
+      const darkness = 0.55 + 0.45 * Math.max(dayAmt, lampOn ? 0.5 : 0);
       scene.layers.filter(isProp).forEach(l => {
-        const b = bbox(l.parts), w = b.x1 - b.x0, cx = (b.x0 + b.x1) / 2 - lx * w * 0.12;
-        const soft = `<ellipse cx="${f(cx)}" cy="${f(b.y1 + 2)}" rx="${f(w * 0.56)}" ry="${f(Math.min(14, 4 + (b.y1 - b.y0) * 0.05))}" fill="#000" opacity="${f(0.3 * dark)}"${lite ? '' : ` filter="url(#${id('rb4')})"`}/>`;
-        const tight = `<ellipse cx="${f((b.x0 + b.x1) / 2)}" cy="${f(b.y1)}" rx="${f(w * 0.48)}" ry="3" fill="#000" opacity="0.35"${lite ? '' : ` filter="url(#${id('rb')})"`}/>`;
+        const b = bbox(l.parts), w = b.x1 - b.x0;
+        const cx = (b.x0 + b.x1) / 2 - lx * w * 0.15;
+        const soft = `<ellipse cx="${f(cx)}" cy="${f(b.y1 + 3)}" rx="${f(w * 0.58)}" ry="${f(Math.min(16, 4 + (b.y1 - b.y0) * 0.06))}" fill="#000" opacity="${f(0.34 * darkness)}"${lite ? '' : ` filter="url(#${id('rb4')})"`}/>`;
+        const tight = `<ellipse cx="${f((b.x0 + b.x1) / 2)}" cy="${f(b.y1)}" rx="${f(w * 0.46)}" ry="3.2" fill="#000" opacity="0.42"${lite ? '' : ` filter="url(#${id('rb')})"`}/>`;
         h += `<g pointer-events="none">${soft}${tight}</g>`;
+        // بازتاب کف (برای سطوح براق)
         if (!lite && gl > 0.05) {
-          const hh = Math.min(70, (b.y1 - b.y0) * 0.6), gd = grad('rg-' + l.id, 0, b.y1, 0, b.y1 + hh, [[0, '#fff', 1], [1, '#000', 1]], true), mk = id('rm-' + l.id);
+          const hh = Math.min(80, (b.y1 - b.y0) * 0.65);
+          const gd = grad('rg-' + l.id, 0, b.y1, 0, b.y1 + hh, [[0, '#fff', 1], [1, '#000', 1]], true);
+          const mk = id('rm-' + l.id);
           defs.push(`<mask id="${mk}" maskUnits="userSpaceOnUse" x="0" y="${b.y1}" width="800" height="${f(hh)}"><rect x="0" y="${b.y1}" width="800" height="${f(hh)}" fill="${gd}"/></mask>`);
-          h += `<g mask="url(#${mk})" pointer-events="none"><use href="#${id('L-' + l.id)}" transform="translate(0 ${2 * b.y1}) scale(1 -1)" opacity="${f(Math.min(0.35, 0.08 + gl * 0.4))}"/></g>`;
+          h += `<g mask="url(#${mk})" pointer-events="none"><use href="#${id('L-' + l.id)}" transform="translate(0 ${2 * b.y1}) scale(1 -1)" opacity="${f(Math.min(0.42, 0.10 + gl * 0.5))}"/></g>`;
         }
       });
       return h;
     }
 
+    /* ========================================================
+       سایه‌ی داخلی (Ambient Occlusion) زیرِ اشیای نزدیک به دیوار
+       ======================================================== */
+    function wallAO() {
+      let h = '';
+      // زیرِ قرنیز
+      h += `<rect x="0" y="18" width="800" height="14" fill="${grad('aoCrown', 0, 0, 0, 1, [[0, '#000', 0.18], [1, '#000', 0]])}"/>`;
+      // گوشه‌های دیوار
+      h += `<rect x="0" y="0" width="26" height="500" fill="${grad('aoL', 0, 0, 1, 0, [[0, '#000', 0.22], [1, '#000', 0]])}"/>`;
+      h += `<rect x="774" y="0" width="26" height="500" fill="${grad('aoR', 0, 0, 1, 0, [[0, '#000', 0], [1, '#000', 0.22]])}"/>`;
+      return h;
+    }
+
+    /* ========================================================
+       بازگشت API
+       ======================================================== */
     return {
       defs: () => defs.join(''),
       tex: l => (l.texture ? floorTex(l) : ''),
+      // بافتِ متریال را با فیلتر SVG اعمال می‌کند
+      matFilter(l) {
+        const mat = MAT[l.mat] || MAT.wall;
+        if (!mat.tex || mat.tex === 'glass' || lite) return '';
+        const cp = cpOf(l, 'tx-' + l.id);
+        return `<g pointer-events="none" clip-path="url(#${cp})" opacity="${f(clamp(0.55 + mat.rough * 0.35, 0, 1))}"><rect x="0" y="0" width="800" height="500" fill="#FFF" filter="url(#${id('tex-' + mat.tex)})"/></g>`;
+      },
+      // لبه‌های برجسته (بِوِل) — برای القای ضخامت
       bevel(l, mat) {
         if (lite || NOB.includes(l.id)) return '';
         const cp = cpOf(l, 'bv-' + l.id);
-        const s = (c, o, dx, dy) => `<g transform="translate(${dx},${dy})" opacity="${o}">${l.parts.map(d => `<path d="${d}" fill="none" stroke="${c}" stroke-width="7"/>`).join('')}</g>`;
-        return `<g clip-path="url(#${cp})" pointer-events="none"><g filter="url(#${id('rb')})">${s('#fff', f(0.28 + mat.hl), -lx * 2.5, 2.5)}${s('#000', 0.32, lx * 2.5, -2.5)}</g></g>`;
+        const s = (c, o, dx, dy) => `<g transform="translate(${dx},${dy})" opacity="${o}">${l.parts.map(d => `<path d="${d}" fill="none" stroke="${c}" stroke-width="6"/>`).join('')}</g>`;
+        // نور از سمت پنجره: سمتِ روشن سفید، سمتِ سایه سیاه
+        return `<g clip-path="url(#${cp})" pointer-events="none"><g filter="url(#${id('rb')})">${s('#FFF', f(0.32 + mat.hl), -lx * 3, 3)}${s('#000', 0.36, lx * 3, -3)}</g></g>`;
+      },
+      // شاینِ سطوحِ براق (مثل مرمر، فلز، شیشه)
+      sheen(l, mat) {
+        if (lite || mat.spec < 0.08) return '';
+        const cp = cpOf(l, 'sh-' + l.id);
+        const g = grad('shg-' + l.id, 0, 0, 0.8, 1, [
+          [0, '#FFF', f(mat.spec * 0.55)],
+          [0.35, '#FFF', 0],
+          [0.65, '#FFF', 0],
+          [1, '#FFF', f(mat.spec * 0.18)]
+        ]);
+        return `<g pointer-events="none" clip-path="url(#${cp})"><rect x="0" y="0" width="800" height="500" fill="${g}"/></g>`;
+      },
+      // گرادیانِ قویِ جهت‌دار روی هر سطح، بر اساس جهتِ نور
+      lit(l, color, mat) {
+        // گرادیانِ عمودی: بالای شیء روشن‌تر (نور سقف) — پایین تیره‌تر
+        const top = lighten(color, mat.hl * 0.55 + 0.02);
+        const bot = darken(color, mat.hl * 0.4 + 0.06);
+        // گرادیانِ افقی: سمتِ نور روشن‌تر
+        const lit_dir = lighten(color, mat.hl * 0.3);
+        const shadow_dir = darken(color, mat.hl * 0.25);
+        return { top, bot, lit_dir, shadow_dir };
       },
       after(l) {
         let h = '';
@@ -702,50 +840,64 @@
         if (l.id === (byId.rug ? 'rug' : 'floor')) h += under();
         return h;
       },
+      // لایه‌یِ بالایی: AO، نورِ محیطی، پُست‌پروسس
       top() {
         let h = '';
         const rc = (x, y, w, hh, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${fill}" pointer-events="none"/>`;
-        h += rc(0, 296, 800, 46, grad('aoB', 0, 0, 0, 1, [[0, '#000', 0], [1, '#000', 0.2]]));
-        h += rc(0, 340, 800, 70, grad('aoF', 0, 0, 0, 1, [[0, '#000', 0.22], [1, '#000', 0]]));
+        // AO زیرِ قرنیز
+        h += rc(0, 296, 800, 46, grad('aoB', 0, 0, 0, 1, [[0, '#000', 0], [1, '#000', 0.22]]));
+        // AO رویِ کف (پایین) و بالای کف (بالا)
+        h += rc(0, 340, 800, 70, grad('aoF', 0, 0, 0, 1, [[0, '#000', 0.24], [1, '#000', 0]]));
         h += rc(0, 0, 800, 56, grad('aoT', 0, 0, 0, 1, [[0, '#000', 0.18], [1, '#000', 0]]));
-        h += rc(0, 0, 80, 500, grad('aoL', 0, 0, 1, 0, [[0, '#000', 0.16], [1, '#000', 0]]));
-        h += rc(720, 0, 80, 500, grad('aoR', 0, 0, 1, 0, [[0, '#000', 0], [1, '#000', 0.16]]));
+        h += wallAO();
+        // نورِ محیطی از سمت پنجره
         const wc = wb ? [(wb.x0 + wb.x1) / 2, (wb.y0 + wb.y1) / 2] : [120, 180];
-        if (sv > 0.05) h += `<rect width="800" height="500" fill="${rad('wl', wc[0], wc[1], 560, '#FFF6E0', f(0.2 * sv))}" style="mix-blend-mode:screen" pointer-events="none"/>`;
-        if (lampOn) scene.layers.filter(l => /^lamp(_shade|_l|_r)?$/.test(l.id)).forEach(l => {
-          const b = bbox(l.parts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-          h += `<rect width="800" height="500" fill="${rad('lg-' + l.id, cx, cy, 190, lampC, 0.6)}" style="mix-blend-mode:screen" pointer-events="none"/>`;
-          h += `<g pointer-events="none" opacity="0.3">${l.parts.map(d => `<path d="${d}" fill="${lampC}"/>`).join('')}</g>`;
-        });
+        if (dayAmt > 0.05) {
+          h += `<rect width="800" height="500" fill="${rad('wl', wc[0], wc[1], 620, skyTint, f(0.22 * dayAmt))}" style="mix-blend-mode:screen" pointer-events="none"/>`;
+        }
+        // هاله‌ی نور لوستر/آباژور
+        if (lampOn) {
+          scene.layers.filter(l => /^lamp(_shade|_l|_r)?$/.test(l.id) || /^pendant_/.test(l.id)).forEach(l => {
+            const b = bbox(l.parts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+            h += `<rect width="800" height="500" fill="${rad('lg-' + l.id, cx, cy, 210, lampC, 0.7)}" style="mix-blend-mode:screen" pointer-events="none"/>`;
+            h += `<g pointer-events="none" opacity="0.35">${l.parts.map(d => `<path d="${d}" fill="${lampC}"/>`).join('')}</g>`;
+          });
+        }
+        // نورِ دست‌سازِ سقف (کلی)
         if (!lite) {
-          defs.push(`<filter id="${id('gr')}" filterUnits="userSpaceOnUse" x="0" y="0" width="800" height="500"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7"/><feColorMatrix type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  1.4 0 0 0 -0.55"/></filter>`);
-          h += `<rect width="800" height="500" fill="#000" filter="url(#${id('gr')})" opacity="0.4" pointer-events="none"/>`;
+          h += `<rect width="800" height="300" fill="${grad('ceil', 0, 0, 0, 1, [[0, '#FFF6E0', f(0.10 + 0.10 * dayAmt)], [1, '#FFF6E0', 0]])}" style="mix-blend-mode:screen" pointer-events="none"/>`;
+        }
+        // نویزِ فیلم (فیلم‌گرین)
+        if (!lite) {
+          defs.push(`<filter id="${id('gr')}" filterUnits="userSpaceOnUse" x="0" y="0" width="800" height="500">
+            <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7"/>
+            <feColorMatrix type="matrix" values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  1.5 0 0 0 -0.6"/>
+          </filter>`);
+          h += `<rect width="800" height="500" fill="#000" filter="url(#${id('gr')})" opacity="0.32" pointer-events="none"/>`;
         }
         return h;
       },
     };
   }
 
-  let _svgUid = 0;
-
+  /* ============================================================
+     ساخت SVG اصلی
+     ============================================================ */
   function buildSVG(scene, asg, palette, lightKey, opts = {}) {
     const uid = `u${++_svgUid}`;
     const id = (name) => `${uid}-${name}`;
-    const light = LIGHTS[lightKey] || LIGHTS.day;
-    const lo = opts.light ? lightOverlay(opts.light, id) : null;
     const defs = [];
-    const R = realismKit(scene, asg, palette, opts, id, !!opts.lite);
 
-    // فیلتر بلور (فقط برای سایه‌های زیر مبلمان)
+    const R = realismKit(scene, asg, palette, opts, id, !!opts.lite);
+    const L = opts.light || { t: 13, dir: 'جنوبی', wx: 'آفتابی', lamp: null, kelvin: 3000 };
+    const LP = lightParams(L.t, L.dir, L.wx, L.lamp === null ? (L.t >= 20 || L.t < 5.5) : !!L.lamp, L.kelvin);
+
+    // ---- فیلترهایِ متریال ----
+    defs.push(textureFilters(id));
+
+    // ---- پترن چوب/کاشی برای کف ----
     defs.push(`
-      <filter id="${id('blur')}" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="3.5"/>
-      </filter>
-      <filter id="${id('blur-lg')}" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="8"/>
-      </filter>
-      <pattern id="${id('wood-plank')}" x="0" y="0" width="240" height="22"
-               patternUnits="userSpaceOnUse">
+      <pattern id="${id('wood-plank')}" x="0" y="0" width="240" height="22" patternUnits="userSpaceOnUse">
         <path d="M0,21 L240,21" stroke="rgba(0,0,0,0.10)" stroke-width="0.8"/>
         <path d="M0,10 L240,10" stroke="rgba(0,0,0,0.04)" stroke-width="0.4"/>
       </pattern>
@@ -754,7 +906,7 @@
       </pattern>
     `);
 
-    // ---- لایه‌ها ----
+    // ---- رندرِ لایه‌ها ----
     const layerHtml = [];
     for (const layer of scene.layers) {
       const idx = asg[layer.id];
@@ -763,18 +915,17 @@
       if (!raw) continue;
 
       const mat = MAT[layer.mat] || MAT.wall;
+      // تنظیمِ گرمی/سردی + واکنش به نورِ محیطی
+      let color = raw;
+      if (mat.warm > 0) color = warm(color, mat.warm * 0.4);
+      else if (mat.warm < 0) color = cool(color, -mat.warm * 0.35);
+      // اگر شب است و نورِ روز کم — کمی تیره‌تر و آبی‌تر
+      if (LP.dayAmt < 0.3 && !LP.lampOn) color = cool(darken(color, 0.05), 0.15);
 
-      // تنظیم گرمی/سردی رنگ
-      const color = mat.warm > 0
-        ? mixHex(raw, '#F2C08A', mat.warm * 0.5)
-        : mat.warm < 0
-          ? mixHex(raw, '#A8C0E0', -mat.warm * 0.4)
-          : raw;
+      const { top, bot, lit_dir, shadow_dir } = R.lit(layer, color, mat);
 
-      // گرادیانِ عمودیِ نرم
+      // گرادیانِ عمودی (نور از سقف)
       const gradId = id(`g-${layer.id}`);
-      const top = lighten(color, mat.hl * 0.6);
-      const bot = darken(color, mat.hl * 0.3 + 0.04);
       defs.push(`
         <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="${top}"/>
@@ -782,71 +933,75 @@
           <stop offset="1" stop-color="${bot}"/>
         </linearGradient>
       `);
+      // گرادیانِ افقی (سمتِ نور)
+      const gradH = id(`gh-${layer.id}`);
+      const hx1 = LP.lx > 0 ? '0' : '1', hx2 = LP.lx > 0 ? '1' : '0';
+      defs.push(`
+        <linearGradient id="${gradH}" x1="${hx1}" y1="0" x2="${hx2}" y2="0">
+          <stop offset="0" stop-color="${lit_dir}" stop-opacity="0"/>
+          <stop offset="0.5" stop-color="${lit_dir}" stop-opacity="0.10"/>
+          <stop offset="1" stop-color="${shadow_dir}" stop-opacity="0.15"/>
+        </linearGradient>
+      `);
 
       const paths = layer.parts.map(d => `<path class="b" d="${d}" fill="url(#${gradId})"/>`).join('');
+      const hPaths = layer.parts.map(d => `<path d="${d}" fill="url(#${gradH})"/>`).join('');
 
-      // بافت روی سطح
       const tex = layer.texture ? R.tex(layer) : '';
-
-      // هایلایتِ شیشه‌ای برای متریال صاف
-      const gOv = opts.gloss ? opts.gloss[layer.id] : undefined;
-      const isFlat = gOv !== undefined ? gOv > 0.05 : mat.rough < 0.55;
-      const sheenOp = gOv !== undefined ? clamp(gOv * 1.4, 0, 0.95) : 0.55;
-      const sheenId = id(`s-${layer.id}`);
-      if (isFlat) {
-        defs.push(`
-          <linearGradient id="${sheenId}" x1="0" y1="0" x2="0.7" y2="1">
-            <stop offset="0" stop-color="#FFF" stop-opacity="0.35"/>
-            <stop offset="0.4" stop-color="#FFF" stop-opacity="0"/>
-            <stop offset="1" stop-color="#FFF" stop-opacity="0"/>
-          </linearGradient>
-        `);
-      }
-      const sheen = isFlat
-        ? `<g pointer-events="none" opacity="${sheenOp}">${layer.parts.map(d => `<path d="${d}" fill="url(#${sheenId})"/>`).join('')}</g>`
-        : '';
+      const matTex = R.matFilter(layer);
+      const sheen = R.sheen(layer, mat);
 
       const sel = opts.selected === layer.id ? ' sel' : '';
 
       layerHtml.push(`
         <g class="ly${sel}" id="${id('L-' + layer.id)}" data-l="${layer.id}" data-n="${layer.name}">
           ${paths}
+          ${hPaths}
           ${sheen}
-          ${tex}${R.bevel(layer, mat)}
+          ${matTex}
+          ${tex}
+          ${R.bevel(layer, mat)}
         </g>
       `);
       layerHtml.push(R.after(layer));
     }
 
-    // ---- سایه‌ها ----
-    const shadows = (scene.shadows || []).map(s =>
-      `<ellipse cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}" fill="#000" opacity="${s.op}" filter="url(#${id('blur')})" pointer-events="none"/>`
-    ).join('');
-
-    // ---- جزئیات ----
+    // ---- جزئیاتِ خطی (خطوطِ قاب، درز، لبه) ----
     const details = (scene.details || []).map(d =>
       `<path d="${d.d}" fill="${d.fill || 'none'}" stroke="${d.stroke || '#000'}" stroke-opacity="${d.strokeOp ?? 1}" stroke-width="${d.sw || 1}" pointer-events="none"/>`
     ).join('');
 
-    // ---- وینیت ----
+    // ---- سایه‌های ثابت از قبل (اگر تعریف شده) ----
+    const shadows = (scene.shadows || []).map(s =>
+      `<ellipse cx="${s.cx}" cy="${s.cy}" rx="${s.rx}" ry="${s.ry}" fill="#000" opacity="${s.op}" filter="url(#${id('rb')})" pointer-events="none"/>`
+    ).join('');
+
+    // ---- وینیتِ نهایی ----
     defs.push(`
-      <radialGradient id="${id('vig')}" cx="0.5" cy="0.45" r="1.05">
-        <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
-        <stop offset="1" stop-color="#000" stop-opacity="0.16"/>
+      <radialGradient id="${id('vig')}" cx="0.5" cy="0.45" r="1.1">
+        <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity="0.22"/>
       </radialGradient>
     `);
 
-    if (lo && lo.defs) defs.push(lo.defs);
+    // ---- رنگیزه‌ی نهایی برای شب (تینت آبی) ----
+    let finalTint = null;
+    if (LP.dayAmt < 0.15 && LP.lampOn) {
+      finalTint = 'rgba(60, 90, 140, 0.10)';
+    } else if (LP.dayAmt < 0.15 && !LP.lampOn) {
+      finalTint = 'rgba(40, 60, 110, 0.28)';
+    } else if (L.wx === 'ابری') {
+      finalTint = 'rgba(140, 150, 168, 0.08)';
+    }
 
     const topHtml = R.top();
     return `<svg viewBox="0 0 800 500" xmlns="${NS}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${scene.name}">
       <defs>${defs.join('')}${R.defs()}</defs>
       <rect width="800" height="500" fill="${palette[asg.wall] || '#222'}"/>
       <g class="stage-layer">${layerHtml.join('')}</g>
-      ${shadows}
-      ${details}
+      ${shadows}${details}
       ${topHtml}
-      ${lo ? lo.html : `<rect width="800" height="500" fill="${light.tint}" pointer-events="none"/>`}
+      ${finalTint ? `<rect width="800" height="500" fill="${finalTint}" pointer-events="none"/>` : ''}
       <rect width="800" height="500" fill="url(#${id('vig')})" pointer-events="none"/>
     </svg>`;
   }
@@ -975,8 +1130,9 @@
   }
 
   /* ============================================================
-     ابزارهای رنگ برای جدول مشخصات
+     ابزارهای رنگ
      ============================================================ */
+  const toPN = (n) => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
   const fmt = (n, d = 0) => toPN(Number(n).toFixed(d)).replace('.', '٫');
   function toCMYK(hex) {
     const [r, g, b] = hexToRgb(hex).map(v => v / 255);
@@ -997,10 +1153,11 @@
     wall: 'رنگ مات', wallGloss: 'رنگ نیمه‌براق', stucco: 'استوکو', concrete: 'بتن', wood: 'چوب',
     woodDark: 'چوب تیره', marble: 'مرمر', tile: 'سرامیک', fabric: 'پارچه', velvet: 'مخمل',
     leather: 'چرم', metal: 'فلز', brass: 'برنج', plant: 'گیاه', art: 'تابلو', rug: 'فرش', glass: 'شیشه',
+    paper: 'کاغذ', terracotta: 'سفال',
   };
   const ROLE_FA = { L1: 'سطح غالب', L2: 'سطح ثانویه', M: 'کف / میانی', D: 'تیره', K: 'مبلمان', P: 'تأکید' };
   const PAINT_MATS = new Set(['wall', 'wallGloss', 'stucco', 'concrete']);
-  const M_PER_UNIT = 2.7 / 340; // ارتفاع دیوار در نما ≈ ۲٫۷ متر
+  const M_PER_UNIT = 2.7 / 340;
 
   function geom(parts) {
     let area = 0, minY = Infinity, maxY = -Infinity;
@@ -1076,13 +1233,13 @@
     selected: null, light: 'day',
     before: false, splitX: 50,
     t: 13, dir: 'جنوبی', wx: 'آفتابی', lamp: null, kelvin: 3000,
-    gloss: {}, cb: '', tab: 'color', why: '', size: 2400,
+    gloss: {}, cb: '', tab: 'color', why: '', size: 2400, fast: false,
   };
 
   let root, stageEl, lastFocus = null, cmp = null, dragging = false, toastTimer = null;
 
   const nearestPreset = (t) => t < 10 ? 'dawn' : t < 16 ? 'day' : t < 19.5 ? 'dusk' : 'night';
-  const svOf = (t) => t >= 20 ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
+  const svOf = (t) => (t >= 20 || t < 5) ? 0 : Math.max(0, Math.sin(Math.PI * (t - 6) / 14));
   const lampIsOn = () => st.lamp === null ? svOf(st.t) < 0.2 : !!st.lamp;
   const glossKey = (sceneId, layerId) => `${sceneId}:${layerId}`;
   function glossMap(sceneId) {
@@ -1109,7 +1266,7 @@
   }
 
   /* ============================================================
-     Shell
+     Shell (بدون تغییر ساختاری — همان UI قبلی)
      ============================================================ */
   const CB_DEFS = `
     <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -1253,7 +1410,7 @@
   }
 
   /* ============================================================
-     CSS
+     CSS — همان استایل قبلی (بدون تغییر)
      ============================================================ */
   function injectCSS() {
     if (document.getElementById('stu-v3-css')) return;
@@ -1424,7 +1581,6 @@
   };
 
   const SCENE_ICON = { living: 'home', bedroom: 'bed', kitchen: 'kitchen', bathroom: 'bath', office: 'office', cafe: 'cafe' };
-  const toPN = (n) => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 
   /* ============================================================
      تخصیص پیش‌فرض
@@ -1673,7 +1829,6 @@
     renderColor(); renderMat(); renderLight(); renderAnalysis(); renderExport();
     renderTimeline(); renderTabs();
   }
-  /* بعد از تغییر رنگ/چیدمان */
   function renderChanged() {
     renderStage(); renderChips(); renderColor(); renderAnalysis(); renderExport(); renderTimeline();
   }
@@ -1687,14 +1842,12 @@
     st.future = [];
     if (st.history.length > 12) st.history.shift();
   }
-
   function commitAssignment(next) {
     pushHistory();
     st.asgByScene[st.sceneId] = next;
     haptic.light();
     renderChanged();
   }
-
   function setLayerColor(layerId, idx) {
     const asg = ensureAssignment(st.sceneId);
     if (!asg || asg[layerId] === idx) return;
@@ -1713,7 +1866,7 @@
     const next = { ...ensureAssignment(st.sceneId), ...out.result };
     const label = out.strategy === 'mono' ? 'تک‌رنگ' : out.strategy === 'analogous' ? 'آنالوگ' : out.strategy === 'complementary' ? 'مکمل' : 'سه‌گانه';
     const asgPrev = st.asgByScene[st.sceneId];
-    st.asgByScene[st.sceneId] = next; // برای محاسبه‌ی متن توضیح
+    st.asgByScene[st.sceneId] = next;
     const p = pairsInfo(scene, next)[0];
     st.asgByScene[st.sceneId] = asgPrev;
     st.why = `<b>چرا این چیدمان؟</b> هارمونی ${label}` + (p ? `؛ کنتراست ${p.label} ${fmt(p.r, 1)}:۱ است.` : '.');
@@ -1729,7 +1882,6 @@
     haptic.light();
     renderAll();
   }
-
   function doUndo() {
     if (!st.history.length) return;
     st.future.push({ sceneId: st.sceneId, asg: snapAsg() });
@@ -1738,7 +1890,6 @@
     st.asgByScene[prev.sceneId] = prev.asg;
     afterJump();
   }
-
   function doRedo() {
     if (!st.future.length) return;
     st.history.push({ sceneId: st.sceneId, asg: snapAsg() });
@@ -1747,7 +1898,6 @@
     st.asgByScene[nx.sceneId] = nx.asg;
     afterJump();
   }
-
   function doReset() {
     pushHistory();
     st.asgByScene[st.sceneId] = null;
@@ -1756,7 +1906,6 @@
     for (const k of Object.keys(st.gloss)) if (k.startsWith(st.sceneId + ':')) delete st.gloss[k];
     afterJump();
   }
-
   function jumpToHistory(idx) {
     if (idx < 0 || idx >= st.history.length) return;
     const t = st.history[idx];
@@ -1774,14 +1923,12 @@
     renderStage();
     haptic.light();
   }
-
   function setSplit(v) {
     st.splitX = clamp(v, 0, 100);
     if (cmp) { cmp.b.style.clipPath = `inset(0 ${100 - st.splitX}% 0 0)`; cmp.h.style.left = st.splitX + '%'; }
     const r = $('#stuSplit', root);
     if (r) r.value = st.splitX;
   }
-
   function applyBeforeAfter() {
     const scene = SCENES[st.sceneId];
     const asg = ensureAssignment(st.sceneId);
@@ -1933,7 +2080,6 @@
       }
       const chip = t.closest('[data-chip]');
       if (chip) { selectLayer(st.selected === chip.dataset.chip ? null : chip.dataset.chip); return; }
-
       const tab = t.closest('[data-tab]');
       if (tab) { haptic.select(); setTab(tab.dataset.tab); return; }
 
@@ -1967,7 +2113,6 @@
       if (cbBtn) { st.cb = cbBtn.dataset.cb; haptic.select(); renderStage(); renderAnalysis(); return; }
       const sz = t.closest('[data-size]');
       if (sz) { st.size = +sz.dataset.size; renderExport(); return; }
-
       const tl = t.closest('[data-tl]');
       if (tl) { jumpToHistory(+tl.dataset.tl); return; }
 
@@ -2006,7 +2151,6 @@
       }
     });
 
-    /* اسلایدرها */
     root.addEventListener('input', (e) => {
       const id = e.target.id;
       if (id === 'stuSplit') { setSplit(+e.target.value); return; }
@@ -2035,7 +2179,6 @@
       if (e.target.id === 'stuGloss') { st.fast = false; renderStage(); renderMat(); renderTimeline(); }
     });
 
-    /* هاور و کشیدنِ مقایسه */
     const splitFrom = (e) => {
       const r = stageEl.getBoundingClientRect();
       if (r.width > 0) setSplit((e.clientX - r.left) / r.width * 100);
@@ -2056,7 +2199,6 @@
     stageEl.addEventListener('pointercancel', endDrag);
     stageEl.addEventListener('pointerleave', () => { if (!st.before) $('#stuHover', root).textContent = 'روی هر بخش بزن تا انتخاب شود'; });
 
-    /* کیبورد: تب‌ها با فلش، تله‌ی فوکوس، Esc و Ctrl+Z */
     root.addEventListener('keydown', (e) => {
       const tabBtn = e.target.closest && e.target.closest('#stuTabs [data-tab]');
       if (tabBtn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
@@ -2101,7 +2243,7 @@
 
     if (!p || !Array.isArray(p.colors) || p.colors.length < 2) {
       if (root) showStuToast('پالت پیدا نشد');
-      try { console.warn('[ravaq-studio] palette not found or invalid:', paletteId, '| total:', palettes.length); } catch (e) {}
+      try { console.warn('[ravaq-studio] palette not found:', paletteId); } catch (e) {}
       return;
     }
 
@@ -2117,7 +2259,7 @@
       palette: p, sceneId: 'living', asgByScene: {}, history: [], future: [], lock: new Set(),
       selected: null, light: 'day', before: false, splitX: 50,
       t: 13, dir: 'جنوبی', wx: 'آفتابی', lamp: null, kelvin: 3000,
-      gloss: {}, cb: '', tab: 'color', why: '', size: 2400,
+      gloss: {}, cb: '', tab: 'color', why: '', size: 2400, fast: false,
     });
     cmp = null;
     $('#stuCompareBar', root).hidden = true;
