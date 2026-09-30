@@ -6,3 +6,4 @@ pytz==2024.1
 pydantic==2.8.2
 pydantic-core==2.20.1
 Pillow==10.4.0
+pillow-avif-plugin>=1.4.3
