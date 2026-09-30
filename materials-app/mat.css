@@ -242,3 +242,108 @@ body { padding-bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom, 0p
 .profile-note { line-height:2; margin-top:14px; }
 @media(max-width:390px) { .bottom-nav { gap:1px; padding:5px; } .bottom-item { font-size:9px; } .bottom-item span:last-child { white-space:nowrap; } .bottom-nav .nav-neon { top:5px; } .profile-avatar { width:62px;height:62px;flex-basis:62px;border-radius:20px; } }
 @media(prefers-reduced-motion:reduce) { .bottom-nav .nav-neon { transition:none !important; } }
+
+/* ================= فاز ۸ — پالت روشن/تیره و هویت نویسنده‌ی تجربه ================= */
+:root {
+  --brand-jade: #087F68;
+  --brand-violet: #7562D9;
+  --brand-amber: #B66A20;
+  --surface-card: #171B20;
+  --surface-muted: #20252B;
+  --border-strong: rgba(255,255,255,.17);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --surface-card: #FFFFFF;
+    --surface-muted: #F0F2F4;
+    --border-strong: #C8D0D7;
+    --ink-faint: #59636D;
+  }
+}
+:root[data-theme="light"] {
+  --surface-card: #FFFFFF;
+  --surface-muted: #F0F2F4;
+  --border-strong: #C8D0D7;
+  --ink-faint: #59636D;
+}
+/* In light mode every card/control has an explicit surface and legible edge. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .ln,
+  :root:not([data-theme="dark"]) .pr2,
+  :root:not([data-theme="dark"]) .profile-card,
+  :root:not([data-theme="dark"]) .tot,
+  :root:not([data-theme="dark"]) .rm,
+  :root:not([data-theme="dark"]) .mc,
+  :root:not([data-theme="dark"]) .profile-link {
+    background-color: var(--surface-card);
+    border-color: var(--border-strong);
+    box-shadow: 0 3px 12px rgba(24,39,52,.045);
+  }
+  :root:not([data-theme="dark"]) .fl input,
+  :root:not([data-theme="dark"]) .fl select,
+  :root:not([data-theme="dark"]) .fl textarea,
+  :root:not([data-theme="dark"]) #search {
+    background-color: var(--surface-card);
+    border-color: var(--border-strong);
+  }
+}
+:root[data-theme="light"] .ln,
+:root[data-theme="light"] .pr2,
+:root[data-theme="light"] .profile-card,
+:root[data-theme="light"] .tot,
+:root[data-theme="light"] .rm,
+:root[data-theme="light"] .mc,
+:root[data-theme="light"] .profile-link {
+  background-color: var(--surface-card);
+  border-color: var(--border-strong);
+  box-shadow: 0 3px 12px rgba(24,39,52,.045);
+}
+:root[data-theme="light"] .fl input,
+:root[data-theme="light"] .fl select,
+:root[data-theme="light"] .fl textarea,
+:root[data-theme="light"] #search {
+  background-color: var(--surface-card);
+  border-color: var(--border-strong);
+}
+:root[data-theme="light"] .bottom-nav {
+  background: rgba(255,255,255,.94);
+  border-color: #C8D0D7;
+  box-shadow: 0 10px 30px rgba(24,39,52,.16), inset 0 1px 0 rgba(255,255,255,.95);
+}
+:root[data-theme="light"] .bottom-item { color: #56616C; }
+:root[data-theme="light"] .bottom-item.active { color: var(--item-color, var(--brand-jade)); }
+:root[data-theme="light"] .bottom-nav .nav-neon { box-shadow: 0 0 5px var(--neon-to,#087F68), 0 0 12px color-mix(in srgb,var(--neon-to,#087F68) 35%,transparent); }
+:root[data-theme="light"] .hint,
+:root[data-theme="light"] .profile-identity p,
+:root[data-theme="light"] .profile-identity small,
+:root[data-theme="light"] .profile-link span,
+:root[data-theme="light"] .src-note { color: #535E68; }
+:root[data-theme="light"] .meta span,
+:root[data-theme="light"] .cf { border-color: #CBD3DA; color: #4F5B66; }
+:root[data-theme="light"] .act { border-color: #C5CFD6; }
+:root[data-theme="light"] .act-primary { color: #066B58; background: #E6F5F0; border-color: #8DCDBD; }
+:root[data-theme="light"] .grp { color: #176B5A; }
+:root[data-theme="light"] .im.ph { background: #F0F2F4; border-color: #C8D0D7; }
+:root[data-theme="light"] .im.ph small { color: #59636D; }
+
+.experience-card { padding: 15px; }
+.experience-author { display:flex; align-items:center; gap:10px; min-width:0; margin-bottom:12px; }
+.experience-avatar { flex:0 0 44px; width:44px; height:44px; border-radius:50%; overflow:hidden; display:grid; place-items:center; border:1px solid color-mix(in srgb,var(--brand-jade) 42%,var(--line)); background:linear-gradient(145deg,color-mix(in srgb,var(--brand-jade) 16%,var(--bg-elev)),color-mix(in srgb,var(--brand-violet) 13%,var(--bg-elev))); color:var(--accent-text); font-size:15px; font-weight:900; }
+.experience-avatar img { width:100%; height:100%; display:block; object-fit:cover; }
+.experience-avatar.avatar-fallback::after { content:'ر'; font-size:16px; font-weight:900; }
+.experience-byline { display:flex; flex:1; flex-direction:column; min-width:0; gap:2px; }
+.experience-byline b { color:var(--ink); font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.experience-byline small { color:var(--ink-dim); font-size:10.5px; direction:rtl; overflow-wrap:anywhere; }
+.experience-badge { flex:0 0 auto; max-width:112px; padding:4px 7px; border:1px solid color-mix(in srgb,var(--brand-jade) 40%,var(--line)); border-radius:99px; background:color-mix(in srgb,var(--brand-jade) 10%,var(--glass)); color:var(--accent-text); font-size:10px; line-height:1.5; }
+.experience-context { display:block; margin:8px 0; color:var(--ink-dim); line-height:1.8; }
+:root[data-theme="light"] .experience-badge { color:#086B58; background:#E6F5F0; border-color:#9ACFC2; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .experience-badge { color:#086B58; background:#E6F5F0; border-color:#9ACFC2; }
+}
+@media(max-width:360px) { .experience-author { gap:8px; } .experience-avatar { width:38px; height:38px; flex-basis:38px; } .experience-badge { max-width:92px; font-size:9px; } }
+:root[data-theme="light"] .cf.field { color:#87501A; border-color:#D8B98F; background:#FFF5E8; }
+:root[data-theme="light"] .cf.review { color:#A72D36; border-color:#E5B2B6; background:#FFF0F1; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .cf.field { color:#87501A; border-color:#D8B98F; background:#FFF5E8; }
+  :root:not([data-theme="dark"]) .cf.review { color:#A72D36; border-color:#E5B2B6; background:#FFF0F1; }
+}
