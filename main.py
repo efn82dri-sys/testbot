@@ -4801,6 +4801,49 @@ async def materials_image_received(message: Message):
     pend = _mat_pending_for(uid)
     if not pend:
         return
+    if pend.get("kind") == "catalog":
+        doc = message.document
+        if not doc:
+            await message.answer("❗️ فایل کاتالوگ را حتماً به‌صورت «فایل/Document» بفرست؛ عکس یا متن قابل‌قبول نیست.")
+            return
+        filename = (doc.file_name or "").lower()
+        mime = (doc.mime_type or "").lower()
+        if not (filename.endswith(".json") or mime in ("application/json", "text/json", "text/plain")):
+            await message.answer("❗️ فقط فایل JSON کاتالوگ پذیرفته می‌شود؛ مثل materials.json یا leca-products-imported.json")
+            return
+        if (doc.file_size or 0) > MAT_TG_LIMIT:
+            await message.answer("❗️ حجم کاتالوگ بیشتر از ۲۰ مگابایت است.")
+            return
+        try:
+            downloaded = await bot.download(doc.file_id)
+            raw = downloaded.read() if hasattr(downloaded, "read") else bytes(downloaded or b"")
+            payload = json.loads(raw.decode("utf-8-sig"))
+            async with _mat_lock:
+                live = load_materials_data()
+                added, updated, company_count = _mat_merge_uploaded_catalog(payload, live)
+                if added + updated <= 0:
+                    raise ValueError("در فایل محصول قابل‌واردکردن پیدا نشد.")
+                _mat_write(live)
+            _mat_pending.pop(uid, None)
+            await message.answer(
+                "✅ کاتالوگ با موفقیت وارد شد.\n\n"
+                f"🏷 برندهای بررسی‌شده: {to_persian_num(company_count)}\n"
+                f"➕ محصولات جدید: {to_persian_num(added)}\n"
+                f"🔄 محصولات به‌روزرسانی‌شده: {to_persian_num(updated)}\n\n"
+                "محصولات قبلی حذف نشدند و قیمت‌ها، تصاویر، فایل‌ها و تاریخچه‌ی قیمت‌های ثبت‌شده حفظ شدند. "
+                "مینی‌اپ مصالح را دوباره باز کن یا از بخش مدیریت «بازخوانی از سرور» را بزن."
+            )
+            logger.info("Catalog import by admin %s: added=%s updated=%s companies=%s", uid, added, updated, company_count)
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            await message.answer("❌ فایل قابل‌خواندن نیست یا JSON معتبر نیست. فایل materials.json یا leca-products-imported.json را به‌صورت Document بفرست.")
+            logger.warning("Invalid catalog JSON uploaded by %s: %s", uid, e)
+        except ValueError as e:
+            await message.answer(f"❌ کاتالوگ وارد نشد: {str(e)[:300]}")
+        except Exception as e:
+            logger.error("Catalog import failed for admin %s: %s", uid, e, exc_info=True)
+            await message.answer("❌ واردکردن کاتالوگ ناموفق بود؛ اطلاعات قبلی تغییر نکرده‌اند. گزارش خطا در لاگ سرور ثبت شد.")
+        return
+
     if pend.get("kind") == "file":
         doc = message.document
         if not doc:
@@ -9613,6 +9656,104 @@ def _mat_clean_company(c: dict) -> None:
                     links.append({"t": t, "u": u})
     c["links"] = links
 
+def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, int]:
+    """ادغام امن JSON کاتالوگ در دیتای زنده؛ حذف انجام نمی‌شود و فیلدهای مدیریتی حفظ می‌شوند."""
+    if isinstance(payload, dict) and isinstance(payload.get("companies"), list):
+        incoming_companies = payload["companies"]
+    elif isinstance(payload, dict) and isinstance(payload.get("company"), dict):
+        incoming_companies = [payload["company"]]
+    elif isinstance(payload, dict) and isinstance(payload.get("products"), list) and payload.get("id"):
+        incoming_companies = [payload]
+    else:
+        raise ValueError("ساختار فایل شناخته نشد؛ فایل materials.json یا leca-products-imported.json را انتخاب کن.")
+
+    if not incoming_companies or len(incoming_companies) > 200:
+        raise ValueError("فایل فاقد برند معتبر است یا تعداد برندها بیش از حد مجاز است.")
+    total_products = sum(len(c.get("products", [])) for c in incoming_companies if isinstance(c, dict) and isinstance(c.get("products", []), list))
+    if total_products < 1 or total_products > 10000:
+        raise ValueError("تعداد محصولات فایل نامعتبر است.")
+    if not isinstance(live, dict):
+        raise ValueError("دیتای زنده‌ی کاتالوگ قابل‌خواندن نیست.")
+
+    live.setdefault("companies", [])
+    if not isinstance(live["companies"], list):
+        raise ValueError("ساختار برندهای کاتالوگ زنده معتبر نیست.")
+    added = updated = company_count = 0
+    protected_company_fields = {"logo", "sponsor", "dealers"}
+    protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes", "sourceImageUrl"}
+
+    for source_company in incoming_companies:
+        if not isinstance(source_company, dict):
+            raise ValueError("یکی از برندهای فایل ساختار معتبری ندارد.")
+        co_id = str(source_company.get("id") or "").strip()[:80]
+        co_name = str(source_company.get("name") or "").strip()[:80]
+        products = source_company.get("products", [])
+        if not co_id or not co_name or not isinstance(products, list):
+            raise ValueError("هر برند باید شناسه، نام و فهرست محصولات معتبر داشته باشد.")
+        if any(not isinstance(prod, dict) for prod in products):
+            raise ValueError(f"ساختار محصولات برند «{co_name}» معتبر نیست.")
+
+        live_co = next((c for c in live["companies"] if isinstance(c, dict) and str(c.get("id")) == co_id), None)
+        if live_co is None:
+            live_co = {k: v for k, v in source_company.items() if k != "products"}
+            live_co["products"] = []
+            live_co.setdefault("sponsor", False)
+            live["companies"].append(live_co)
+        else:
+            for key, value in source_company.items():
+                if key in ("id", "products") or key in protected_company_fields:
+                    continue
+                if value not in (None, "", [], {}):
+                    live_co[key] = value
+            live_co.setdefault("products", [])
+        live_co["id"] = co_id
+        if not isinstance(live_co["products"], list):
+            live_co["products"] = []
+        company_count += 1
+
+        product_index = {str(p.get("id")): i for i, p in enumerate(live_co["products"]) if isinstance(p, dict) and p.get("id")}
+        imported_ids: set[str] = set()
+        for source_product in products:
+            pid = str(source_product.get("id") or "").strip()[:100]
+            name = str(source_product.get("name") or "").strip()[:120]
+            if not pid or not name:
+                continue
+            if pid in imported_ids:
+                continue
+            imported_ids.add(pid)
+            if pid in product_index:
+                index = product_index[pid]
+                old_product = live_co["products"][index]
+                if not isinstance(old_product, dict):
+                    old_product = {}
+                merged = dict(old_product)
+                for key, value in source_product.items():
+                    if key in protected_product_fields:
+                        continue
+                    # مقادیر خالیِ فایل ورودی نباید یادداشت‌ها/مشخصات موجود را بی‌دلیل پاک کنند.
+                    if value not in (None, "", [], {}):
+                        merged[key] = value
+                    elif key not in merged:
+                        merged[key] = value
+                for key in protected_product_fields:
+                    if key in old_product:
+                        merged[key] = old_product[key]
+                clean, _ = _mat_clean_product(merged, old_product.get("images") if isinstance(old_product.get("images"), list) else [])
+                for key in protected_product_fields:
+                    if key in old_product:
+                        clean[key] = old_product[key]
+                live_co["products"][index] = clean
+                updated += 1
+            else:
+                clean, _ = _mat_clean_product(source_product, source_product.get("images") if isinstance(source_product.get("images"), list) else [])
+                live_co["products"].append(clean)
+                product_index[pid] = len(live_co["products"]) - 1
+                added += 1
+
+        _mat_clean_company(live_co)
+    live["v"] = max(int(live.get("v", 1) or 1), 2)
+    return added, updated, company_count
+
 async def handle_materials_save(request: web.Request) -> web.Response:
     if not _mat_admin(request):
         return web.json_response({"ok": False, "error": "forbidden"}, status=403)
@@ -9734,6 +9875,22 @@ async def handle_materials_upload_request(request: web.Request) -> web.Response:
         kind, co_id, pid = str(body.get("kind", "")), str(body.get("co", "")), str(body.get("pid", ""))
     except Exception:
         return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    if kind == "catalog":
+        _mat_pending[uid] = {"kind": "catalog", "ts": datetime.now(timezone.utc).timestamp()}
+        try:
+            await bot.send_message(
+                uid,
+                "📦 فایل کاتالوگ JSON را به همین چت بفرست.\n\n"
+                "فایل‌های قابل‌قبول: materials.json یا leca-products-imported.json\n"
+                "محصولات جدید اضافه می‌شوند؛ محصولات هم‌شناسه به‌روزرسانی می‌شوند و اطلاعات مدیریتی مثل قیمت، تصویر، فایل‌ها و تاریخچه‌ی قیمت حفظ می‌شود.\n"
+                f"تا {to_persian_num(MAT_PENDING_TTL // 60)} دقیقه منتظرم."
+            )
+        except Exception as e:
+            logger.warning("پیامِ آپلودِ کاتالوگ به %s ارسال نشد: %s", uid, e)
+            _mat_pending.pop(uid, None)
+            return web.json_response({"ok": False, "error": "ربات نتوانست پیام بدهد؛ اول /start بزن"}, status=502)
+        return web.json_response({"ok": True})
+
     data = load_materials_data()
     co = next((c for c in data.get("companies", []) if c.get("id") == co_id), None)
     if kind not in ("logo", "image", "file") or not co:
