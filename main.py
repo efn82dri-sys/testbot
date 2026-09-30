@@ -25,7 +25,21 @@ from urllib.parse import quote, parse_qsl
 
 import jdatetime
 import pytz
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import features as _pil_features
+
+# پشتیبانی از AVIF (سایت‌هایی مثل leca.ir عکس‌ها را AVIF می‌دهند). Pillow از نسخه‌ی ۱۱٫۳ خودش AVIF دارد؛
+# برای نسخه‌های قدیمی‌تر از پلاگین استفاده می‌شود (pillow-avif-plugin در requirements.txt).
+if not _pil_features.check("avif"):
+    try:
+        import pillow_avif  # noqa: F401
+    except Exception:
+        pass
+try:  # HEIC/HEIF آیفون (اختیاری)
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except Exception:
+    pass
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
@@ -4670,12 +4684,27 @@ def _mat_upload_filter(message: Message) -> bool:
         and _mat_pending_for(message.from_user.id) and (message.photo or message.document)
     )
 
+_MAT_FMT_MIME = {
+    "JPEG": "image/jpeg", "MPO": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp",
+    "AVIF": "image/avif", "HEIF": "image/heif", "GIF": "image/gif", "BMP": "image/bmp", "TIFF": "image/tiff",
+}
+_MAT_IMG_EXT = (".jpg", ".jpeg", ".png", ".webp", ".avif", ".heic", ".heif", ".gif", ".bmp", ".tif", ".tiff")
+
+def _mat_doc_ok(doc) -> bool:
+    """فایل تصویری قابل‌قبول؟ (بعضی کلاینت‌ها برای .avif نوعِ octet-stream می‌فرستند؛ پسوند هم چک می‌شود.)"""
+    mt = (getattr(doc, "mime_type", "") or "").lower()
+    fn = (getattr(doc, "file_name", "") or "").lower()
+    if "svg" in mt or fn.endswith(".svg"):
+        return False
+    return mt.startswith("image/") or fn.endswith(_MAT_IMG_EXT)
+
 def _mat_probe(raw: bytes) -> tuple[int, int, str]:
     img = Image.open(BytesIO(raw))
-    mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}.get((img.format or "").upper())
+    mime = _MAT_FMT_MIME.get((img.format or "").upper())
     if not mime:
         raise ValueError("unsupported")
     img = ImageOps.exif_transpose(img)
+    img.load()                      # مطمئن می‌شویم واقعاً دیکد می‌شود (نه فقط هدرش)
     return img.size[0], img.size[1], mime
 
 @dp.message(_mat_upload_filter)
@@ -4687,10 +4716,10 @@ async def materials_image_received(message: Message):
     fo = None
     if message.photo:
         fo = message.photo[-1]
-    elif message.document and (message.document.mime_type or "").lower() in ("image/jpeg", "image/png", "image/webp"):
+    elif message.document and _mat_doc_ok(message.document):
         fo = message.document
     if fo is None:
-        await message.answer("❗️ فقط عکس JPG / PNG / WebP قبول می‌شه (SVG پشتیبانی نمی‌شه).")
+        await message.answer("❗️ فقط عکس قبول می‌شه: JPG / PNG / WebP / AVIF / HEIC (SVG پشتیبانی نمی‌شه). برای کیفیت بهتر به‌صورت «فایل» بفرست.")
         return
     if (fo.file_size or 0) > MAT_TG_LIMIT:
         await message.answer("❗️ فایل بالایِ ۲۰ مگابایته؛ حجمش رو کم کن.")
@@ -4699,7 +4728,17 @@ async def materials_image_received(message: Message):
         raw = (await bot.download(fo.file_id)).read()
         w, h, mime = await asyncio.to_thread(_mat_probe, raw)
     except ValueError:
-        await message.answer("❗️ فرمتِ عکس پشتیبانی نمی‌شه (JPG / PNG / WebP).")
+        await message.answer("❗️ فرمتِ عکس پشتیبانی نمی‌شه (JPG / PNG / WebP / AVIF / HEIC).")
+        return
+    except UnidentifiedImageError:
+        if raw[4:12] in (b"ftypavif", b"ftypavis"):
+            await message.answer(
+                "❗️ این فایل AVIF است ولی سرور هنوز دیکدرِ AVIF ندارد.\n"
+                "در requirements.txt عبارتِ pillow-avif-plugin را اضافه و دوباره دیپلوی کن "
+                "(یا موقتاً عکس را JPG/PNG کن)."
+            )
+        else:
+            await message.answer("❗️ فرمتِ عکس شناخته نشد. JPG / PNG / WebP / AVIF بفرست.")
         return
     except Exception as e:
         logger.warning("دریافتِ عکسِ مصالح ناموفق بود: %s", e)
@@ -9090,6 +9129,10 @@ async def handle_miniapp_action(request: web.Request) -> web.Response:
 
 # ---------- راه‌اندازی وب‌سرور ----------
 async def on_startup(app: web.Application):
+    try:
+        _mat_merge_seed()
+    except Exception as e:
+        logger.warning("ادغام seed مصالح ناموفق بود: %s", e)
     # بازیابی بکاپ
     restored_ok, restore_msg = await restore_data_dir_from_telegram()
     storage.reload()
@@ -9195,6 +9238,51 @@ def _materials_verify_init_data(init_data: str) -> dict | None:
         return json.loads(pairs["user"])
     except Exception:
         return None
+
+def _mat_merge_seed() -> None:
+    """دیتای زنده (data/materials.json) همیشه بر seed داخل ریپو مقدم است؛ پس اگر seed را در ریپو به‌روز کنی
+    هیچ‌وقت به سرور نمی‌رسد. این تابع (یک‌بار به‌ازای هر seedRev) موارد جدید seed را اضافه می‌کند و محصولاتی را که
+    ادمین هنوز نه منبع، نه مشخصات و نه ویژگی برایشان ثبت نکرده (یعنی تکمیل‌نشده‌اند) با نسخه‌ی seed جایگزین می‌کند.
+    قیمت، عکس و لوگوی ثبت‌شده‌ی ادمین و محصولاتِ دارای منبع هرگز دست نمی‌خورند."""
+    try:
+        seed = json.loads(MATERIALS_SEED_FILE.read_text(encoding="utf-8"))
+        if not MATERIALS_LIVE_FILE.exists():
+            return
+        live = json.loads(MATERIALS_LIVE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    rev = int(seed.get("seedRev", 0) or 0)
+    if rev <= int(live.get("seedRev", 0) or 0):
+        return
+    lcos = {c.get("id"): c for c in live.get("companies", [])}
+    for sc in seed.get("companies", []):
+        lc = lcos.get(sc.get("id"))
+        if lc is None:
+            live.setdefault("companies", []).append(sc)
+            continue
+        for k, v in sc.items():
+            if k in ("products", "logo", "sponsor", "id"):
+                continue
+            if not lc.get(k):
+                lc[k] = v
+        lps = {p.get("id"): p for p in lc.get("products", [])}
+        for sp in sc.get("products", []):
+            lp = lps.get(sp.get("id"))
+            if lp is None:
+                lc.setdefault("products", []).append(sp)
+            elif not (lp.get("source") or lp.get("specs") or lp.get("features")):   # هنوز تکمیل‌نشده
+                keep = {k: lp.get(k) for k in ("images", "price") if lp.get(k)}
+                lp.clear()
+                lp.update(sp)
+                lp.update(keep)
+    lpk = {p.get("id") for p in live.get("packs", [])}
+    for sp in seed.get("packs", []):
+        if sp.get("id") not in lpk:
+            live.setdefault("packs", []).append(sp)
+    live["seedRev"] = rev
+    live["v"] = 2
+    _mat_write(live)
+    logger.info("materials: seed rev %s merged", rev)
 
 def load_materials_data() -> dict:
     path = MATERIALS_LIVE_FILE if MATERIALS_LIVE_FILE.exists() else MATERIALS_SEED_FILE
@@ -9371,15 +9459,45 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
                 break
     out["features"] = feats
 
+    # --- فیلدهای متنی اختیاری ---
+    out["name"] = str(out.get("name") or "").strip()[:120]
+    out["group"] = str(out.get("group") or "").strip()[:60]
+    out["desc"] = str(out.get("desc") or "").strip()[:400]
+    out["unit"] = (str(out.get("unit") or "").strip()[:30]) or "عدد"
+    if out.get("mode") not in ("count", "area", "vol"):
+        out["mode"] = "count"
+    for f in ("catalog", "page"):
+        u = str(out.get(f) or "").strip()[:500]
+        out[f] = u if re.match(r"^https?://", u, re.I) else ""
+    out["catalogVer"] = str(out.get("catalogVer") or "").strip()[:60]
+
     out["images"] = old_images
 
-    # --- اعتبارسنجی: هر عدد فنی/قیمتی باید منبع و نشان داشته باشد ---
+    # --- ردیابی‌پذیری بدون اجبار: فقط «نام» لازم است. اگر داده‌ی فنی/قیمتی بدون نشان اطمینان ثبت شد،
+    #     به‌جای رد کردنِ ذخیره، خودکار «نیازمند بررسی» علامت می‌خورد (در اپ هم همین نشان دیده می‌شود). ---
     has_numbers = specs or standards or feats or out.get("price") or out.get("speed") or out.get("durability")
-    has_trace = out["source"] and out["confidence"]
+    if has_numbers and not out["confidence"]:
+        out["confidence"] = "review"
     err = ""
-    if has_numbers and not has_trace:
-        err = f"«{str(out.get('name', ''))[:30]}»: برای قیمت/مشخصات/ویژگی‌ها، منبع و نشان اطمینان لازم است"
     return out, err
+
+def _mat_clean_company(c: dict) -> None:
+    c["name"] = str(c.get("name") or "").strip()[:80]
+    c["en"] = str(c.get("en") or "").strip()[:60]
+    c["cat"] = str(c.get("cat") or "").strip()[:60]
+    c["desc"] = str(c.get("desc") or "").strip()[:500]
+    for f in ("catalog", "site"):
+        u = str(c.get(f) or "").strip()[:500]
+        c[f] = u if re.match(r"^https?://", u, re.I) else ""
+    c["features"] = [str(x).strip()[:200] for x in (c.get("features") or []) if str(x).strip()][:12] if isinstance(c.get("features"), list) else []
+    links = []
+    if isinstance(c.get("links"), list):
+        for x in c["links"][:12]:
+            if isinstance(x, dict):
+                t, u = str(x.get("t") or "").strip()[:80], str(x.get("u") or "").strip()[:500]
+                if t and re.match(r"^https?://", u, re.I):
+                    links.append({"t": t, "u": u})
+    c["links"] = links
 
 async def handle_materials_save(request: web.Request) -> web.Response:
     if not _mat_admin(request):
@@ -9405,15 +9523,18 @@ async def handle_materials_save(request: web.Request) -> web.Response:
             if isinstance(oc.get("logo"), dict):
                 c["logo"] = oc["logo"]
             c["sponsor"] = bool(c.get("sponsor"))
+            _mat_clean_company(c)
             oprods = {p.get("id"): p for p in oc.get("products", [])}
             cleaned = []
             for p in c.get("products", []):
-                np_, err = _mat_clean_product(p, (oprods.get(p.get("id")) or {}).get("images") or [])
-                if err:
-                    return web.json_response({"ok": False, "error": err}, status=400)
+                np_, _ = _mat_clean_product(p, (oprods.get(p.get("id")) or {}).get("images") or [])
                 cleaned.append(np_)
             c["products"] = cleaned
-        _mat_write({"v": 2, "companies": companies, "packs": payload.get("packs", [])})
+        _mat_write({
+            "v": 2, "companies": companies,
+            "packs": payload.get("packs") if isinstance(payload.get("packs"), list) else old.get("packs", []),
+            "seedRev": old.get("seedRev", 0),
+        })
     return web.json_response({"ok": True})
 
 MAT_SHEET_MAX_BYTES = 8 * 1024 * 1024    # سقف حجم درخواست برگه
@@ -9497,7 +9618,7 @@ async def handle_materials_upload_request(request: web.Request) -> web.Response:
     _mat_pending[uid] = {"kind": kind, "co": co_id, "pid": pid, "ts": datetime.now(timezone.utc).timestamp()}
     what = f"لوگوی «{co.get('name', '')}»" if kind == "logo" else "عکس‌های این محصول"
     try:
-        await bot.send_message(uid, f"📷 {what} رو همین‌جا بفرست (JPG / PNG / WebP؛ برای کیفیت بهتر به‌صورت «فایل»).\n"
+        await bot.send_message(uid, f"📷 {what} رو همین‌جا بفرست (JPG / PNG / WebP / AVIF؛ برای کیفیت بهتر و فرمت AVIF حتماً به‌صورت «فایل»).\n"
                                      f"تا {to_persian_num(MAT_PENDING_TTL // 60)} دقیقه منتظرم.")
     except Exception as e:
         logger.warning("پیامِ آپلودِ مصالح به %s ارسال نشد: %s", uid, e)

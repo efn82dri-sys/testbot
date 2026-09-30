@@ -4,9 +4,27 @@ const TG = window.Telegram && Telegram.WebApp;
 try { TG && (TG.ready(), TG.expand()); } catch (e) {}
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* مقدار فنی لاتین‌دار (مثل «0.45 W/m²·K») در متن راست‌به‌چپ وارونه دیده نشود */
+const ltrv = v => { const t = String(v == null ? '' : v); return /^[\d.,\s–\-]+\s*[A-Za-z][\w\/²³·°%\s]*$/.test(t) ? `<bdi dir="ltr">${esc(t)}</bdi>` : esc(t); };
 const fa = n => Number(n || 0).toLocaleString('fa-IR', { maximumFractionDigits: 2 });
 const num = v => parseFloat(String(v == null ? '' : v).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[,٬،]/g, '').replace('٫', '.')) || 0;
 const uid = () => Math.random().toString(36).slice(2, 9);
+/* نرمال‌سازی جست‌وجو: ي/ك عربی، اعداد فارسی/عربی، نیم‌فاصله، حروف بزرگ و کوچک */
+const nz = s => String(s == null ? '' : s).toLowerCase().replace(/[يئ]/g, 'ی').replace(/ك/g, 'ک').replace(/[ۀة]/g, 'ه').replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\u200c\u200f\u064b-\u065f]/g, '').replace(/\s+/g, ' ');
+/* تاریخ شمسی (۱۴۰۵/۰۷/۰۱) → تعداد روز از آن تاریخ؛ اگر قابل‌تشخیص نبود null */
+const staleDays = js => {
+  try {
+    const m = nz(js).match(/(1[34]\d\d)\D+(\d{1,2})\D+(\d{1,2})/); if (!m) return null;
+    const jy = +m[1], jm = +m[2], jd = +m[3]; if (jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
+    const f = new Intl.DateTimeFormat('en-u-ca-persian-nu-latn', { timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric' });
+    const base = Date.UTC(jy + 621, 2, 21) + Math.round(((jm - 1) * 30.44 + jd - 1) * 864e5);
+    for (let k = -6; k <= 6; k++) {
+      const t = base + k * 864e5, p = {}; f.formatToParts(new Date(t)).forEach(x => { p[x.type] = x.value; });
+      if (+(p.relatedYear || p.year) === jy && +p.month === jm && +p.day === jd) return Math.floor((Date.now() - t) / 864e5);
+    }
+  } catch (e) {}
+  return null;
+};
 const safe = u => /^https?:\/\//i.test(u || '') ? u : '';
 const hp = t => { try { TG.HapticFeedback.impactOccurred(t || 'light'); } catch (e) {} };
 const K = { est: 'rq.mat.est', fav: 'rq.mat.fav', cfg: 'rq.mat.cfg', th: 'rq.mat.theme', rooms: 'rq.mat.rooms', scn: 'rq.mat.scn', px: 'rq.mat.px', cmp: 'rq.mat.cmp', w: 'rq.mat.w', dir: 'rq.mat.dir', proj: 'rq.mat.proj', cc: 'rq.mat.cc' };
@@ -30,7 +48,7 @@ const CONF = { datasheet: 'تأییدشده با دیتاشیت', field: 'تجر
 const mUrl = (m, z) => '/materials/m/' + m.key + '?s=' + z;
 const letter = c => esc((c.en || c.name || '').trim()[0] || '؟');
 const logoBox = (c, cls) => c.logo && c.logo.key ? `<div class="${cls} has-logo"><img src="${mUrl(c.logo, 'g')}" alt="${esc(c.name)}" decoding="async"></div>` : `<div class="${cls}">${letter(c)}</div>`;
-const thumb = (c, p) => { const m = (p.images || [])[0]; return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" decoding="async"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
+const thumb = (c, p) => { const m = (p.images || [])[0]; return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" loading="lazy" decoding="async"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
 const specsText = a => (a || []).map(x => x.k + ': ' + x.v).join('\n');
 const parseSpecs = t => String(t || '').split('\n').map(l => { const i = l.search(/[:：]/); return i > 0 ? { k: l.slice(0, i).trim(), v: l.slice(i + 1).trim() } : null; }).filter(x => x && x.k && x.v);
 const standardsText = a => (a || []).map(x => x.code + (x.verified ? ' | ' + x.verified : '')).join('\n');
@@ -66,7 +84,9 @@ let io; function observe() { const cs = document.querySelectorAll('.mc'); if (!(
 
 function catView() {
   const q = S.q.trim();
-  const list = D.companies.filter(c => (!S.cat || c.cat === S.cat) && (!S.brand || c.id === S.brand) && (!q || (c.name + ' ' + c.en + ' ' + c.cat + ' ' + c.desc + ' ' + c.products.map(p => p.name + p.group + (p.features || []).join(' ')).join(' ')).includes(q)));
+  const nq = nz(q).split(' ').filter(Boolean);
+  const hay = c => nz([c.name, c.en, c.cat, c.desc, ...c.products.map(p => [p.name, p.group, p.desc, (p.features || []).join(' '), (p.specs || []).map(x => x.k + ' ' + x.v).join(' ')].join(' '))].join(' '));
+  const list = D.companies.filter(c => (!S.cat || c.cat === S.cat) && (!S.brand || c.id === S.brand) && (!nq.length || (h => nq.every(w => h.includes(w)))(hay(c))));
   const add = S.edit ? '<button type="button" class="act act-primary" data-a="addco" style="margin-top:12px">+ برند جدید</button>' : '';
   if (!list.length) return add + '<div class="empty"><div class="empty-icon">🔍</div><p>موردی پیدا نشد</p></div>';
   return add + '<div class="grid">' + list.map((c, i) => `<article class="mc" data-brand="${c.id}" data-i="${i}" tabindex="0" role="button"><div style="display:flex;gap:10px;align-items:center">${logoBox(c, 'mono')}<div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.cat)}</span></div></div></div><p>${esc(c.desc)}</p><div class="meta"><span>${fa(c.products.length)} محصول</span>${safe(c.catalog) ? '<span class="sp">کاتالوگ</span>' : ''}${c.sponsor ? '<span class="sp">حامی رواق</span>' : ''}</div></article>`).join('') + '</div>';
@@ -83,6 +103,8 @@ function openBrand(id) {
   const cat = safe(c.catalog);
   sheet(`<div class="sd-head">${logoBox(c, 'mono')}<div><h3 style="margin:0;font-size:18px;color:var(--ink)">${esc(c.name)}${c.en ? ` <small style="color:var(--ink-faint)">${esc(c.en)}</small>` : ''}</h3><div class="meta" style="margin-top:4px"><span>${esc(c.cat)}</span>${c.sponsor ? '<span class="sp">حامی رواق</span>' : ''}</div></div></div>
   <p style="color:var(--ink-dim);font-size:13px;margin:6px 0 4px">${esc(c.desc)}</p>
+  ${(c.features || []).length ? `<ul class="fts" style="margin:8px 0">${c.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
+  ${(safe(c.site) || (c.links || []).some(x => safe(x.u))) ? `<div class="ft" style="margin:8px 0">${safe(c.site) ? `<a class="act" data-stop href="${esc(safe(c.site))}" target="_blank" rel="noopener">وب‌سایت رسمی</a>` : ''}${(c.links || []).filter(x => safe(x.u)).map(x => `<a class="act" data-stop href="${esc(safe(x.u))}" target="_blank" rel="noopener">${esc(x.t)}</a>`).join('')}</div>` : ''}
   ${S.edit ? `<div class="ft"><button type="button" class="act" data-a="editco" data-id="${c.id}">✎ ویرایش برند</button><button type="button" class="act act-primary" data-a="addp" data-id="${c.id}">+ محصول</button><button type="button" class="act" data-a="uplogo" data-id="${c.id}">🖼 لوگو از ربات</button>${c.logo ? `<button type="button" class="act" data-a="rmlogo" data-id="${c.id}" style="color:var(--danger)">حذف لوگو</button>` : ''}<button type="button" class="act" data-a="delco" data-id="${c.id}" style="color:var(--danger)">حذف برند</button></div>` : ''}
   ${Object.entries(gs).map(([g, ps]) => `<div class="grp">${esc(g)}</div>${ps.map(p => prodRow(c, p)).join('')}`).join('') || '<div class="empty"><p>هنوز محصولی ثبت نشده</p></div>'}
   <div class="sd-bar" style="margin-top:12px">${cat ? `<a class="act act-primary" href="${esc(cat)}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ شرکت</span></a>` : ''}<button type="button" class="act" data-a="goest">${I.calc}<span>برآورد (${fa(S.est.length)})</span></button></div>`, () => openBrand(id));
@@ -94,9 +116,9 @@ function openProd(pid) {
   const [c, p] = find(pid); if (!p) return;
   S.cur = c.id; S.curP = pid;
   const imgs = p.images || [];
-  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
+  const gal = imgs.length ? `<div class="gal"><div class="gal-track" id="galT">${imgs.map((m, k) => `<div class="gal-s im"><img src="${mUrl(m, 'l')}" alt="${esc(p.name)}" ${k ? 'loading="lazy" ' : ''}decoding="async">${S.edit ? `<button type="button" class="sq dg gal-x" data-rmimg="${m.key}" aria-label="حذف عکس">✕</button>` : ''}</div>`).join('')}</div>${imgs.length > 1 ? `<div class="dots" id="galD">${imgs.map((_, k) => `<i class="${k ? '' : 'on'}"></i>`).join('')}</div>` : ''}</div>` : `<div class="im ph big"><b>${letter(c)}</b><small>تصویر این محصول در حال تکمیل است</small></div>`;
   const price = p.price ? `<div class="pc">${fa(p.price)} تومان <small>/ ${esc(p.unit)}</small></div>` : `<div class="pc no">قیمت روز: استعلام <small>(${esc(p.unit)})</small></div>`;
-  const specs = (p.specs || []).length ? `<table class="spt">${p.specs.map(x => `<tr><td>${esc(x.k)}</td><td>${esc(x.v)}</td></tr>`).join('')}</table>` : '<div class="pc no">مشخصات فنی: استعلام</div>';
+  const specs = (p.specs || []).length ? `<table class="spt">${p.specs.map(x => `<tr><td>${esc(x.k)}</td><td>${ltrv(x.v)}</td></tr>`).join('')}</table>` : '<div class="pc no">مشخصات فنی: استعلام</div>';
 
   /* --- استانداردهای ملی --- */
   const stds = (p.standards || []).filter(x => x && x.code);
@@ -115,12 +137,13 @@ function openProd(pid) {
     ? `<div class="grp">فهرست بها</div><table class="spt"><tr><td>ردیف مرتبط</td><td>${esc(p.feHesab)}</td></tr></table>`
     : '';
 
-  const trace = (p.confidence || p.source || p.lastVerified || p.availability) ? `<div class="tr">${p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span> ` : ''}${p.availability ? `<div>قابل تهیه در ایران: ${esc(p.availability)}</div>` : ''}${p.source ? `<div>منبع: ${esc(p.source)}</div>` : ''}${p.lastVerified ? `<div>آخرین بررسی: ${esc(p.lastVerified)}</div>` : ''}</div>` : '<div class="tr">منبع و تاریخ بررسی برای این محصول هنوز ثبت نشده است.</div>';
+  const sd = p.lastVerified ? staleDays(p.lastVerified) : null;
+  const trace = (p.confidence || p.source || p.lastVerified || p.availability) ? `<div class="tr">${p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span> ` : ''}${sd != null && sd > 90 ? '<span class="cf review">بررسی قدیمی؛ دوباره تأیید شود</span> ' : ''}${p.availability ? `<div>قابل تهیه در ایران: ${esc(p.availability)}</div>` : ''}${p.source ? `<div>منبع: ${esc(p.source)}</div>` : ''}${p.lastVerified ? `<div>آخرین بررسی: ${esc(p.lastVerified)}</div>` : ''}${p.catalogVer ? `<div>نسخه‌ی کاتالوگ: ${esc(p.catalogVer)}</div>` : ''}</div>` : '<div class="tr">منبع و تاریخ بررسی برای این محصول هنوز ثبت نشده است.</div>';
   const feats = (p.features || []).length ? `<div class="grp">ویژگی‌ها</div><ul class="fts">${p.features.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '';
   const on = S.fav.includes(p.id);
   sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
-  <div class="sd-bar" style="margin-top:12px"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}</div>`);
+  <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
 }
 function favView() {
@@ -170,7 +193,7 @@ function summary() {
 }
 
 /* ---------- فرم ادمین ---------- */
-const CF = [['name', 'نام برند'], ['en', 'نام لاتین'], ['cat', 'دسته‌بندی'], ['desc', 'توضیح کوتاه', 'area'], ['catalog', 'لینک کاتالوگ (https://…)'], ['sponsor', 'حامی رواق', 'chk']];
+const CF = [['name', 'نام برند'], ['en', 'نام لاتین'], ['cat', 'دسته‌بندی'], ['desc', 'توضیح کوتاه', 'area'], ['site', 'وب‌سایت رسمی (https://…)'], ['catalog', 'لینک کاتالوگ (https://…)'], ['featuresT', 'ویژگی‌های برند — هر خط یک مورد', 'area'], ['linksT', 'لینک‌های مفید — هر خط: «عنوان | https://…»', 'area'], ['sponsor', 'حامی رواق', 'chk']];
 const PF = [
   ['name', 'نام محصول'],
   ['group', 'گروه'],
@@ -180,7 +203,9 @@ const PF = [
   ['mode', 'نوع محاسبه', 'sel', [['count', 'تعدادی'], ['area', 'بر اساس متراژ'], ['vol', 'حجمی (متراژ × ضخامت)']]],
   ['perM2', 'مصرف هر م²'],
   ['def', 'ضخامت پیش‌فرض (cm)'],
-  ['catalog', 'لینک کاتالوگ محصول'],
+  ['catalog', 'لینک کاتالوگ محصول (PDF)'],
+  ['page', 'لینک صفحه‌ی رسمی محصول (https://…)'],
+  ['catalogVer', 'نسخه/تاریخ کاتالوگ (مثلاً ۱۴۰۵)'],
   ['availability', 'قابل تهیه در ایران؟', 'sel', [['', 'نامشخص'], ['داخلی', 'تولید داخل'], ['وارداتی', 'وارداتی'], ['معادل ایرانی', 'معادل ایرانی دارد']]],
   ['confidence', 'نشان اطمینان', 'sel', [['', 'انتخاب کن'], ['datasheet', 'تأییدشده با دیتاشیت'], ['field', 'تجربه‌ی اجرایی'], ['review', 'نیازمند بررسی']]],
   ['source', 'منبع (مثلاً دیتاشیت شرکت، نسخه)'],
@@ -196,8 +221,16 @@ const PF = [
   ['featuresT', 'ویژگی‌ها — هر خط یک ویژگی (از کاتالوگ)', 'area'],
   ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']
 ];
+const SPEC_TPL = [
+  [/سبکدانه|سبک‌سازی|عایق|کف‌سازی|ژئوتکنیک|زیرساخت|کشاورز/, ['چگالی', 'ضریب هدایت حرارتی', 'مقاومت فشاری', 'جذب آب', 'رده‌ی آتش', 'دانه‌بندی', 'وزن هر کیسه']],
+  [/بلوک|دیوار|سقف|تیغه|پانل/, ['ابعاد', 'وزن', 'مقاومت فشاری', 'ضریب هدایت حرارتی', 'مقاومت صوتی', 'رده‌ی آتش']],
+  [/گچ|ملات|مخلوط|بتن|سیمان/, ['وزن هر بسته', 'مصرف تقریبی', 'زمان گیرش', 'مقاومت فشاری', 'نسبت آب به پودر']],
+  [/شیر|توالت|بهداشتی|سرویس|روشویی|کابین|اکسسوری|تجهیزات|سنگ/, ['جنس', 'ابعاد', 'وزن', 'روکش', 'فشار کاری', 'گارانتی']]
+];
+const specTplFor = (...ts) => { for (const t of ts) { const m = SPEC_TPL.find(x => x[0].test(t || '')); if (m) return m[1]; } return ['ابعاد', 'وزن', 'جنس']; };   /* اول گروه/نام محصول، بعد دسته‌ی برند */
 function form(title, F, v, ok, back, val) {
-  sheet(`<h3 style="margin:4px 0 10px;color:var(--ink)">${title}</h3><div class="rw">${F.map(([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l.replace(/\n/g, '<br>')}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`).join('')}</div><div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
+  const isP = F === PF;
+  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">${title}</h3><p class="hint">فقط «نام» الزامی است. هر فیلدی که خالی بماند در اپ «استعلام» نمایش داده می‌شود و عدد ساخته نمی‌شود.${isP ? ' اگر قیمت یا مشخصات را بدون «نشان اطمینان» ثبت کنی، خودکار «نیازمند بررسی» علامت می‌خورد.' : ''}</p><div class="rw">${F.map(([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l.replace(/\n/g, '<br>')}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`).join('')}</div>${isP ? '<div class="ft"><button type="button" class="act" data-a="spectpl">＋ درج قالب مشخصات این گروه (فقط عنوان‌ها)</button></div>' : ''}<div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
   S.ok = ok; S.val = val || null;
 }
 const readForm = () => { const o = {}; document.querySelectorAll('#sdPanel [data-f]').forEach(e => o[e.dataset.f] = e.type === 'checkbox' ? e.checked : e.value.trim()); return o; };
@@ -218,12 +251,18 @@ const cleanP = o => {
       no: String(o.techCertNo || '').trim().slice(0, 80),
       until: String(o.techCertUntil || '').trim().slice(0, 30)
     },
-    feHesab: String(o.feHesab || '').trim().slice(0, 80)
+    feHesab: String(o.feHesab || '').trim().slice(0, 80),
+    page: safe(o.page),
+    catalogVer: String(o.catalogVer || '').trim().slice(0, 60)
   };
+  if (!r.confidence && (r.specs.length || r.standards.length || r.features.length || r.price || r.speed || r.durability)) r.confidence = 'review';
   ['specsT', 'featuresT', 'standardsT', 'techCertNo', 'techCertUntil', 'feHesab'].forEach(k => delete r[k]);
   return r;
 };
-const valP = o => (parseSpecs(o.specsT).length || parseStandards(o.standardsT).length || String(o.featuresT || '').trim() || num(o.price) || rate(o.speed) || rate(o.durability)) && !(o.source && o.confidence) ? 'برای قیمت یا مشخصات، «منبع» و «نشان اطمینان» را وارد کن' : '';
+const valP = () => '';   /* فقط «نام» اجباری است؛ ردیابی‌پذیری با نشان «نیازمند بررسی» خودکار حفظ می‌شود */
+const parseLinks = t => String(t || '').split('\n').map(l => { const i = l.indexOf('|'); if (i < 1) return null; const u = safe(l.slice(i + 1).trim()); return u ? { t: l.slice(0, i).trim().slice(0, 80), u: u.slice(0, 500) } : null; }).filter(x => x && x.t).slice(0, 12);
+const cleanC = o => { const r = { ...o, catalog: safe(o.catalog), site: safe(o.site), features: String(o.featuresT || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 12), links: parseLinks(o.linksT) }; delete r.featuresT; delete r.linksT; return r; };
+const coVals = c => ({ ...c, featuresT: (c.features || []).join('\n'), linksT: (c.links || []).map(x => x.t + ' | ' + x.u).join('\n') });
 
 /* ================================================================
    فاز ۲ — متره‌ی اتاق‌محور، سه سناریو، مقایسه‌گر، ماشین‌حساب‌ها، برگه‌ی پیشنهاد
@@ -315,11 +354,11 @@ function calcRun(k, v) {
   }
   return o;
 }
-window.RQ = { geom, itemQty, calcRun, scoreCmp, takeoff, specNum, S };
+window.RQ = { geom, itemQty, calcRun, scoreCmp, takeoff, specNum, S, nz, staleDays };
 
 function pickList() {
   const q = S.pick.q.trim(), f = S.pick.filter;
-  const h = D.companies.map(c => { const ps = c.products.filter(p => f(p, c) && (!q || (p.name + c.name + (p.group || '')).includes(q))); return ps.length ? `<div class="grp">${esc(c.name)}</div>` + ps.map(p => `<button type="button" class="pkr" data-x="pk" data-pid="${p.id}">${thumb(c, p)}<span><b>${esc(p.name)}</b><small>${esc(p.group || '')} · ${esc(p.unit)}</small></span></button>`).join('') : ''; }).join('');
+  const h = D.companies.map(c => { const ps = c.products.filter(p => f(p, c) && (!q || (h => nz(q).split(' ').filter(Boolean).every(w => h.includes(w)))(nz(p.name + ' ' + c.name + ' ' + c.en + ' ' + (p.group || ''))))); return ps.length ? `<div class="grp">${esc(c.name)}</div>` + ps.map(p => `<button type="button" class="pkr" data-x="pk" data-pid="${p.id}">${thumb(c, p)}<span><b>${esc(p.name)}</b><small>${esc(p.group || '')} · ${esc(p.unit)}</small></span></button>`).join('') : ''; }).join('');
   return h || '<div class="empty"><p>محصولی پیدا نشد</p></div>';
 }
 function pick(title, filter, cb, note) {
@@ -405,7 +444,7 @@ function paintCmp() {
   h += row('سرعت اجرا', ps.map(p => p.speed ? fa(p.speed) + ' از ۵' : 'ثبت‌نشده'), win(ps.map(p => p.speed || null), 'hi'));
   h += row('دسترسی', ps.map(p => esc(p.availability || 'نامشخص')), win(ps.map(p => AV[p.availability] || null), 'hi'));
   const keys = []; ps.forEach(p => (p.specs || []).forEach(s => { if (!keys.includes(s.k)) keys.push(s.k); }));
-  keys.forEach(k => { const vs = ps.map(p => { const s = (p.specs || []).find(x => x.k === k); return s ? s.v : null; }), dir = S.dir[k] || '', nums = vs.map(v => v == null ? null : specNum(v)); h += row(`${esc(k)}<button type="button" class="dirb ${dir}" data-x="dir" data-k="${esc(k)}" aria-label="جهت برتری">${dir === 'hi' ? '▲ بیشتر بهتر' : dir === 'lo' ? '▼ کمتر بهتر' : '± جهت؟'}</button>`, vs.map(v => v == null ? '—' : esc(v)), dir ? win(nums, dir) : []); });
+  keys.forEach(k => { const vs = ps.map(p => { const s = (p.specs || []).find(x => x.k === k); return s ? s.v : null; }), dir = S.dir[k] || '', nums = vs.map(v => v == null ? null : specNum(v)); h += row(`${esc(k)}<button type="button" class="dirb ${dir}" data-x="dir" data-k="${esc(k)}" aria-label="جهت برتری">${dir === 'hi' ? '▲ بیشتر بهتر' : dir === 'lo' ? '▼ کمتر بهتر' : '± جهت؟'}</button>`, vs.map(v => v == null ? '—' : ltrv(v)), dir ? win(nums, dir) : []); });
   h += row('نشان اطمینان', ps.map(p => p.confidence ? `<span class="cf ${esc(p.confidence)}">${esc(CONF[p.confidence] || '')}</span>` : '<span class="cf">ثبت‌نشده</span>'), []);
   h += row('منبع / بررسی', ps.map(p => (p.source ? esc(p.source) : '—') + (p.lastVerified ? `<small> · ${esc(p.lastVerified)}</small>` : '')), []);
   h += `</tbody></table></div>`;
@@ -472,7 +511,7 @@ async function makeSheet(tk) {
     if (y > HT - 330) newPage(false);
     let xr = WD - M; const im = imgs[l.p.id];
     rr(xr - 118, y - 30, 108, 84, 14, '#F2EEE8', LN); if (im) { x.save(); rr(xr - 118, y - 30, 108, 84, 14); x.clip(); const k = Math.max(108 / im.width, 84 / im.height); x.drawImage(im, xr - 118 + (108 - im.width * k) / 2, y - 30 + (84 - im.height * k) / 2, im.width * k, im.height * k); x.restore(); } else tx((l.c.en || l.c.name || '؟')[0], xr - 64, y + 26, 40, 900, AC, 'center');
-    xr -= mw[0]; tx(l.p.name, xr - 14, y, 25, 800, INK, 'right', mw[1] - 26); tx(l.c.name, xr - 14, y + 30, 20, 500, DIM, 'right', mw[1] - 26);
+    xr -= mw[0]; tx(l.p.name, xr - 14, y, l.p.name.length > 22 ? 20 : 25, 800, INK, 'right', mw[1] - 26); tx(l.c.name, xr - 14, y + 30, 20, 500, DIM, 'right', mw[1] - 26);
     tx((l.p.confidence ? CONF[l.p.confidence] : 'منبع ثبت نشده') + (l.p.source ? ' · ' + l.p.source : ''), xr - 14, y + 58, 17, 500, l.p.confidence === 'review' || !l.p.confidence ? '#C93C3C' : AC, 'right', mw[1] - 26);
     xr -= mw[1]; tx(nf(l.q) + ' ' + l.p.unit, xr - 14, y + 12, 22, 600, INK, 'right', mw[2] - 20); xr -= mw[2];
     tx(l.price ? fa(l.price) : 'استعلام', xr - 14, y + 12, 22, 600, l.price ? INK : '#C93C3C', 'right', mw[3] - 20); tx(S.px[l.p.id] > 0 ? 'قیمت واردشده' : l.price ? 'قیمت ثبت‌شده' : '', xr - 14, y + 42, 16, 500, DIM, 'right'); xr -= mw[3];
@@ -536,8 +575,6 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target, d = t.dataset, k = d.i;
-  if (t.dataset.g && S.tab === 'room') return paintRoom();
-  if (t.dataset.g && S.tab === 'calc') return paintCalc();
   if (!k) return;
   if (k === 'ps') { S.pick.q = t.value; $('#pkL').innerHTML = pickList(); return; }
   if (k === 'pj') { S.proj[d.k] = t.value; return persist2(); }
@@ -593,8 +630,9 @@ document.addEventListener('click', e => {
     case 'goest': closeSheet(); S.tab = 'est'; render(); return scrollTo({ top: 0 });
     case 'clear': if (confirm('همه‌ی اقلام برآورد پاک شود؟')) { S.est = []; persist(); render(); } return;
     case 'share': { const u = 'https://t.me/share/url?url=' + encodeURIComponent(`https://t.me/${S.bot}?start=${S.start}`) + '&text=' + encodeURIComponent(summary()); TG && TG.openTelegramLink ? TG.openTelegramLink(u) : window.open(u, '_blank'); return; }
-    case 'addco': return form('برند جدید', CF, { sponsor: false }, o => { const n = { id: uid(), products: [], ...o, catalog: safe(o.catalog) }; D.companies.push(n); saveData(); render(); });
-    case 'editco': return form('ویرایش برند', CF, c, o => { Object.assign(c, o, { catalog: safe(o.catalog) }); saveData(); render(); }, () => openBrand(c.id));
+    case 'addco': return form('برند جدید', CF, { sponsor: false }, o => { const n = { id: uid(), products: [], ...cleanC(o) }; D.companies.push(n); saveData(); render(); });
+    case 'editco': return form('ویرایش برند', CF, coVals(c), o => { Object.assign(c, cleanC(o)); saveData(); render(); }, () => openBrand(c.id));
+    case 'spectpl': { const ta = document.querySelector('#sdPanel [data-f=specsT]'); if (!ta) return; const g = (document.querySelector('#sdPanel [data-f=group]') || {}).value || '', nm = (document.querySelector('#sdPanel [data-f=name]') || {}).value || '', co = D.companies.find(x => x.id === S.cur) || {}; const have = ta.value.split('\n').map(l => l.split(/[:：]/)[0].trim()); const add = specTplFor(g + ' ' + nm, co.cat).filter(k => !have.includes(k)).map(k => k + ': '); ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + add.join('\n'); ta.rows = 8; hp(); return toast('عنوان‌ها درج شد؛ فقط مقدارهایی را که داری پر کن، بقیه خالی بماند'); }
     case 'delco': if (confirm('این برند و همه‌ی محصولاتش حذف شود؟')) { D.companies = D.companies.filter(x => x !== c); saveData(); closeSheet(); render(); } return;
     case 'addp': return form('محصول جدید', PF, { mode: 'count' }, o => { c.products.push({ id: uid(), ...cleanP(o) }); saveData(); }, () => openBrand(c.id), valP);
     case 'fok': { const o = readForm(); if (!o.name) return toast('نام را وارد کن'); const er = S.val && S.val(o); if (er) return toast(er); const b = S.back, ok = S.ok; ok(o); if (b) b(); else closeSheet(); return render(); }
@@ -605,7 +643,7 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'search') { S.q = t.value; $('#searchClear').hidden = !t.value; clearTimeout(S.dt); S.dt = setTimeout(render, 160); return; }
   if (t.dataset.l) { const l = S.est.find(x => x.id === t.dataset.l); l[t.dataset.k] = num(t.value); persist(); return paint(); }
-  if (t.dataset.g) { S.cfg[t.dataset.g] = num(t.value); persist(); paint(); }
+  if (t.dataset.g) { S.cfg[t.dataset.g] = num(t.value); persist(); if (S.tab === 'room') paintRoom(); else if (S.tab === 'est') paint(); return; }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
