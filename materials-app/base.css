@@ -295,7 +295,7 @@ button { cursor: pointer; border: none; background: none; }
 .filters::before {
   content: "";
   position: absolute;
-  top: -24px;
+  top: 0;
   bottom: 0;
   left: 50%;
   width: 100vw;
@@ -314,7 +314,7 @@ button { cursor: pointer; border: none; background: none; }
 .filters::after {
   content: "";
   position: absolute;
-  top: -24px;
+  top: 0;
   bottom: 0;
   left: 50%;
   width: 100vw;

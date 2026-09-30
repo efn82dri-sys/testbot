@@ -347,3 +347,27 @@ body { padding-bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom, 0p
   :root:not([data-theme="dark"]) .cf.field { color:#87501A; border-color:#D8B98F; background:#FFF5E8; }
   :root:not([data-theme="dark"]) .cf.review { color:#A72D36; border-color:#E5B2B6; background:#FFF0F1; }
 }
+
+
+/* ================= فاز ۹ — رفع پوشیده‌شدن توضیح صفحهٔ اصلی ================= */
+/* لایهٔ محوشدگی فیلترها نباید روی متن معرفی صفحهٔ اصلی بیاید. */
+.hero { padding-bottom: 34px; }
+.hero p {
+  display: block;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  margin: 0 0 12px;
+  line-height: 2;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.filters::before,
+.filters::after { top: 0; }
+@media (max-width: 480px) {
+  .hero { padding-bottom: 30px; }
+  .hero p { font-size: 13.5px; line-height: 2; margin-bottom: 10px; }
+}
