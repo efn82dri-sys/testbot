@@ -9881,7 +9881,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
         if rating < 0 or rating > 5: rating = 0
     except Exception:
         return web.json_response({"ok": False, "error": "ساختار اطلاعات معتبر نیست."}, status=400)
-    entry = {"id": uuid.uuid4().hex[:12], "user_id": int(user.get("id", 0)), "user": str(user.get("username") or user.get("first_name") or "کاربر")[:80], "title": title, "material": material, "details": details, "context": context, "photo_url": photo_url, "rating": rating, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "votes": 0}
+    entry = {"id": uuid.uuid4().hex[:12], "user_id": int(user.get("id", 0)), "user": str((str(user.get("first_name") or "") + " " + str(user.get("last_name") or "")).strip() or user.get("username") or "کاربر")[:80], "username": str(user.get("username") or "")[:80], "title": title, "material": material, "details": details, "context": context, "photo_url": photo_url, "rating": rating, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "votes": 0}
     data.setdefault("items", []).append(entry); data["items"] = data["items"][-3000:]; _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
     for admin_id in ADMIN_IDS:
         try:
