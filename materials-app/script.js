@@ -31,7 +31,7 @@ const K = { est: 'rq.mat.est', fav: 'rq.mat.fav', cfg: 'rq.mat.cfg', th: 'rq.mat
 const ld = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 const COL = ['#6FE3C4', '#E3B26F', '#8AA2FF', '#E36F9A', '#B58AFF', '#7FD1E8'];
-const S = { tab: 'cat', q: '', cat: '', edit: false, admin: false, est: ld(K.est, []), fav: ld(K.fav, []), cfg: ld(K.cfg, { waste: 5, labor: 0 }), back: null, brand: '', bot: 'irarchitps_bot', start: 'materials', curP: '', rooms: ld(K.rooms, []), scn: ld(K.scn, {}), px: ld(K.px, {}), cmp: ld(K.cmp, []), w: ld(K.w, { price: 3, dur: 3, spd: 3, av: 3 }), dir: ld(K.dir, {}), proj: ld(K.proj, { name: '', client: '' }), cc: ld(K.cc, { k: 'floor', v: { floor: { w: 5 }, block: { j: 10, w: 5 }, gyp: { w: 5 } } }), pick: null, cres: [], projects: [], sponsorData: null };
+const S = { tab: 'cat', q: '', cat: '', edit: false, admin: false, est: ld(K.est, []), fav: ld(K.fav, []), cfg: ld(K.cfg, { waste: 5, labor: 0 }), back: null, brand: '', bot: 'irarchitps_bot', start: 'materials', curP: '', rooms: ld(K.rooms, []), scn: ld(K.scn, {}), px: ld(K.px, {}), cmp: ld(K.cmp, []), w: ld(K.w, { price: 3, dur: 3, spd: 3, av: 3 }), dir: ld(K.dir, {}), proj: ld(K.proj, { name: '', client: '' }), cc: ld(K.cc, { k: 'floor', v: { floor: { w: 5 }, block: { j: 10, w: 5 }, gyp: { w: 5 } } }), pick: null, cres: [], projects: [], sponsorData: null, communityData: null, marketData: null, wizard: {problem:'basement_moisture', climate:'mixed', budget:'mid', method:'standard'} };
 let D = { companies: [], packs: [] };
 
 /* ---------- ابزارها ---------- */
@@ -68,8 +68,8 @@ const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); doc
 
 /* ---------- نما ---------- */
 function tabs() {
-  const T = [['cat', 'کاتالوگ برندها', fa(D.companies.length)], ['room', 'متره‌ی اتاق‌محور', fa(S.rooms.length)], ['cmp', 'مقایسه‌گر', fa(S.cmp.length)], ['calc', 'ماشین‌حساب', fa(3)], ['est', 'برآورد پروژه', fa(S.est.length)], ['fav', 'ذخیره‌شده‌ها', fa(S.fav.length)], ['library', 'کتابخانه فایل', 'CAD'], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['prices', 'روند قیمت', '↗'], ['dealers', 'نمایندگی‌ها', '⌖']];
-  if (S.admin) T.push(['sponsor', 'داشبورد حامیان', '۳۰روز']);
+  const T = [['cat', 'کاتالوگ برندها', fa(D.companies.length)], ['room', 'متره‌ی اتاق‌محور', fa(S.rooms.length)], ['cmp', 'مقایسه‌گر', fa(S.cmp.length)], ['calc', 'ماشین‌حساب', fa(3)], ['est', 'برآورد پروژه', fa(S.est.length)], ['fav', 'ذخیره‌شده‌ها', fa(S.fav.length)], ['library', 'کتابخانه فایل', 'CAD'], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['prices', 'روند قیمت', '↗'], ['dealers', 'نمایندگی‌ها', '⌖'], ['wizard', 'مشاور مسئله‌محور', '۳؟'], ['education', 'آموزش اجرا', '۳۰ث'], ['community', 'تجربه‌های اجرایی', '✎']];
+  if (S.admin) { T.push(['sponsor', 'داشبورد حامیان', '۳۰روز']); T.push(['market', 'شاخص بازار', '۳۰روز']); }
   $('#index').innerHTML = T.map((t, i) => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
   $('#filters').hidden = S.tab !== 'cat';
   $('#editBtn').hidden = !S.admin; $('#editBtn').setAttribute('aria-pressed', S.edit);
@@ -77,7 +77,7 @@ function tabs() {
 function render() {
   tabs();
   const L = $('#list');
-  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView }[S.tab] || catView)();
+  L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView }[S.tab] || catView)();
   if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
@@ -89,7 +89,7 @@ function catView() {
   const hay = c => nz([c.name, c.en, c.cat, c.desc, ...c.products.map(p => [p.name, p.group, p.desc, (p.features || []).join(' '), (p.specs || []).map(x => x.k + ' ' + x.v).join(' ')].join(' '))].join(' '));
   const list = D.companies.filter(c => (!S.cat || c.cat === S.cat) && (!S.brand || c.id === S.brand) && (!nq.length || (h => nq.every(w => h.includes(w)))(hay(c))));
   const add = S.edit ? '<button type="button" class="act act-primary" data-a="addco" style="margin-top:12px">+ برند جدید</button>' : '';
-  if (!list.length) return add + '<div class="empty"><div class="empty-icon">🔍</div><p>موردی پیدا نشد</p></div>';
+  if (!list.length) { if (S.q.trim()) { const sk=nz(S.q).slice(0,100); if(S.lastNoResult!==sk){S.lastNoResult=sk;phase4Track('search_no_result','','',{query:sk});} } else S.lastNoResult=''; return add + '<div class="empty"><div class="empty-icon">🔍</div><p>موردی پیدا نشد</p></div>'; }
   return add + '<div class="grid">' + list.map((c, i) => `<article class="mc" data-brand="${c.id}" data-i="${i}" tabindex="0" role="button"><div style="display:flex;gap:10px;align-items:center">${logoBox(c, 'mono')}<div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.cat)}</span></div></div></div><p>${esc(c.desc)}</p><div class="meta"><span>${fa(c.products.length)} محصول</span>${safe(c.catalog) ? '<span class="sp">کاتالوگ</span>' : ''}${c.sponsor ? '<span class="sp">حامی رواق</span>' : ''}</div></article>`).join('') + '</div>';
 }
 function prodRow(c, p) {
@@ -147,9 +147,14 @@ function openProd(pid) {
   const docsHtml = `<div class="grp">کتابخانه‌ی فایل‌های اجرایی</div>${docs.length ? docs.map(d=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(d.version||'')} ${esc(d.date||'')}</small><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت</button></div>`).join('') : '<p class="hint">فایل اجرایی هنوز ثبت نشده است.</p>'}${S.edit ? `<button type="button" class="act" data-a="upfile" data-id="${esc(c.id)}" data-pid="${esc(p.id)}">＋ افزودن فایل CAD/BIM/Texture/PDF از ربات</button>` : ''}`;
   const hist = (p.priceLog||[]).slice(-8).reverse();
   const histHtml = `<div class="grp">تاریخچه‌ی قیمت</div>${hist.length?`<table class="spt">${hist.map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${x.price?fa(x.price)+' تومان':'استعلام'}</td><td>${esc(x.source||'منبع ثبت نشده')}</td></tr>`).join('')}</table>`:'<p class="hint">هنوز تاریخچه‌ی قیمت ثبت نشده است.</p>'}`;
-  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}${histHtml}${docsHtml}
+  const modelUrl = safe(typeof p.model3d === 'string' ? p.model3d : (p.model3d && p.model3d.url) || '');
+  const modelHtml = modelUrl ? `<div class="grp">پیش‌نمایش سه‌بعدی</div><model-viewer src="${esc(modelUrl)}" alt="مدل سه‌بعدی ${esc(p.name)}" camera-controls auto-rotate shadow-intensity="0.7" style="width:100%;height:280px;background:var(--surface-2);border-radius:16px"></model-viewer><p class="hint">مدل صرفاً برای مشاهده‌ی ظاهری است؛ ابعاد و قابلیت اجرا باید از نقشه و دیتاشیت تأیید شود.</p>` : (S.edit ? `<div class="hint">برای افزودن مدل سه‌بعدی، فیلد model3d.url با لینک عمومی فایل GLB/GLTF معتبر تکمیل شود.</div>` : '');
+  if(modelUrl) phase4Track('model3d',c.name,p.name);
+  const installHtml = p.install && ((p.install.steps||[]).length || (p.install.mistakes||[]).length) ? `<div class="grp">راهنمای اجرا</div><button class="act" data-tab="education">مشاهده آموزش‌های اجرا</button>` : '';
+  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}${modelHtml}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}${installHtml}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}${histHtml}${docsHtml}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
   <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button><button type="button" class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="${esc(p.id)}">استعلام قیمت</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
+  if(modelUrl && !customElements.get('model-viewer')) { const ms=document.createElement('script'); ms.type='module'; ms.src='https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js'; document.head.appendChild(ms); }
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
 }
 function phase3Track(event, c, p) { api('event', {method:'POST', body:JSON.stringify({event, company:c || '', product:p || ''})}).catch(()=>{}); }
@@ -172,6 +177,43 @@ function dealersView() {
   const rows=[]; D.companies.forEach(c=>{(c.dealers||[]).forEach(d=>rows.push({c,d}));});
   return rows.length?rows.map(({c,d})=>`<div class="ln"><h4><span>${esc(d.name||c.name)}</span><em>${esc(d.city||'شهر ثبت نشده')}</em></h4>${d.address?`<p>${esc(d.address)}</p>`:''}${d.phone?`<div class="ft"><a class="act act-primary" href="tel:${esc(d.phone.replace(/[^+\d]/g,''))}">تماس با نمایندگی</a><button class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="">استعلام قیمت</button></div>`:`<button class="act act-primary" data-x="quote-open" data-co="${esc(c.id)}">درخواست معرفی نمایندگی</button>`}</div>`).join(''):'<div class="empty"><div class="empty-icon">⌖</div><h3>نمایندگی‌ها</h3><p>اطلاعات نمایندگی هنوز ثبت نشده. می‌توانی از داخل شناسنامه‌ی محصول درخواست استعلام بفرستی؛ اطلاعات تماس فقط پس از تأیید ثبت می‌شود.</p>'+D.companies.map(c=>`<button class="act" data-x="quote-open" data-co="${esc(c.id)}">استعلام از ${esc(c.name)}</button>`).join(' ')+'</div>';
 }
+const PROBLEMS = [
+  {id:'basement_moisture',title:'رطوبت زیرزمین',groups:['عایق رطوبتی','آب‌بندی','ملات'],reason:'برای انتخاب سامانه، ابتدا منشأ رطوبت، فشار آب و وضعیت بستر باید مشخص شود.'},
+  {id:'light_roof',title:'کاهش وزن سقف',groups:['سبک‌سازی','لیکا','دانه سبک'],reason:'وزن نهایی به چگالی واقعی، ضخامت، رطوبت و لایه‌های کامل کف‌سازی وابسته است.'},
+  {id:'cold_facade',title:'نمای ساختمان در اقلیم سرد',groups:['عایق حرارتی','نما','چسب'],reason:'پل حرارتی، آب‌بندی، یخ‌زدگی و سازگاری لایه‌ها باید هم‌زمان بررسی شوند.'},
+  {id:'hot_dry',title:'پوسته در اقلیم گرم و خشک',groups:['عایق حرارتی','سایه‌انداز','نما'],reason:'جهت‌گیری، تابش، جرم حرارتی، سایه و تهویه در کنار مشخصات محصول مهم‌اند.'},
+  {id:'fire',title:'نیاز به عملکرد حریق',groups:['عایق','پوشش ضدحریق','پنل'],reason:'فقط گزارش آزمون و طبقه‌بندی معتبر همان سامانه قابل استناد است؛ ادعای تبلیغاتی کافی نیست.'},
+  {id:'sound',title:'کاهش انتقال صدا',groups:['عایق صوتی','پنل','پشم معدنی'],reason:'عملکرد صوتی به جزئیات اتصال، درزبندی و مجموعه‌ی کامل دیوار یا سقف وابسته است.'},
+  {id:'wet_area',title:'آب‌بندی سرویس و حمام',groups:['عایق رطوبتی','چسب کاشی','آب‌بندی'],reason:'جزئیات گوشه‌ها، کف‌شور، نفوذی‌ها و تست آب‌بندی باید در نظر گرفته شود.'},
+  {id:'fast_finish',title:'اجرای سریع نازک‌کاری',groups:['گچ','گچ ماشینی','ملات آماده'],reason:'زمان اجرا به آماده‌سازی زیرکار، شرایط محیطی، تجهیزات و دستورالعمل سازنده وابسته است.'},
+  {id:'floor_weight',title:'وزن و تراز کف‌سازی',groups:['سبک‌سازی','لیکا','کف‌سازی'],reason:'ضخامت واقعی، چگالی و لایه‌های شیب‌بندی و پوشش نهایی باید جداگانه محاسبه شوند.'},
+  {id:'tile_waste',title:'کاهش پرت کاشی و سرامیک',groups:['کاشی','سرامیک','چسب کاشی'],reason:'ابعاد قطعه، الگوی چیدمان، بندها، شکستگی و پیچیدگی محیط بر پرت اثر دارند.'}
+];
+function wizardView() {
+  const w=S.wizard, prob=PROBLEMS.find(x=>x.id===w.problem)||PROBLEMS[0];
+  const matched=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{const text=nz((c.cat||'')+' '+(p.group||'')+' '+p.name+' '+(p.tags||[]).join(' ')); if(prob.groups.some(g=>text.includes(nz(g)))) matched.push({c,p});}));
+  return `<div class="tot"><b>مسئله‌ی پروژه را انتخاب کن</b><p class="hint">این ابزار فهرست اولیه برای بررسی است، نه دستور طراحی یا جایگزین محاسبات مهندسی. هیچ گزینه‌ای بدون داده‌ی معتبر رتبه‌بندی نمی‌شود.</p><label class="fl"><span>مسئله</span><select data-i="wizard" data-k="problem">${PROBLEMS.map(x=>`<option value="${x.id}" ${x.id===w.problem?'selected':''}>${esc(x.title)}</option>`).join('')}</select></label><div class="rw"><label class="fl"><span>اقلیم پروژه</span><select data-i="wizard" data-k="climate"><option value="hotdry" ${w.climate==='hotdry'?'selected':''}>گرم و خشک</option><option value="cold" ${w.climate==='cold'?'selected':''}>سرد</option><option value="humid" ${w.climate==='humid'?'selected':''}>مرطوب</option><option value="mixed" ${w.climate==='mixed'?'selected':''}>معتدل / ترکیبی</option></select></label><label class="fl"><span>محدوده‌ی بودجه</span><select data-i="wizard" data-k="budget"><option value="low" ${w.budget==='low'?'selected':''}>محدود</option><option value="mid" ${w.budget==='mid'?'selected':''}>متوسط</option><option value="high" ${w.budget==='high'?'selected':''}>باز</option></select></label></div><label class="fl"><span>روش اجرا</span><select data-i="wizard" data-k="method"><option value="standard" ${w.method==='standard'?'selected':''}>اجرای متعارف</option><option value="dry" ${w.method==='dry'?'selected':''}>خشک / پیش‌ساخته</option><option value="wet" ${w.method==='wet'?'selected':''}>تر / ملات‌محور</option></select></label></div><div class="ln"><h4>${esc(prob.title)}</h4><p>${esc(prob.reason)}</p><div class="meta"><span>وضعیت محتوا: راهنمای اولیه، نیازمند بررسی متخصص</span></div><div class="grp">مواردی که قبل از انتخاب باید بررسی شوند</div><ul class="fts"><li>دیتاشیت و دستورالعمل معتبر سازنده</li><li>سازگاری محصول با زیرکار و لایه‌های مجاور</li><li>جزئیات اتصال، آب‌بندی و شرایط اجرای واقعی</li><li>ضوابط و مقررات لازم‌الاجرا برای پروژه</li></ul></div><div class="grp">محصولات مرتبط در کاتالوگ</div>${matched.length?matched.slice(0,8).map(({c,p})=>`<div class="ln"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><p>${esc(p.desc||'برای تطبیق با شرایط پروژه، دیتاشیت و جزئیات اجرا بررسی شود.')}</p><button class="act act-primary" data-prod="${esc(p.id)}">مشاهده شناسنامه</button></div>`).join(''):'<div class="empty"><p>محصول مرتبطی در داده‌های فعلی پیدا نشد. این به معنی نامناسب بودن محصولی خاص نیست؛ داده‌ی کاتالوگ را تکمیل کن.</p></div>'}<div class="tot"><b>قبل از تصمیم نهایی</b><p class="hint">این راهنما توسط متخصص پروژه‌ی شما تأیید نشده است. برای سازه، حریق، آب‌بندی و عملکرد حرارتی از طراح مسئول و مدارک رسمی استفاده کن.</p></div>`;
+}
+function educationView() {
+ const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if(p.install && ((p.install.steps||[]).length||(p.install.mistakes||[]).length)) rows.push({c,p});}));
+ if(!rows.length) return `<div class="empty"><div class="empty-icon">▶</div><h3>آموزش کوتاه اجرا</h3><p>محتوای تأییدشده‌ی اجرا هنوز ثبت نشده است. برای جلوگیری از انتشار دستورالعمل ساختگی، این بخش فقط آموزش‌هایی را نمایش می‌دهد که ادمین در شناسنامه‌ی محصول وارد کند.</p>${S.admin?'<p class="hint">فیلدهای install.steps و install.mistakes را در داده‌ی محصول تکمیل کن؛ هر راهنما باید با منبع و بازبینی متخصص همراه باشد.</p>':''}</div>`;
+ return rows.map(({c,p})=>`<div class="ln"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4>${p.install.source?`<small>منبع: ${esc(p.install.source)}</small>`:'<small>منبع آموزش ثبت نشده؛ پیش از اجرا بررسی شود.</small>'}${p.install.verifiedBy?`<small>بازبین: ${esc(p.install.verifiedBy)} · ${esc(p.install.verifiedAt||'تاریخ ثبت نشده')}</small>`:'<div class="wr">تأیید متخصص ثبت نشده</div>'}${p.install.video_url&&safe(p.install.video_url)?`<a class="act act-primary" data-stop href="${esc(safe(p.install.video_url))}" target="_blank" rel="noopener">▶ مشاهده ویدیوی اجرا</a>`:''}<div class="grp">مراحل ثبت‌شده</div><ol>${(p.install.steps||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>مرحله‌ای ثبت نشده است.</li>'}</ol><div class="grp">خطاهای رایج</div><ul class="fts">${(p.install.mistakes||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>موردی ثبت نشده است.</li>'}</ul><button class="act" data-prod="${esc(p.id)}">مشاهده شناسنامه‌ی محصول</button></div>`).join('');
+}
+function communityView() {
+ if(!S.communityData){ if(!S.communityLoading){S.communityLoading=true;api('community').then(r=>S.communityData=r).catch(()=>S.communityData={ok:false,items:[],mine:[]}).finally(()=>{S.communityLoading=false;if(S.tab==='community')render();});} return '<div class="empty"><p>در حال دریافت تجربه‌های اجرایی…</p></div>'; }
+ const d=S.communityData; if(!d.ok)return '<div class="empty"><p>برای ثبت و دیدن تجربه‌ها، مینی‌اپ را از داخل تلگرام باز کن.</p></div>';
+ const publicRows=(d.items||[]).slice().reverse(); const mine=(d.mine||[]).slice().reverse();
+ return `<div class="tot"><b>تجربه‌ی اجرا را ثبت کن</b><p class="hint">تجربه‌ها پیش از انتشار توسط مدیر بررسی می‌شوند. تجربه‌ی شخصی جایگزین دیتاشیت، استاندارد یا نظر طراح مسئول نیست.</p><button class="act act-primary" data-x="community-new">＋ ثبت تجربه‌ی جدید</button></div>${S.admin?'<div class="ft"><button class="act" data-x="community-admin">مدیریت و بررسی ارسال‌ها</button></div>':''}<div class="grp">تجربه‌های منتشرشده</div>${publicRows.length?publicRows.map(x=>`<div class="ln"><h4><span>${esc(x.title)}</span><em>${esc(x.material)}</em></h4><p>${esc(x.details)}</p>${x.context?`<small>شرایط پروژه: ${esc(x.context)}</small>`:''}${x.photo_url&&safe(x.photo_url)?`<a class="act" data-stop href="${esc(safe(x.photo_url))}" target="_blank" rel="noopener">مشاهده عکس پروژه</a>`:''}<div class="meta"><span>نویسنده: ${esc(x.user||'کاربر')}</span>${x.expert_verified?'<span class="sp">کارشناس تأییدشده‌ی رواق</span>':''}<span>${esc((x.created_at||'').slice(0,10))}</span>${x.rating?`<span>ارزیابی شخصی: ${fa(x.rating)}/۵</span>`:''}<span>مفید: ${fa(x.votes||0)}</span></div><button class="act" data-x="community-vote" data-id="${esc(x.id)}" ${x.voted?'disabled':''}>${x.voted?'رأی ثبت شد ✓':'این تجربه مفید بود'}</button></div>`).join(''):'<div class="empty"><p>هنوز تجربه‌ی تأییدشده‌ای منتشر نشده است.</p></div>'}<div class="grp">ارسال‌های من</div>${mine.length?mine.map(x=>`<div class="ln"><h4><span>${esc(x.title)}</span><em>${x.status==='approved'?'منتشرشده':x.status==='rejected'?'رد شده':'در انتظار بررسی'}</em></h4><small>${esc(x.material)}</small></div>`).join(''):'<p class="hint">هنوز ارسالی ثبت نکرده‌ای.</p>'}`;
+}
+function marketView() {
+ if(!S.admin)return '<div class="empty"><p>این گزارش فقط برای مدیران رواق قابل مشاهده است.</p></div>';
+ if(!S.marketData){if(!S.marketLoading){S.marketLoading=true;api('market-dashboard').then(r=>S.marketData=r).catch(()=>S.marketData={ok:false}).finally(()=>{S.marketLoading=false;if(S.tab==='market')render();});}return '<div class="empty"><p>در حال ساخت گزارش بازار…</p></div>';}
+ const d=S.marketData;if(!d.ok)return '<div class="empty"><p>گزارش در دسترس نیست.</p></div>';
+ const ag=(title,arr)=>`<div class="grp">${title}</div>${(arr||[]).length?(arr||[]).slice(0,12).map(x=>`<div class="ln"><h4><span>${esc(x.name)}</span><em>${fa(x.count)}</em></h4></div>`).join(''):'<p class="hint">داده‌ای در این بازه ثبت نشده است.</p>'}`;
+ return `<div class="tot"><div class="r"><span>بازه‌ی گزارش</span><b>${esc(d.period)}</b></div><div class="r"><span>رویدادهای ثبت‌شده</span><b>${fa(d.events)}</b></div><div class="r"><span>استعلام‌ها</span><b>${fa(d.quotes)}</b></div><div class="r"><span>جست‌وجوهای بی‌نتیجه</span><b>${fa(d.noResultSearches)}</b></div><div class="r"><span>تجربه‌های در انتظار بررسی</span><b>${fa(d.communityPending)}</b></div><p class="hint">این آمار نشان‌دهنده‌ی رفتار ثبت‌شده در مینی‌اپ است؛ نه کاربران یکتا، فروش یا سهم بازار. جست‌وجوهای بی‌نتیجه فقط پس از فعال بودن ثبت رویداد قابل تحلیل‌اند.</p><button class="act" data-x="market-refresh">به‌روزرسانی</button></div>${ag('محصولات پرتکرار',d.popularProducts)}${ag('نیازهای جست‌وجوشده‌ی بی‌پاسخ',d.searchGaps)}${ag('انواع رویداد',d.eventTypes)}`;
+}
+function phase4Track(event, company, product, extra={}) { api('event',{method:'POST',body:JSON.stringify({event,company:company||'',product:product||'',...extra})}).catch(()=>{}); }
+
 function sponsorView() {
   if(!S.sponsorData) { if(!S.sponsorLoading) { S.sponsorLoading=true; api('sponsor-dashboard').then(r=>{S.sponsorData=r;}).catch(()=>{S.sponsorData={ok:false};}).finally(()=>{S.sponsorLoading=false;if(S.tab==='sponsor')render();}); } return '<div class="empty"><p>در حال دریافت آمار…</p></div>'; }
   const d=S.sponsorData; if(!d.ok) return '<div class="empty"><p>دریافت آمار ممکن نشد.</p></div>';
@@ -262,7 +304,14 @@ const PF = [
   ['speed', 'سرعت اجرا (۱ تا ۵؛ ۵ = سریع‌ترین)'],
   ['durability', 'دوام (۱ تا ۵؛ ۵ = بادوام‌ترین)'],
   ['featuresT', 'ویژگی‌ها — هر خط یک ویژگی (از کاتالوگ)', 'area'],
-  ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area']
+  ['specsT', 'مشخصات فنی — هر خط «عنوان: مقدار»', 'area'],
+  ['model3dUrl', 'لینک عمومی مدل سه‌بعدی GLB/GLTF (HTTPS)', 'area'],
+  ['installStepsT', 'آموزش اجرا — هر خط یک مرحله', 'area'],
+  ['installMistakesT', 'خطاهای رایج — هر خط یک مورد', 'area'],
+  ['installSource', 'منبع آموزش اجرا', 'area'],
+  ['installVideoUrl', 'لینک ویدیوی کوتاه اجرا (HTTPS)', 'area'],
+  ['installVerifiedBy', 'نام بازبین متخصص (پس از تأیید)', 'area'],
+  ['installVerifiedAt', 'تاریخ بازبینی', 'area']
 ];
 const SPEC_TPL = [
   [/سبکدانه|سبک‌سازی|عایق|کف‌سازی|ژئوتکنیک|زیرساخت|کشاورز/, ['چگالی', 'ضریب هدایت حرارتی', 'مقاومت فشاری', 'جذب آب', 'رده‌ی آتش', 'دانه‌بندی', 'وزن هر کیسه']],
@@ -296,10 +345,12 @@ const cleanP = o => {
     },
     feHesab: String(o.feHesab || '').trim().slice(0, 80),
     page: safe(o.page),
-    catalogVer: String(o.catalogVer || '').trim().slice(0, 60)
+    catalogVer: String(o.catalogVer || '').trim().slice(0, 60),
+    model3d: ('model3dUrl' in o) ? (safe(o.model3dUrl) ? { url: safe(o.model3dUrl) } : null) : (o.model3d || null),
+    install: { steps: String(o.installStepsT || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,20), mistakes: String(o.installMistakesT || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,20), source: String(o.installSource||'').trim().slice(0,250), video_url: safe(o.installVideoUrl), verifiedBy: String(o.installVerifiedBy||'').trim().slice(0,120), verifiedAt: String(o.installVerifiedAt||'').trim().slice(0,30) }
   };
   if (!r.confidence && (r.specs.length || r.standards.length || r.features.length || r.price || r.speed || r.durability)) r.confidence = 'review';
-  ['specsT', 'featuresT', 'standardsT', 'techCertNo', 'techCertUntil', 'feHesab'].forEach(k => delete r[k]);
+  ['specsT', 'featuresT', 'standardsT', 'techCertNo', 'techCertUntil', 'feHesab', 'model3dUrl', 'installStepsT', 'installMistakesT', 'installSource', 'installVideoUrl', 'installVerifiedBy', 'installVerifiedAt'].forEach(k => delete r[k]);
   return r;
 };
 const valP = () => '';   /* فقط «نام» اجباری است؛ ردیابی‌پذیری با نشان «نیازمند بررسی» خودکار حفظ می‌شود */
@@ -618,6 +669,12 @@ document.addEventListener('click', async e => {
     case 'project-load': { const pr=S.projects.find(x=>x.id===d.pid); if(!pr)return; S.activeProject=pr.id; S.proj={name:pr.name||'',client:pr.client||'',notes:pr.notes||''}; S.rooms=Array.isArray(pr.rooms)?pr.rooms:[]; S.est=Array.isArray(pr.estimate)?pr.estimate:[]; persist(); persist2(); S.tab='room'; render(); return toast('پروژه بارگذاری شد'); }
     case 'project-delete': { const arr=S.projects.filter(x=>x.id!==d.pid); try {const r=await api('projects',{method:'POST',body:JSON.stringify({projects:arr})}); if(r.ok){S.projects=r.projects||arr;render();toast('پروژه حذف شد');}else toast(r.error||'حذف نشد');}catch(e){toast('ارتباط با سرور برقرار نشد');} return; }
     case 'sponsor-refresh': S.sponsorData=null; render(); return;
+    case 'market-refresh': S.marketData=null; render(); return;
+    case 'community-new': return sheet(`<h3>ثبت تجربه‌ی اجرایی</h3><p class="hint">اطلاعات شخصی یا محرمانه‌ی کارفرما را وارد نکن. انتشار پس از بررسی مدیر انجام می‌شود.</p><label class="fl"><span>عنوان تجربه</span><input id="cmTitle" maxlength="120" placeholder="مثلاً اجرای عایق در سرویس"></label><label class="fl"><span>مصالح / سامانه</span><input id="cmMaterial" maxlength="120" placeholder="نام مصالح یا سامانه"></label><label class="fl"><span>شرایط پروژه (اختیاری)</span><input id="cmContext" maxlength="500" placeholder="اقلیم، زیرکار، شرایط اجرا"></label><label class="fl"><span>لینک عکس پروژه (اختیاری، HTTPS)</span><input id="cmPhoto" maxlength="500" placeholder="لینک عمومی عکس، بدون اطلاعات محرمانه"></label><label class="fl"><span>شرح تجربه (حداقل ۲۰ حرف)</span><textarea id="cmDetails" rows="5" maxlength="2500" placeholder="چه چیزی اجرا شد، چه نتیجه‌ای دیدی و محدودیت‌ها چه بود؟"></textarea></label><label class="fl"><span>ارزیابی شخصی (اختیاری)</span><select id="cmRating"><option value="0">ثبت نمی‌کنم</option><option value="1">۱ از ۵</option><option value="2">۲ از ۵</option><option value="3">۳ از ۵</option><option value="4">۴ از ۵</option><option value="5">۵ از ۵</option></select></label><div class="sd-bar"><button class="act" data-x="scok">انصراف</button><button class="act act-primary" data-x="community-submit">ارسال برای بررسی</button></div>`);
+    case 'community-submit': {const v=id=>document.getElementById(id)?.value||'';const body={title:v('cmTitle'),material:v('cmMaterial'),context:v('cmContext'),photo_url:v('cmPhoto'),details:v('cmDetails'),rating:Number(v('cmRating'))||0};try{const r=await api('community',{method:'POST',body:JSON.stringify(body)});if(r.ok){S.communityData=null;closeSheet();render();toast(r.message||'برای بررسی ثبت شد');}else toast(r.error||'ثبت انجام نشد');}catch(e){toast('خطا در ثبت تجربه');}return;}
+    case 'community-admin': {try{const r=await api('community-admin');if(!r.ok)return toast(r.error||'دسترسی ندارید');const rows=(r.items||[]).filter(x=>x.status==='pending'||x.status==='approved');return sheet(`<h3>مدیریت تجربه‌ها</h3>${rows.length?rows.map(x=>`<div class="ln"><h4><span>${esc(x.title)}</span><em>${esc(x.status==='approved'?'منتشرشده':'در انتظار بررسی')}</em></h4><p>${esc(x.details)}</p><small>${esc(x.user||'کاربر')} · ${esc(x.id)}</small><div class="ft">${x.status==='pending'?`<button class="act act-primary" data-x="community-review" data-id="${esc(x.id)}" data-action="approve">تأیید انتشار</button><button class="act" data-x="community-review" data-id="${esc(x.id)}" data-action="reject">رد</button>`:`<button class="act ${x.expert_verified?'act-primary':''}" data-x="community-review" data-id="${esc(x.id)}" data-action="expert">${x.expert_verified?'لغو نشان کارشناس':'تأیید نویسنده به‌عنوان کارشناس ۲۰+ سال'}</button>`}<button class="act" data-x="community-review" data-id="${esc(x.id)}" data-action="delete">حذف</button></div></div>`).join(''):'<p class="hint">موردی برای بررسی نیست.</p>'}`);}catch(e){return toast('خطا در دریافت ارسال‌ها');}}
+    case 'community-review': {try{const r=await api('community-admin',{method:'POST',body:JSON.stringify({id:d.id,action:d.action})});if(r.ok){S.communityData=null;closeSheet();render();toast('وضعیت ارسال به‌روزرسانی شد');}else toast(r.error||'عملیات انجام نشد');}catch(e){toast('ارتباط با سرور برقرار نشد');}return;}
+    case 'community-vote': {try{const r=await api('community',{method:'POST',body:JSON.stringify({action:'vote',id:d.id})});if(r.ok){S.communityData=null;render();toast(r.voted?'رأی شما ثبت شد':'رأی ثبت شد');}else toast(r.error||'رأی ثبت نشد');}catch(e){toast('ارتباط با سرور برقرار نشد');}return;}
     case 'quote-open': { const coId=d.co||S.cur; const pid=d.pid||''; return quoteSheet(coId,pid); }
     case 'quote-submit': { const v=id=>document.getElementById(id)?.value||''; const body={company:v('qCompany')||d.co,product:v('qProduct')||d.pid,city:v('qCity'),quantity:v('qQty'),contact:v('qContact'),note:v('qNote')}; if(!body.product.trim())return toast('نام محصول را وارد کن'); try{const r=await api('quote',{method:'POST',body:JSON.stringify(body)});if(r.ok){closeSheet();toast('درخواست برای مدیران رواق ارسال شد ✓');}else toast(r.error||'درخواست ارسال نشد');}catch(e){toast('خطا در ارسال درخواست');} return; }
         case 'cadd': { const o = S.cres[Number(d.o)]; if (!o) return; return pick('افزودن «' + esc(o.l) + '» به برآورد', p => p.unit === o.u, (p, c) => { addLine({ ...p, mode: 'count', price: priceOf(p) }, c, R2(o.v)); persist(); closeSheet(); toast('به برآورد اضافه شد'); tabs(); }, `مقدار ${nf(o.v)} ${o.u}؛ فقط محصولاتی با واحد «${o.u}» نشان داده می‌شوند.`); }
@@ -629,6 +686,7 @@ document.addEventListener('input', e => {
   const t = e.target, d = t.dataset, k = d.i;
   if (!k) return;
   if (k === 'ps') { S.pick.q = t.value; $('#pkL').innerHTML = pickList(); return; }
+  if (k === 'wizard') { S.wizard[d.k] = t.value; return; }
   if (k === 'pj') { S.proj[d.k] = t.value; return persist2(); }
   if (k === 'room') { const r = rm(d.rid); if (r) r[d.k] = t.value; persist2(); return paintRoom(); }
   if (k === 'item') { const i = itm(rm(d.rid), d.iid); if (i) i[d.k] = t.value; persist2(); return paintRoom(); }
@@ -669,7 +727,14 @@ document.addEventListener('click', e => {
       standardsT: standardsText(p.standards),
       techCertNo: (p.techCert && p.techCert.no) || '',
       techCertUntil: (p.techCert && p.techCert.until) || '',
-      feHesab: p.feHesab || ''
+      feHesab: p.feHesab || '',
+      model3dUrl: p.model3d && typeof p.model3d === 'object' ? (p.model3d.url || '') : (typeof p.model3d === 'string' ? p.model3d : ''),
+      installStepsT: (p.install && p.install.steps || []).join('\n'),
+      installMistakesT: (p.install && p.install.mistakes || []).join('\n'),
+      installSource: p.install && p.install.source || '',
+      installVideoUrl: p.install && p.install.video_url || '',
+      installVerifiedBy: p.install && p.install.verifiedBy || '',
+      installVerifiedAt: p.install && p.install.verifiedAt || ''
     }, o => { Object.assign(p, cleanP(o)); saveData(); }, () => openBrand(c.id), valP);
   }
   if (d.dp) { if (confirm('این محصول حذف شود؟')) { c.products = c.products.filter(x => x.id !== d.dp); S.fav = S.fav.filter(x => x !== d.dp); saveData(); persist(); openBrand(c.id); } return; }
@@ -699,6 +764,7 @@ document.addEventListener('input', e => {
   if (t.dataset.l) { const l = S.est.find(x => x.id === t.dataset.l); l[t.dataset.k] = num(t.value); persist(); return paint(); }
   if (t.dataset.g) { S.cfg[t.dataset.g] = num(t.value); persist(); if (S.tab === 'room') paintRoom(); else if (S.tab === 'est') paint(); return; }
 });
+document.addEventListener('change', e => { const t=e.target; if(t && t.dataset && t.dataset.i==='wizard'){ S.wizard[t.dataset.k]=t.value; phase4Track('wizard','','', {query:S.wizard.problem}); render(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
 try { const th = localStorage.getItem(K.th); th && document.documentElement.setAttribute('data-theme', th); } catch (e) {}

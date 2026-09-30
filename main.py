@@ -179,6 +179,7 @@ MATERIALS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_materials_media"
 MATERIALS_PROJECTS_FILE = Path(__file__).parent / "data" / "materials_projects.json"
 MATERIALS_EVENTS_FILE = Path(__file__).parent / "data" / "materials_events.json"
 MATERIALS_QUOTES_FILE = Path(__file__).parent / "data" / "materials_quotes.json"
+MATERIALS_COMMUNITY_FILE = Path(__file__).parent / "data" / "materials_community.json"
 MAT_IMAGES_MAX = 6                       # حداکثر عکس برای هر محصول
 MAT_TG_LIMIT = 20 * 1024 * 1024          # سقف دانلود فایل توسط ربات
 MAT_PENDING_TTL = 20 * 60                # مهلت انتظار برای عکس بعد از «افزودن عکس» (ثانیه)
@@ -9709,9 +9710,9 @@ def _mat_json_write(path: Path, value) -> None:
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)
 
-def _mat_event(event: str, company: str = "", product: str = "") -> None:
+def _mat_event(event: str, company: str = "", product: str = "", query: str = "") -> None:
     data = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []})
-    data.setdefault("events", []).append({"event": event[:30], "company": company[:80], "product": product[:100], "at": datetime.now(timezone.utc).isoformat()})
+    data.setdefault("events", []).append({"event": event[:30], "company": company[:80], "product": product[:100], "query": query[:100], "at": datetime.now(timezone.utc).isoformat()})
     data["events"] = data["events"][-20000:]
     _mat_json_write(MATERIALS_EVENTS_FILE, data)
 
@@ -9800,8 +9801,8 @@ async def handle_materials_event(request: web.Request) -> web.Response:
     try: body = await request.json()
     except Exception: body = {}
     ev = str(body.get("event") or "view")
-    if ev not in ("view", "compare", "estimate", "catalog", "download", "quote"): ev = "view"
-    _mat_event(ev, str(body.get("company") or ""), str(body.get("product") or ""))
+    if ev not in ("view", "compare", "estimate", "catalog", "download", "quote", "search_no_result", "model3d", "education", "wizard"): ev = "view"
+    _mat_event(ev, str(body.get("company") or ""), str(body.get("product") or ""), str(body.get("query") or ""))
     return web.json_response({"ok": True})
 
 async def handle_materials_sponsor_dashboard(request: web.Request) -> web.Response:
@@ -9818,6 +9819,83 @@ async def handle_materials_sponsor_dashboard(request: web.Request) -> web.Respon
             k = item.get(key) or "نامشخص"; out[k] = out.get(k, 0) + 1
         return sorted([{"name": k, "count": v} for k, v in out.items()], key=lambda x: (-x["count"], x["name"]))[:30]
     return web.json_response({"ok": True, "period": "۳۰ روز اخیر", "events": len(recent), "quotes": len(recent_quotes), "byCompany": aggregate(recent, "company"), "byEvent": aggregate(recent, "event"), "byProduct": aggregate(recent, "product")})
+
+
+async def handle_materials_community(request: web.Request) -> web.Response:
+    """User-submitted field notes; all public content requires admin approval."""
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "برای ثبت تجربه، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    data = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []})
+    if request.method == "GET":
+        public = []
+        for item in data.get("items", []):
+            if item.get("status") == "approved":
+                view = dict(item); view["voted"] = int(user.get("id", 0)) in (item.get("voted_by") or []); public.append(view)
+        mine = [x for x in data.get("items", []) if str(x.get("user_id")) == str(user.get("id"))]
+        return web.json_response({"ok": True, "items": public[-100:], "mine": mine[-30:]})
+    try:
+        body = await request.json()
+        if body.get("action") == "vote":
+            item_id = str(body.get("id") or "")[:40]; voter = int(user.get("id", 0))
+            target = next((x for x in data.get("items", []) if x.get("id") == item_id and x.get("status") == "approved"), None)
+            if not target: return web.json_response({"ok": False, "error": "تجربه‌ی منتشرشده پیدا نشد."}, status=404)
+            voters = target.setdefault("voted_by", [])
+            if voter in voters: return web.json_response({"ok": True, "votes": int(target.get("votes", 0)), "voted": True})
+            if len(voters) >= 100000: return web.json_response({"ok": False, "error": "ظرفیت رأی تکمیل است."}, status=409)
+            voters.append(voter); target["votes"] = len(voters); _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+            return web.json_response({"ok": True, "votes": target["votes"], "voted": True})
+        title = str(body.get("title") or "").strip()[:120]
+        material = str(body.get("material") or "").strip()[:120]
+        details = str(body.get("details") or "").strip()[:2500]
+        context = str(body.get("context") or "").strip()[:500]
+        photo_url = str(body.get("photo_url") or "").strip()[:500]
+        if photo_url and not photo_url.startswith("https://"): photo_url = ""
+        rating = int(body.get("rating") or 0)
+        if len(title) < 4 or len(material) < 2 or len(details) < 20:
+            return web.json_response({"ok": False, "error": "عنوان، نام مصالح و توضیح حداقل ۲۰ حرفی لازم است."}, status=400)
+        if rating < 0 or rating > 5: rating = 0
+    except Exception:
+        return web.json_response({"ok": False, "error": "ساختار اطلاعات معتبر نیست."}, status=400)
+    entry = {"id": uuid.uuid4().hex[:12], "user_id": int(user.get("id", 0)), "user": str(user.get("username") or user.get("first_name") or "کاربر")[:80], "title": title, "material": material, "details": details, "context": context, "photo_url": photo_url, "rating": rating, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "votes": 0}
+    data.setdefault("items", []).append(entry); data["items"] = data["items"][-3000:]; _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, "🧱 <b>تجربه‌ی اجرایی جدید برای بررسی</b>\n" + "\n".join([f"مصالح: {html_escape(material)}", f"عنوان: {html_escape(title)}", f"کاربر: {html_escape(entry['user'])} / <code>{entry['user_id']}</code>", f"شرح: {html_escape(details[:700])}", f"شناسه: <code>{entry['id']}</code>"]) + "\nبرای تأیید یا رد از پنل ادمین مینی‌اپ استفاده کن.")
+        except Exception: pass
+    return web.json_response({"ok": True, "status": "pending", "message": "تجربه ثبت شد و پس از بررسی مدیر منتشر می‌شود."})
+
+async def handle_materials_community_admin(request: web.Request) -> web.Response:
+    if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    data = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []})
+    if request.method == "GET":
+        return web.json_response({"ok": True, "items": data.get("items", [])[-300:]})
+    try: body = await request.json()
+    except Exception: return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    item_id = str(body.get("id") or "")[:40]; action = str(body.get("action") or "")
+    if action not in ("approve", "reject", "delete", "expert"): return web.json_response({"ok": False, "error": "action نامعتبر است."}, status=400)
+    found = next((x for x in data.get("items", []) if x.get("id") == item_id), None)
+    if not found: return web.json_response({"ok": False, "error": "مورد پیدا نشد."}, status=404)
+    if action == "delete": data["items"].remove(found)
+    elif action == "expert": found["expert_verified"] = not bool(found.get("expert_verified")); found["expert_verified_at"] = datetime.now(timezone.utc).isoformat()
+    else: found["status"] = "approved" if action == "approve" else "rejected"; found["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+    _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+    return web.json_response({"ok": True, "items": data.get("items", [])[-300:]})
+
+async def handle_materials_market_dashboard(request: web.Request) -> web.Response:
+    if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    events = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []}).get("events", [])
+    quotes = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}).get("quotes", [])
+    now = datetime.now(timezone.utc); cutoff = now - timedelta(days=30)
+    recent = [e for e in events if e.get("at") and e.get("at") >= cutoff.isoformat()]
+    searches = [e for e in recent if e.get("event") == "search_no_result"]
+    def agg(items, key):
+        out = {}
+        for x in items:
+            k = str(x.get(key) or "ثبت‌نشده")[:120]; out[k] = out.get(k, 0) + 1
+        return sorted([{"name": k, "count": v} for k, v in out.items()], key=lambda x: (-x["count"], x["name"]))[:30]
+    community = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []}).get("items", [])
+    return web.json_response({"ok": True, "period": "۳۰ روز اخیر", "events": len(recent), "quotes": len([q for q in quotes if q.get("at", "") >= cutoff.isoformat()]), "noResultSearches": len(searches), "popularProducts": agg(recent, "product"), "searchGaps": agg(searches, "query"), "eventTypes": agg(recent, "event"), "communityPending": len([x for x in community if x.get("status") == "pending"])})
 
 def create_app() -> web.Application:
     app = web.Application()
@@ -9845,6 +9923,11 @@ def create_app() -> web.Application:
     app.router.add_post("/materials/api/quote", handle_materials_quote)
     app.router.add_post("/materials/api/event", handle_materials_event)
     app.router.add_get("/materials/api/sponsor-dashboard", handle_materials_sponsor_dashboard)
+    app.router.add_route("GET", "/materials/api/community", handle_materials_community)
+    app.router.add_route("POST", "/materials/api/community", handle_materials_community)
+    app.router.add_route("GET", "/materials/api/community-admin", handle_materials_community_admin)
+    app.router.add_post("/materials/api/community-admin", handle_materials_community_admin)
+    app.router.add_get("/materials/api/market-dashboard", handle_materials_market_dashboard)
     app.router.add_get("/materials/m/{key}", handle_materials_media)
     app.router.add_static("/materials/", path=MATERIALS_DIR, name="materials_assets")
 
