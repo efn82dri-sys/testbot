@@ -9,8 +9,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap">
-<link rel="stylesheet" href="/materials/base.css?v=ravaq5-20260930">
-<link rel="stylesheet" href="/materials/mat.css?v=ravaq5-20260930">
+<link rel="stylesheet" href="/materials/base.css?v=ravaq6-20260930">
+<link rel="stylesheet" href="/materials/mat.css?v=ravaq6-20260930">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span><span class="grain"></span></div>
@@ -24,6 +24,14 @@
     </button>
   </div>
 </header>
+<div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-label="در حال آماده‌سازی رواق">
+  <div class="boot-aura" aria-hidden="true"></div>
+  <div class="boot-mark" aria-hidden="true"><span class="boot-mark-core">ر</span><i></i><b></b></div>
+  <div class="boot-brand">رواق<span>RAWAQ</span></div>
+  <p class="boot-caption">فضای کار معماری تو در حال آماده‌سازی است</p>
+  <div class="boot-progress" aria-hidden="true"><span></span></div>
+  <small class="boot-status" id="bootStatus">در حال همگام‌سازی اطلاعات…</small>
+</div>
 <main class="wrap">
   <section class="hero">
     <span class="eyebrow"><i></i>مرجع مصالح بازار اجرای ایران</span>
@@ -45,8 +53,16 @@
 </main>
 <div class="sd" id="sd" hidden role="dialog" aria-modal="true"><div class="sd-scrim" id="sdScrim"></div><div class="sd-panel" id="sdPanel"></div></div>
 <button class="to-top" id="toTop" hidden aria-label="بازگشت به بالا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+<nav class="bottom-nav" id="bottomNav" aria-label="ناوبری اصلی">
+  <button type="button" class="bottom-item active" data-tab="cat" aria-current="page" aria-label="کاتالوگ"><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21zM4 5.5v13A2.5 2.5 0 0 1 6.5 16H20M8 7h8M8 10h6"/></svg></span><span>کاتالوگ</span></button>
+  <button type="button" class="bottom-item" data-tab="projects" aria-label="پروژه‌های من"><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 4V2.5h8V4M7 9h10M7 13h4M7 16h7"/></svg></span><span>پروژه‌های من</span></button>
+  <button type="button" class="bottom-item" data-tab="tools" aria-label="ابزارها"><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6.5a5 5 0 0 0-6.7 6.7L3 17.5 6.5 21l4.3-4.3A5 5 0 0 0 17.5 10L21 6.5 17.5 3z"/><path d="m14.5 9.5 2 2"/></svg></span><span>ابزارها</span></button>
+  <button type="button" class="bottom-item" data-tab="education" aria-label="راهنمای اجرا"><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 8 9-5 9 5-9 5zM6 10v5c3.5 3 8.5 3 12 0v-5M21 8v7"/></svg></span><span>راهنمای اجرا</span></button>
+  <button type="button" class="bottom-item" data-tab="community" aria-label="تجربه‌ها"><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6a7.5 7.5 0 1 1 17-3.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg></span><span>تجربه‌ها</span></button>
+  <button type="button" class="bottom-item bottom-admin" data-tab="manage" aria-label="مدیریت محتوا" hidden><span class="bottom-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v5c0 4.5-2.8 7.7-7 10-4.2-2.3-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></span><span>مدیریت</span></button>
+</nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/materials/script.js?v=ravaq5-20260930" defer></script>
+<script src="/materials/script.js?v=ravaq6-20260930" defer></script>
 </body>
 </html>

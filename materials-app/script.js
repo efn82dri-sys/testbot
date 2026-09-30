@@ -72,6 +72,7 @@ function tabs() {
   const T = [['cat', 'کاتالوگ', fa(D.companies.length)], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['tools', 'ابزارها', '۰۷'], ['education', 'راهنمای اجرا', 'آموزش'], ['community', 'تجربه‌ها', 'جامعه']];
   if (S.admin) T.push(['manage', 'مدیریت محتوا', 'ادمین']);
   $('#index').innerHTML = T.map(t => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
+  document.querySelectorAll('#bottomNav [data-tab]').forEach(b => { const active = b.dataset.tab === S.tab; b.classList.toggle('active', active); if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); b.hidden = b.dataset.tab === 'manage' && !S.admin; });
   $('#filters').hidden = S.tab !== 'cat';
   $('#editBtn').hidden = !S.admin; $('#editBtn').setAttribute('aria-pressed', S.edit);
   const hero = document.querySelector('.hero'); if (hero) hero.classList.toggle('compact', S.tab !== 'cat');
@@ -796,10 +797,21 @@ addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { pass
 addEventListener('online',()=>toast('اتصال اینترنت برقرار شد')); addEventListener('offline',()=>toast('حالت آفلاین؛ فقط اطلاعات ذخیره‌شده در دسترس است'));
 try { const th = localStorage.getItem(K.th); th && document.documentElement.setAttribute('data-theme', th); } catch (e) {}
 
-/* ---------- شروع ---------- */
+/* ---------- شروع و لودینگ ---------- */
+const bootStartedAt = Date.now();
+let bootFinished = false;
+function finishBoot(message) {
+  if (bootFinished) return;
+  bootFinished = true;
+  const screen = $('#bootScreen');
+  if (message) { const status = $('#bootStatus'); if (status) status.textContent = message; }
+  const wait = Math.max(0, 620 - (Date.now() - bootStartedAt));
+  setTimeout(() => { if (screen) { screen.classList.add('boot-out'); setTimeout(() => screen.remove(), 520); } }, wait);
+}
+const bootFailsafe = setTimeout(() => { finishBoot('امکان ادامه وجود دارد'); toast('بارگذاری طول کشید؛ اگر اطلاعات ناقص است، اتصال را بررسی کن'); }, 12000);
 render();
 const deep = () => { try { const p = new URLSearchParams(location.search).get('p'); if (p && find(p)[1]) openProd(p); } catch (e) {} };
 addEventListener('error', e => { const i = e.target; if (!i || i.tagName !== 'IMG') return; if (!i.dataset.r) { i.dataset.r = '1'; i.src = i.src + (i.src.includes('?') ? '&' : '?') + 'r=' + Date.now(); } else { i.style.display = 'none'; i.parentElement && i.parentElement.classList.add('bad'); } }, true);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !S.admin) return; const cp = S.curP, open = !$('#sd').hidden; reload().then(() => { render(); if (open && cp && find(cp)[1]) openProd(cp); }).catch(() => {}); });
-api('data').then(async r => { if(!r || !r.data) throw new Error('catalog unavailable'); D = r.data; sv('rq.mat.catalog.cache',D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); }).catch(() => { const cached=ld('rq.mat.catalog.cache',null); if(cached&&cached.companies){D=cached;render();deep();toast('نسخه‌ی ذخیره‌شده نمایش داده می‌شود؛ اتصال برقرار نیست');return;} fetch('/materials/data/materials.json',{cache:'no-store'}).then(r => r.json()).then(d => { D = d; sv('rq.mat.catalog.cache',D); render(); deep(); }).catch(()=>{D={companies:[],packs:[]};render();toast('اتصال برقرار نیست و داده‌ای برای نمایش ذخیره نشده');}); });
+api('data').then(async r => { if(!r || !r.data) throw new Error('catalog unavailable'); D = r.data; sv('rq.mat.catalog.cache',D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); clearTimeout(bootFailsafe); finishBoot('آماده‌ایم'); }).catch(() => { const cached=ld('rq.mat.catalog.cache',null); if(cached&&cached.companies){D=cached;render();deep();clearTimeout(bootFailsafe);finishBoot('نسخه‌ی ذخیره‌شده آماده است');toast('نسخه‌ی ذخیره‌شده نمایش داده می‌شود؛ اتصال برقرار نیست');return;} fetch('/materials/data/materials.json',{cache:'no-store'}).then(r => r.json()).then(d => { D = d; sv('rq.mat.catalog.cache',D); render(); deep(); clearTimeout(bootFailsafe); finishBoot('کاتالوگ آماده است'); }).catch(()=>{D={companies:[],packs:[]};render();clearTimeout(bootFailsafe);finishBoot('نمایش در حالت محدود');toast('اتصال برقرار نیست و داده‌ای برای نمایش ذخیره نشده');}); });
 })();
