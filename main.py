@@ -202,7 +202,6 @@ async def save_prompt_titles(titles: list[str]) -> None:
     async with _write_lock:
         PROMPT_TITLES_FILE.parent.mkdir(parents=True, exist_ok=True)
         PROMPT_TITLES_FILE.write_text(json.dumps(titles, ensure_ascii=False, indent=2), encoding="utf-8")
-    asyncio.create_task(backup_data_dir_to_telegram())
 
 def normalize_prompt_title(raw: str) -> str | None:
     """اسمِ سربرگ رو تمیز می‌کنه: بدونِ #، فاصله/نیم‌فاصله → «_»، فقط حروف/عدد/_ ؛ ۲ تا ۲۴ نویسه."""
@@ -410,14 +409,22 @@ BOT_USERNAME: str | None = None  # در on_startup مقداردهی می‌شو�
 # ==============================================================
 
 def _zip_data_dir() -> BytesIO:
+    """ساخت بکاپ دستیِ قابل‌بررسی؛ فقط فایل‌های پوشه‌های مجاز وارد آرشیو می‌شوند."""
     buf = BytesIO()
+    entries = []
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for target_dir in BACKUP_DIRS:
             if not target_dir.exists():
                 continue
             for file_path in target_dir.rglob("*"):
-                if file_path.is_file():
-                    zf.write(file_path, arcname=str(file_path.relative_to(BASE_DIR)))
+                if not file_path.is_file() or file_path.is_symlink():
+                    continue
+                rel = file_path.relative_to(BASE_DIR).as_posix()
+                payload = file_path.read_bytes()
+                zf.writestr(rel, payload)
+                entries.append({"path": rel, "size": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+        manifest = {"format": "ravaq-backup-v2", "created_at": datetime.now(timezone.utc).isoformat(), "files": entries}
+        zf.writestr(".ravaq-backup-manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
     buf.seek(0)
     return buf
 
@@ -470,28 +477,66 @@ def _clear_data_dir_files() -> None:
                 except Exception as e:
                     logger.warning(f"حذفِ فایلِ محلیِ {file_path} قبل از بازیابی ناموفق بود: {e}")
 
-def _extract_backup_zip(zf: zipfile.ZipFile) -> None:
-    """
-    بکاپ‌هایی که با نسخه‌ی جدیدِ کد گرفته شدن، مسیرِ هر فایل رو نسبت به
-    BASE_DIR (و با پیشوندِ پوشه‌ی مبدأ، مثلاً data/... یا prompts-app/data/...)
-    ذخیره می‌کنن. اما بکاپ‌هایی که قبل از این تغییر گرفته شدن، فقط شاملِ
-    DATA_DIR بودن و مسیرِ هر فایل نسبت به DATA_DIR بود (بدونِ هیچ پیشوندی) —
-    برای این‌که بازیابیِ اون بکاپ‌های قدیمی هم درست کار کنه (به‌جایِ اینکه
-    فایل‌ها اشتباهی توی ریشه‌ی پروژه پخش بشن)، این تابع فرمتِ هر فایل رو
-    تشخیص می‌ده و سرِ جایِ درستش می‌ذاره.
-    """
-    known_prefixes = tuple(str(d.relative_to(BASE_DIR)).replace("\\", "/") + "/" for d in BACKUP_DIRS)
-    for member in zf.infolist():
-        if member.is_dir():
-            continue
-        name = member.filename.replace("\\", "/")
-        if name.startswith(known_prefixes):
-            target = BASE_DIR / name          # فرمتِ جدید
-        else:
-            target = DATA_DIR / name          # فرمتِ قدیمی (نسبت به DATA_DIR)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with zf.open(member) as src, open(target, "wb") as dst:
-            dst.write(src.read())
+def _extract_backup_zip(zf: zipfile.ZipFile) -> list[tuple[Path, Path]]:
+    """اعتبارسنجی کامل ZIP و استخراج به staging؛ از zip-slip و تخریب داده با ZIP خراب جلوگیری می‌کند."""
+    allowed_roots = [d.resolve() for d in BACKUP_DIRS]
+    staging = Path(tempfile.mkdtemp(prefix="ravaq-restore-"))
+    staged: list[tuple[Path, Path]] = []
+    total_size = 0
+    try:
+        infos = [i for i in zf.infolist() if not i.is_dir()]
+        expected_hashes = {}
+        manifest_paths = None
+        try:
+            manifest_info = next((i for i in infos if i.filename == ".ravaq-backup-manifest.json"), None)
+            if manifest_info:
+                manifest = json.loads(zf.read(manifest_info).decode("utf-8"))
+                if manifest.get("format") != "ravaq-backup-v2" or not isinstance(manifest.get("files"), list):
+                    raise ValueError("نسخهٔ manifest ناشناخته است")
+                rows = [row for row in manifest.get("files", []) if isinstance(row, dict)]
+                expected_hashes = {str(row.get("path")): str(row.get("sha256")) for row in rows}
+                manifest_paths = set(expected_hashes)
+                archive_paths = {i.filename for i in infos if i.filename != ".ravaq-backup-manifest.json"}
+                if len(archive_paths) != len([i for i in infos if i.filename != ".ravaq-backup-manifest.json"]) or archive_paths != manifest_paths:
+                    raise ValueError("فهرست فایل‌های ZIP با manifest یکسان نیست")
+        except Exception as exc:
+            raise ValueError("فهرست صحت‌سنجی بکاپ معتبر نیست.") from exc
+        if len(infos) > 10000:
+            raise ValueError("تعداد فایل‌های بکاپ بیش از حد مجاز است.")
+        for member in infos:
+            raw = member.filename.replace("\\", "/")
+            if raw == ".ravaq-backup-manifest.json":
+                continue
+            if raw.startswith("/") or re.match(r"^[A-Za-z]:", raw) or any(part == ".." for part in raw.split("/")):
+                raise ValueError("مسیر نامعتبر داخل بکاپ شناسایی شد.")
+            rel = Path(raw)
+            if not rel.parts:
+                continue
+            # فرمت جدید: مسیر نسبی به ریشه؛ فرمت قدیمی: مسیر نسبی به DATA_DIR.
+            candidate = (BASE_DIR / rel).resolve()
+            if not any(candidate == root or root in candidate.parents for root in allowed_roots):
+                candidate = (DATA_DIR / rel).resolve()
+            if not any(candidate == root or root in candidate.parents for root in allowed_roots):
+                raise ValueError("بکاپ شامل فایلی خارج از پوشه‌های دادهٔ مجاز است.")
+            total_size += int(member.file_size or 0)
+            if total_size > 150 * 1024 * 1024:
+                raise ValueError("حجم بازشدهٔ بکاپ از سقف ۱۵۰ مگابایت بیشتر است.")
+            content = zf.read(member)
+            if len(content) != member.file_size:
+                raise ValueError("اندازهٔ یکی از فایل‌های بکاپ معتبر نیست.")
+            expected = expected_hashes.get(raw)
+            if expected and not hmac.compare_digest(hashlib.sha256(content).hexdigest(), expected):
+                raise ValueError(f"صحت‌سنجی فایل بکاپ ناموفق بود: {raw}")
+            stage_path = staging / f"{len(staged):05d}.blob"
+            stage_path.write_bytes(content)
+            staged.append((stage_path, candidate))
+        if not staged:
+            raise ValueError("بکاپ هیچ فایل دادهٔ قابل‌بازیابی ندارد.")
+        return staged
+    except Exception:
+        import shutil
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
 async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str]:
     if not BACKUP_CHAT_ID:
@@ -544,12 +589,44 @@ async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str
     try:
         for target_dir in BACKUP_DIRS:
             target_dir.mkdir(parents=True, exist_ok=True)
+        import shutil
         with zipfile.ZipFile(file_bytes) as zf:
             bad_file = zf.testzip()
             if bad_file:
                 raise zipfile.BadZipFile(f"فایلِ خراب در آرشیو: {bad_file}")
-            _clear_data_dir_files()
-            _extract_backup_zip(zf)
+            staged = _extract_backup_zip(zf)
+        # فقط پس از اعتبارسنجی کامل ZIP، فایل‌های قدیمی پاک و نسخهٔ staging جایگزین می‌شود.
+        # فایل‌های تازه ابتدا کامل روی دیسک نوشته شده‌اند؛ ZIP خراب نباید دیتای محلی را پاک کند.
+        stage_root = staged[0][0].parent
+        rollback_root = Path(tempfile.mkdtemp(prefix="ravaq-rollback-"))
+        try:
+            # یک نسخهٔ موقت از دادهٔ فعلی نگه می‌داریم تا در صورت خطای دیسک، rollback ممکن باشد.
+            for current_dir in BACKUP_DIRS:
+                if not current_dir.exists():
+                    continue
+                for current_file in current_dir.rglob("*"):
+                    if current_file.is_file() and not current_file.is_symlink():
+                        rel = current_file.relative_to(BASE_DIR)
+                        backup_copy = rollback_root / rel
+                        backup_copy.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(current_file, backup_copy)
+            try:
+                _clear_data_dir_files()
+                for staged_path, target in staged:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(staged_path, target)
+            except Exception:
+                logger.exception("بازیابی کامل نشد؛ در حال برگرداندن دادهٔ محلی قبلی.")
+                _clear_data_dir_files()
+                for old_file in rollback_root.rglob("*"):
+                    if old_file.is_file():
+                        target = BASE_DIR / old_file.relative_to(rollback_root)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(old_file, target)
+                raise
+        finally:
+            shutil.rmtree(stage_root, ignore_errors=True)
+            shutil.rmtree(rollback_root, ignore_errors=True)
         restored_files = [
             str(p.relative_to(BASE_DIR))
             for d in BACKUP_DIRS if d.exists()
@@ -862,7 +939,6 @@ async def save_palettes_data(palettes: list[dict]) -> None:
         PALETTES_DATA_FILE.write_text(json.dumps(palettes, ensure_ascii=False, indent=2), encoding="utf-8")
     # هر تغییری در پالت‌ها بلافاصله در پس‌زمینه به بکاپِ تلگرام هم می‌ره، تا
     # لازم نباشه ادمین بعدِ هر تغییر یادش بمونه دکمه‌ی «بکاپ دستی» رو بزنه.
-    asyncio.create_task(backup_data_dir_to_telegram())
 
 def load_prompts_data() -> list[dict]:
     if not PROMPTS_DATA_FILE.exists():
@@ -879,7 +955,6 @@ async def save_prompts_data(prompts: list[dict]) -> None:
         PROMPTS_DATA_FILE.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
     # هر تغییری در پرامپت‌ها بلافاصله در پس‌زمینه به بکاپِ تلگرام هم می‌ره، تا
     # لازم نباشه ادمین بعدِ هر تغییر یادش بمونه دکمه‌ی «بکاپ دستی» رو بزنه.
-    asyncio.create_task(backup_data_dir_to_telegram())
 
 def fit_image_16_9(raw_bytes: bytes) -> bytes:
     """هر عکسی با هر ابعادی رو کراپِ مرکزی می‌کنه به نسبتِ ثابتِ ۱۶:۹ (بدونِ کش‌شدگی) و JPEG خروجی می‌ده."""
@@ -9719,7 +9794,10 @@ def _mat_event(event: str, company: str = "", product: str = "", query: str = ""
 # محدودسازی ساده‌ی نرخ درخواست برای جلوگیری از اسپم فرم‌ها و رشد بی‌رویه‌ی JSONها.
 # این محدودیت در سطح هر پردازه است؛ برای چند worker باید rate limit مشترک استفاده شود.
 _MAT_RATE_BUCKETS: dict[str, list[float]] = {}
+_MAT_RATE_CALLS = 0
 def _mat_rate_limited(key: str, limit: int, window_seconds: int) -> bool:
+    """محدودکنندهٔ سبکِ تک‌نمونه‌ای؛ کلیدهای منقضی پاک می‌شوند تا حافظه رشد بی‌نهایت نکند."""
+    global _MAT_RATE_CALLS
     now = datetime.now(timezone.utc).timestamp()
     recent = [stamp for stamp in _MAT_RATE_BUCKETS.get(key, []) if now - stamp < window_seconds]
     if len(recent) >= limit:
@@ -9727,6 +9805,14 @@ def _mat_rate_limited(key: str, limit: int, window_seconds: int) -> bool:
         return True
     recent.append(now)
     _MAT_RATE_BUCKETS[key] = recent
+    _MAT_RATE_CALLS += 1
+    if _MAT_RATE_CALLS % 200 == 0 or len(_MAT_RATE_BUCKETS) > 5000:
+        for old_key, stamps in list(_MAT_RATE_BUCKETS.items()):
+            keep = [stamp for stamp in stamps if now - stamp < 86400]
+            if keep:
+                _MAT_RATE_BUCKETS[old_key] = keep
+            else:
+                _MAT_RATE_BUCKETS.pop(old_key, None)
     return False
 
 async def handle_materials_projects(request: web.Request) -> web.Response:
@@ -9809,8 +9895,10 @@ async def handle_materials_quote(request: web.Request) -> web.Response:
         except Exception: pass
     _mat_event("quote", company, name)
     if not sent:
-        return web.json_response({"ok": False, "error": "درخواست ثبت شد، اما ارسال اعلان به مدیران انجام نشد."}, status=502)
-    return web.json_response({"ok": True})
+        # درخواست قبلاً ذخیره شده است؛ خطای اعلان نباید کاربر را به ارسال دوباره وادار کند.
+        logger.error("استعلام %s ذخیره شد اما هیچ اعلانی به مدیران نرسید.", entry.get("at"))
+        return web.json_response({"ok": True, "notification_warning": True, "message": "درخواست ثبت شد؛ اعلان مدیران با تأخیر انجام می‌شود و نیازی به ارسال دوباره نیست."})
+    return web.json_response({"ok": True, "notification_warning": False})
 
 async def handle_materials_event(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
@@ -9881,7 +9969,8 @@ async def handle_materials_community(request: web.Request) -> web.Response:
         if rating < 0 or rating > 5: rating = 0
     except Exception:
         return web.json_response({"ok": False, "error": "ساختار اطلاعات معتبر نیست."}, status=400)
-    author_photo_url = str(user.get("photo_url") or "").strip()[:1000]
+    # Telegram WebApp user object معمولاً عکس عمومی ندارد؛ تصویر انتخابیِ HTTPS فقط با اقدام خود کاربر ثبت می‌شود.
+    author_photo_url = str(body.get("author_photo_url") or user.get("photo_url") or "").strip()[:1000]
     if author_photo_url and not author_photo_url.startswith("https://"): author_photo_url = ""
     entry = {"id": uuid.uuid4().hex[:12], "user_id": int(user.get("id", 0)), "user": str((str(user.get("first_name") or "") + " " + str(user.get("last_name") or "")).strip() or user.get("username") or "کاربر")[:80], "username": str(user.get("username") or "")[:80], "author_photo_url": author_photo_url, "title": title, "material": material, "details": details, "context": context, "photo_url": photo_url, "rating": rating, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "votes": 0}
     data.setdefault("items", []).append(entry); data["items"] = data["items"][-3000:]; _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
