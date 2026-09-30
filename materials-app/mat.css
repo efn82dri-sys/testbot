@@ -349,9 +349,9 @@ body { padding-bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom, 0p
 }
 
 
-/* ================= فاز ۹ — رفع پوشیده‌شدن توضیح صفحهٔ اصلی ================= */
-/* لایهٔ محوشدگی فیلترها نباید روی متن معرفی صفحهٔ اصلی بیاید. */
-.hero { padding-bottom: 34px; }
+/* ================= فاز ۱۰ — فاصله‌گذاری فشردهٔ معرفی صفحه ================= */
+/* متن معرفی کامل می‌ماند، اما فضای خالی زیر آن حداقلی است. */
+.hero { padding-bottom: 10px; }
 .hero p {
   display: block;
   height: auto;
@@ -360,14 +360,14 @@ body { padding-bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom, 0p
   overflow: visible;
   white-space: normal;
   text-overflow: clip;
-  margin: 0 0 12px;
-  line-height: 2;
+  margin: 0;
+  line-height: 1.85;
   overflow-wrap: normal;
   word-break: normal;
 }
 .filters::before,
 .filters::after { top: 0; }
 @media (max-width: 480px) {
-  .hero { padding-bottom: 30px; }
-  .hero p { font-size: 13.5px; line-height: 2; margin-bottom: 10px; }
+  .hero { padding-bottom: 8px; }
+  .hero p { font-size: 13.5px; line-height: 1.85; margin-bottom: 0; }
 }
