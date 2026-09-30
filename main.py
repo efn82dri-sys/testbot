@@ -9,6 +9,7 @@
 import asyncio
 import base64
 import json
+import sqlite3
 import logging
 import os
 import re
@@ -17,10 +18,12 @@ import uuid
 import zipfile
 import hashlib
 import hmac
+import copy
 from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from io import BytesIO
 from pathlib import Path
+from materials_catalog_rules import verification_is_valid, license_is_valid, has_product_image, visible_products
 from urllib.parse import quote, parse_qsl
 
 import jdatetime
@@ -169,6 +172,8 @@ PROMPTS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_prompt_media"
 MATERIALS_DIR = Path(__file__).parent / "materials-app"
 MATERIALS_SEED_FILE = MATERIALS_DIR / "data" / "materials.json"      # دیتای اولیه (داخلِ ریپو)
 MATERIALS_LIVE_FILE = Path(__file__).parent / "data" / "materials.json"  # دیتای زنده (ویرایش‌های ادمین)
+MATERIALS_STORAGE = os.environ.get("MATERIALS_STORAGE", "json").strip().lower()
+MATERIALS_SQLITE_FILE = Path(__file__).parent / "data" / "materials.sqlite3"  # فقط با MATERIALS_STORAGE=sqlite فعال می‌شود
 MATERIALS_START_PAYLOAD = (
     os.environ.get("MATERIALS_START_PAYLOAD", "materials").strip().lower() or "materials"
 )
@@ -177,6 +182,7 @@ _prompt_media_locks: dict[int, asyncio.Lock] = {}
 _prompt_media_dl_locks: dict[str, asyncio.Lock] = {}
 MATERIALS_MEDIA_CACHE = Path(tempfile.gettempdir()) / "ravaq_materials_media"
 MATERIALS_PROJECTS_FILE = Path(__file__).parent / "data" / "materials_projects.json"
+MATERIALS_PREFERENCES_FILE = Path(__file__).parent / "data" / "materials_preferences.json"
 MATERIALS_EVENTS_FILE = Path(__file__).parent / "data" / "materials_events.json"
 MATERIALS_QUOTES_FILE = Path(__file__).parent / "data" / "materials_quotes.json"
 MATERIALS_COMMUNITY_FILE = Path(__file__).parent / "data" / "materials_community.json"
@@ -4823,7 +4829,7 @@ async def materials_image_received(message: Message):
                 added, updated, company_count = _mat_merge_uploaded_catalog(payload, live)
                 if added + updated <= 0:
                     raise ValueError("در فایل محصول قابل‌واردکردن پیدا نشد.")
-                _mat_write(live)
+                await asyncio.to_thread(_mat_write, live)
             _mat_pending.pop(uid, None)
             await message.answer(
                 "✅ کاتالوگ با موفقیت وارد شد.\n\n"
@@ -4842,6 +4848,41 @@ async def materials_image_received(message: Message):
         except Exception as e:
             logger.error("Catalog import failed for admin %s: %s", uid, e, exc_info=True)
             await message.answer("❌ واردکردن کاتالوگ ناموفق بود؛ اطلاعات قبلی تغییر نکرده‌اند. گزارش خطا در لاگ سرور ثبت شد.")
+        return
+
+    if pend.get("kind") == "bulk-image":
+        doc=message.document
+        if not doc or not _mat_doc_ok(doc):
+            await message.answer("❗️ برای ورود گروهی، تصویر را به‌صورت Document با پسوند تصویری بفرست."); return
+        filename=(message.caption or doc.file_name or "").replace("\\","/")
+        parsed=parse_bulk_media_filename(filename)
+        if not parsed:
+            await message.answer("❗️ مسیر نامعتبر است. قالب: brands/brandId/products/productId/01.webp (مسیر کامل را در Caption پیام بگذار)."); return
+        brand_id, product_id, _seq=parsed
+        if (doc.file_size or 0)>MAT_TG_LIMIT:
+            await message.answer("❗️ فایل بیشتر از ۲۰ مگابایت است."); return
+        try:
+            raw=(await bot.download(doc.file_id)).read(); w,h,mime=await asyncio.to_thread(_mat_probe,raw)
+            key=hashlib.sha1(f"{doc.file_id}{uuid.uuid4().hex}".encode()).hexdigest()[:20]
+            item={"key":key,"fid":doc.file_id,"w":w,"h":h,"mime":mime,"sourceFileName":filename}
+            MATERIALS_MEDIA_CACHE.mkdir(parents=True,exist_ok=True)
+            for sz in ("t","l"): (MATERIALS_MEDIA_CACHE/f"{key}_{sz}.webp").write_bytes(await asyncio.to_thread(_mat_render,raw,sz))
+            (MATERIALS_MEDIA_CACHE/f"{key}.src").write_bytes(raw)
+            async with _mat_lock:
+                data=load_materials_data(); co=next((c for c in data.get("companies",[]) if c.get("id")==brand_id),None)
+                product=next((p for p in (co or {}).get("products",[]) if p.get("id")==product_id),None)
+                if not product:
+                    _mat_purge(item); await message.answer("❌ شناسه‌ی برند یا محصول در کاتالوگ وجود ندارد؛ تصویری ثبت نشد."); return
+                imgs=product.setdefault("images",[])
+                if len(imgs)>=MAT_IMAGES_MAX:
+                    _mat_purge(item); await message.answer("❗️ سقف تعداد تصاویر این محصول پر شده است."); return
+                imgs.append(item); product["mediaLicense"]={"status":"review-required","source":"","rightsHolder":"","approvedAt":""}
+                product["publicationStatus"]="draft"
+                await asyncio.to_thread(_mat_write,data)
+            pend["ts"]=datetime.now(timezone.utc).timestamp()
+            await message.answer(f"✅ تصویر برای {brand_id}/{product_id} ثبت شد. مجوز همچنان review-required است؛ این فایل در مخزن CDN آپلود نشده است.")
+        except Exception as e:
+            logger.warning("bulk image import failed: %s",e,exc_info=True); await message.answer("❌ تصویر ثبت نشد؛ نام فایل و فرمت WebP را بررسی کن.")
         return
 
     if pend.get("kind") == "file":
@@ -4866,7 +4907,7 @@ async def materials_image_received(message: Message):
                 return
             name = (doc.file_name or "file").replace("\\", "_").replace("/", "_")[:160]
             docs.append({"id": uuid.uuid4().hex[:12], "title": str(pend.get("title") or Path(name).stem)[:120], "type": str(pend.get("doc_type") or "document")[:20], "fid": doc.file_id, "file_name": name, "size": int(doc.file_size or 0), "version": str(pend.get("version") or "").strip()[:40], "date": str(pend.get("date") or "").strip()[:30], "addedAt": datetime.now(timezone.utc).isoformat()})
-            _mat_write(data)
+            await asyncio.to_thread(_mat_write, data)
         _mat_pending.pop(uid, None)
         await message.answer("✅ فایل به کتابخانه‌ی محصول اضافه شد. در مینی‌اپ دوباره باز کن.")
         return
@@ -4938,7 +4979,7 @@ async def materials_image_received(message: Message):
                 return
             imgs.append(item)
             count = len(imgs)
-        _mat_write(data)
+        await asyncio.to_thread(_mat_write, data)
     for o in removed:
         _mat_purge(o)
     pend["ts"] = datetime.now(timezone.utc).timestamp()
@@ -9403,9 +9444,12 @@ def _mat_merge_seed() -> None:
     قیمت، عکس و لوگوی ثبت‌شده‌ی ادمین و محصولاتِ دارای منبع هرگز دست نمی‌خورند."""
     try:
         seed = json.loads(MATERIALS_SEED_FILE.read_text(encoding="utf-8"))
-        if not MATERIALS_LIVE_FILE.exists():
-            return
-        live = json.loads(MATERIALS_LIVE_FILE.read_text(encoding="utf-8"))
+        if MATERIALS_STORAGE == "sqlite" and MATERIALS_SQLITE_FILE.exists():
+            live = load_materials_data()
+        else:
+            if not MATERIALS_LIVE_FILE.exists():
+                return
+            live = json.loads(MATERIALS_LIVE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
     rev = int(seed.get("seedRev", 0) or 0)
@@ -9441,21 +9485,121 @@ def _mat_merge_seed() -> None:
     _mat_write(live)
     logger.info("materials: seed rev %s merged", rev)
 
+_MAT_DATA_CACHE: dict | None = None
+_MAT_DATA_CACHE_SIGNATURE: tuple[str, int, int] | None = None
+_MAT_DATA_CACHE_LOCK = asyncio.Lock()
+_MATERIALS_CDN_BASE_URL = os.environ.get("MATERIALS_CDN_BASE_URL", "").strip().rstrip("/")
+
+def _mat_allowed_image_url(value: object) -> str:
+    u = str(value or "").strip()[:1000]
+    if re.fullmatch(r"/materials/images/[A-Za-z0-9._-]+\.(?:webp|png|jpg|jpeg|svg)", u, re.I):
+        return u
+    if not u.startswith("https://") or not _MATERIALS_CDN_BASE_URL:
+        return ""
+    from urllib.parse import urlparse
+    try:
+        if urlparse(u).netloc.lower() == urlparse(_MATERIALS_CDN_BASE_URL).netloc.lower():
+            return u
+    except Exception:
+        pass
+    return ""
+
+def _mat_sanitize_loaded_data(data: dict) -> dict:
+    """Normalize legacy live catalog records in memory without writing user data during reads."""
+    if not isinstance(data, dict): return {"v": 2, "companies": [], "packs": []}
+    companies = data.get("companies") if isinstance(data.get("companies"), list) else []
+    data["companies"] = companies
+    for company in companies:
+        if not isinstance(company, dict): continue
+        _mat_clean_company(company)
+        products = company.get("products") if isinstance(company.get("products"), list) else []
+        cleaned = []
+        for product in products:
+            if not isinstance(product, dict): continue
+            try:
+                item, _ = _mat_clean_product(product, product.get("images") if isinstance(product.get("images"), list) else [])
+                item["publicationStatus"] = "published" if product_is_publishable(item) else "draft"
+                cleaned.append(item)
+            except Exception:
+                # Keep a malformed legacy row visible to admins for repair, but never mark it verified.
+                fallback = dict(product); fallback["confidence"] = "review"; fallback["lastVerified"] = ""
+                fallback["verification"] = {"datasheetUrl": "", "page": "", "reviewedAt": "", "reviewer": ""}
+                cleaned.append(fallback)
+        company["products"] = cleaned
+    data.setdefault("packs", [])
+    data.setdefault("showIncompleteProducts", False)
+    return data
+
+def _mat_sqlite_read() -> dict | None:
+    if not MATERIALS_SQLITE_FILE.exists(): return None
+    try:
+        with sqlite3.connect(MATERIALS_SQLITE_FILE, timeout=5) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            row=conn.execute("SELECT payload FROM materials_snapshot WHERE id=1").fetchone()
+            return json.loads(row[0]) if row else None
+    except (sqlite3.Error, json.JSONDecodeError):
+        logger.exception("materials sqlite read failed; falling back to JSON")
+        return None
+
 def load_materials_data() -> dict:
+    global _MAT_DATA_CACHE, _MAT_DATA_CACHE_SIGNATURE
+    if MATERIALS_STORAGE == "sqlite":
+        data=_mat_sqlite_read()
+        if data is not None:
+            _MAT_DATA_CACHE=copy.deepcopy(data); _MAT_DATA_CACHE_SIGNATURE=(str(MATERIALS_SQLITE_FILE), MATERIALS_SQLITE_FILE.stat().st_mtime_ns, MATERIALS_SQLITE_FILE.stat().st_size)
+            return _mat_sanitize_loaded_data(copy.deepcopy(data))
+        # First boot with sqlite mode and no migrated database: read JSON without modifying it.
     path = MATERIALS_LIVE_FILE if MATERIALS_LIVE_FILE.exists() else MATERIALS_SEED_FILE
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        stat = path.stat(); signature = (str(path), stat.st_mtime_ns, stat.st_size)
+        if _MAT_DATA_CACHE is not None and _MAT_DATA_CACHE_SIGNATURE == signature:
+            return _mat_sanitize_loaded_data(copy.deepcopy(_MAT_DATA_CACHE))
+        data = json.loads(path.read_text(encoding="utf-8")); _MAT_DATA_CACHE = data; _MAT_DATA_CACHE_SIGNATURE = signature
+        return _mat_sanitize_loaded_data(copy.deepcopy(data))
     except (OSError, json.JSONDecodeError):
-        return {"v": 1, "companies": []}
+        return {"v": 1, "companies": [], "packs": []}
 
 async def handle_materials_page(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(MATERIALS_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
+async def _materials_static_file(request: web.Request) -> web.StreamResponse:
+    name = request.path.rsplit("/", 1)[-1]
+    allowed = {"base.css": MATERIALS_DIR / "base.css", "mat.css": MATERIALS_DIR / "mat.css", "script.js": MATERIALS_DIR / "script.js", "calc-core.js": MATERIALS_DIR / "calc-core.js"}
+    if re.fullmatch(r"(?:base|mat)\.[0-9a-f]{12}\.css", name):
+        allowed[name] = MATERIALS_DIR / name
+    elif re.fullmatch(r"(?:script|calc-core)\.[0-9a-f]{12}\.js", name):
+        allowed[name] = MATERIALS_DIR / name
+    elif re.fullmatch(r"modules/[A-Za-z0-9_-]+\.[0-9a-f]{12}\.js", request.path.removeprefix("/materials/")):
+        relative=request.path.removeprefix("/materials/")
+        candidate=(MATERIALS_DIR / relative).resolve()
+        if candidate.parent == (MATERIALS_DIR / "modules").resolve(): allowed[relative] = candidate
+    asset_key=request.path.removeprefix("/materials/")
+    path = allowed.get(asset_key) or allowed.get(name)
+    if path is None or not path.is_file():
+        raise web.HTTPNotFound()
+    content_type = "text/javascript" if name.endswith(".js") else "text/css"
+    return web.FileResponse(path, headers={"Cache-Control": "public, max-age=300", "Content-Type": content_type})
+
 def _mat_write(data: dict) -> None:
+    global _MAT_DATA_CACHE, _MAT_DATA_CACHE_SIGNATURE
+    payload=json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    if MATERIALS_STORAGE == "sqlite":
+        MATERIALS_SQLITE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(MATERIALS_SQLITE_FILE, timeout=10) as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("CREATE TABLE IF NOT EXISTS materials_snapshot (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            conn.execute("INSERT INTO materials_snapshot(id,payload,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at", (payload, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+        _MAT_DATA_CACHE=copy.deepcopy(data)
+        stat=MATERIALS_SQLITE_FILE.stat(); _MAT_DATA_CACHE_SIGNATURE=(str(MATERIALS_SQLITE_FILE),stat.st_mtime_ns,stat.st_size)
+        return
     MATERIALS_LIVE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = MATERIALS_LIVE_FILE.with_suffix(".tmp")
+    tmp = MATERIALS_LIVE_FILE.with_name(f".{MATERIALS_LIVE_FILE.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, MATERIALS_LIVE_FILE)
+    _MAT_DATA_CACHE = copy.deepcopy(data)
+    stat = MATERIALS_LIVE_FILE.stat()
+    _MAT_DATA_CACHE_SIGNATURE = (str(MATERIALS_LIVE_FILE), stat.st_mtime_ns, stat.st_size)
 
 def _mat_purge(item: dict | None) -> None:
     if not item or not re.fullmatch(r"[0-9a-f]{20}", str(item.get("key", ""))):
@@ -9536,7 +9680,22 @@ async def handle_materials_media(request: web.Request) -> web.StreamResponse:
 async def handle_materials_data(request: web.Request) -> web.Response:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
     admin = bool(user and is_admin(int(user.get("id", 0))))
-    return web.json_response({"data": load_materials_data(), "admin": admin, "bot": BOT_USERNAME or "", "start": MATERIALS_START_PAYLOAD})
+    data = load_materials_data()
+    show_incomplete = bool(data.get("showIncompleteProducts", False))
+    response_data = copy.deepcopy(data)
+    if not admin:
+        for company in response_data.get("companies", []):
+            company["products"] = visible_products(company.get("products", []), show_incomplete)
+    etag_source = json.dumps({"data": response_data, "showIncomplete": show_incomplete}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    etag = '"' + hashlib.sha256(etag_source.encode("utf-8")).hexdigest()[:24] + ("-a" if admin else "-u") + '"'
+    if request.headers.get("If-None-Match") == etag:
+        return web.Response(status=304, headers={"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "X-Init-Data"})
+    response = web.json_response({"data": response_data, "admin": admin, "bot": BOT_USERNAME or "", "start": MATERIALS_START_PAYLOAD, "mediaBase": _MATERIALS_CDN_BASE_URL})
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, no-cache"
+    response.headers["Vary"] = "X-Init-Data"
+    response.enable_compression()
+    return response
 
 def _mat_admin(request: web.Request) -> int | None:
     user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
@@ -9547,7 +9706,7 @@ def _mat_admin(request: web.Request) -> int | None:
 _MAT_SURF = ("floor", "wall", "ceiling")          # سطح پیش‌فرض در متره‌ی اتاق‌محور
 _MAT_TIER = ("eco", "mid", "lux")                 # رده‌ی سناریو (اقتصادی/متوسط/لوکس)
 _MAT_AVAIL = ("داخلی", "وارداتی", "معادل ایرانی")
-_MAT_CONF = ("datasheet", "field", "review")
+_MAT_CONF = ("verified", "datasheet", "field", "review")
 
 def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
     out = {k: v for k, v in p.items() if k != "images"}
@@ -9590,6 +9749,12 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
         out["confidence"] = ""
     for f in ("source", "lastVerified"):
         out[f] = str(out.get(f) or "").strip()[:120]
+    if out.get("confidence") != "verified":
+        out["lastVerified"] = ""
+    for f in ("speedSource", "durabilitySource"):
+        out[f] = str(out.get(f) or "").strip()[:200]
+    out["priceSource"] = str(out.get("priceSource") or "").strip()[:200]
+    out["priceUpdatedAt"] = str(out.get("priceUpdatedAt") or "").strip()[:30]
 
     # --- سطح/رده ---
     if out.get("surf") not in _MAT_SURF:
@@ -9621,19 +9786,51 @@ def _mat_clean_product(p: dict, old_images: list) -> tuple[dict, str]:
     out["group"] = str(out.get("group") or "").strip()[:60]
     out["desc"] = str(out.get("desc") or "").strip()[:400]
     out["unit"] = (str(out.get("unit") or "").strip()[:30]) or "عدد"
+    try:
+        pack_size = float(out.get("salesPackSize")) if out.get("salesPackSize") not in (None, "") else None
+    except (TypeError, ValueError):
+        pack_size = None
+    out["salesPackSize"] = pack_size if pack_size and pack_size > 0 else None
+    out["salesPackUnit"] = str(out.get("salesPackUnit") or "").strip()[:30]
     if out.get("mode") not in ("count", "area", "vol"):
         out["mode"] = "count"
     for f in ("catalog", "page"):
         u = str(out.get(f) or "").strip()[:500]
         out[f] = u if re.match(r"^https?://", u, re.I) else ""
     out["catalogVer"] = str(out.get("catalogVer") or "").strip()[:60]
+    out["sourceImageUrl"] = _mat_allowed_image_url(out.get("sourceImageUrl"))
 
+    verification = out.get("verification") if isinstance(out.get("verification"), dict) else {}
+    verification_clean = {
+        "datasheetUrl": str(verification.get("datasheetUrl") or "").strip()[:500],
+        "page": str(verification.get("page") or "").strip()[:20],
+        "reviewedAt": str(verification.get("reviewedAt") or "").strip()[:30],
+        "reviewer": str(verification.get("reviewer") or "").strip()[:100],
+    }
+    if not verification_is_valid(verification_clean):
+        if out.get("confidence") == "verified":
+            out["confidence"] = "review"
+        verification_clean = {"datasheetUrl": "", "page": "", "reviewedAt": "", "reviewer": ""}
+    out["verification"] = verification_clean
+
+    license_data = out.get("mediaLicense") if isinstance(out.get("mediaLicense"), dict) else {}
+    out["mediaLicense"] = {
+        "status": "approved" if license_data.get("status") == "approved" else "review-required",
+        "source": str(license_data.get("source") or "").strip()[:500],
+        "rightsHolder": str(license_data.get("rightsHolder") or "").strip()[:160],
+        "approvedAt": str(license_data.get("approvedAt") or "").strip()[:30],
+    }
+    if not license_is_valid(out["mediaLicense"]):
+        out["mediaLicense"]["status"] = "review-required"
+
+    out["publicationStatus"] = "published" if out.get("publicationStatus") == "published" else "draft"
+    out["imageKind"] = "family" if out.get("imageKind") == "family" else "product"
     out["images"] = old_images
 
     # --- ردیابی‌پذیری بدون اجبار: فقط «نام» لازم است. اگر داده‌ی فنی/قیمتی بدون نشان اطمینان ثبت شد،
     #     به‌جای رد کردنِ ذخیره، خودکار «نیازمند بررسی» علامت می‌خورد (در اپ هم همین نشان دیده می‌شود). ---
     has_numbers = specs or standards or feats or out.get("price") or out.get("speed") or out.get("durability")
-    if has_numbers and not out["confidence"]:
+    if not out["confidence"]:
         out["confidence"] = "review"
     err = ""
     return out, err
@@ -9646,6 +9843,15 @@ def _mat_clean_company(c: dict) -> None:
     for f in ("catalog", "site"):
         u = str(c.get(f) or "").strip()[:500]
         c[f] = u if re.match(r"^https?://", u, re.I) else ""
+    logo_license = c.get("logoLicense") if isinstance(c.get("logoLicense"), dict) else {}
+    c["logoLicense"] = {
+        "status": "approved" if logo_license.get("status") == "approved" else "review-required",
+        "source": str(logo_license.get("source") or "").strip()[:500],
+        "rightsHolder": str(logo_license.get("rightsHolder") or "").strip()[:160],
+        "approvedAt": str(logo_license.get("approvedAt") or "").strip()[:30],
+    }
+    if not license_is_valid(c["logoLicense"]):
+        c["logoLicense"]["status"] = "review-required"
     c["features"] = [str(x).strip()[:200] for x in (c.get("features") or []) if str(x).strip()][:12] if isinstance(c.get("features"), list) else []
     links = []
     if isinstance(c.get("links"), list):
@@ -9655,24 +9861,6 @@ def _mat_clean_company(c: dict) -> None:
                 if t and re.match(r"^https?://", u, re.I):
                     links.append({"t": t, "u": u})
     c["links"] = links
-
-def _mat_default_catalog_image(company: dict, product: dict) -> str:
-    """تصویر نماینده از دفترچهٔ برند؛ گونه‌های یک خانواده تصویر مشترک دارند."""
-    if str(company.get("id", "")).lower() != "leca" and "لیکا" not in str(company.get("name", "")):
-        return ""
-    pid = str(product.get("id") or "").lower()
-    name = str(product.get("name") or "")
-    group = str(product.get("group") or "")
-    if pid.startswith("leca-bv") or group == "بلوک" or "بلوک" in name or "block" in name.lower():
-        return "/materials/images/leca-block.webp"
-    if pid.startswith("leca-pl") or pid in {"leca1", "leca10", "leca11", "leca-lecamix-family"} or any(x in name.lower() for x in ("plaster", "lecamix")) or any(x in name for x in ("ملات", "اندود", "مخلوط خشک")):
-        return "/materials/images/leca-drymix.webp"
-    if pid.startswith("leca-fl") or "کف" in name and "بتن" in name:
-        return "/materials/images/leca-floor-concrete.webp"
-    if pid.startswith("leca-sc") or "سازه" in name and "بتن" in name:
-        return "/materials/images/leca-structural-concrete.webp"
-    return "/materials/images/leca-aggregate.webp"
-
 
 def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, int]:
     """ادغام امن JSON کاتالوگ در دیتای زنده؛ حذف انجام نمی‌شود و فیلدهای مدیریتی حفظ می‌شوند."""
@@ -9697,8 +9885,8 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
     if not isinstance(live["companies"], list):
         raise ValueError("ساختار برندهای کاتالوگ زنده معتبر نیست.")
     added = updated = company_count = 0
-    protected_company_fields = {"logo", "sponsor", "dealers"}
-    protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes"}
+    protected_company_fields = {"logo", "logoLicense", "sponsor", "dealers"}
+    protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes", "verification", "mediaLicense", "publicationStatus", "confidence"}
 
     for source_company in incoming_companies:
         if not isinstance(source_company, dict):
@@ -9713,8 +9901,9 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
 
         live_co = next((c for c in live["companies"] if isinstance(c, dict) and str(c.get("id")) == co_id), None)
         if live_co is None:
-            live_co = {k: v for k, v in source_company.items() if k != "products"}
+            live_co = {k: v for k, v in source_company.items() if k not in ("products", "logo", "logoLicense")}
             live_co["products"] = []
+            live_co["logoLicense"] = {"status": "review-required", "source": "", "rightsHolder": "", "approvedAt": ""}
             live_co.setdefault("sponsor", False)
             live["companies"].append(live_co)
         else:
@@ -9754,6 +9943,9 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                     # کاتالوگِ کنترل‌شده می‌تواند توضیحات/ویژگی‌ها/مشخصات را عمداً خالی کند.
                     if key in ("features", "specs", "standards") and isinstance(value, list):
                         merged[key] = value
+                    # مقادیر محاسباتیِ نامعلوم را می‌توان عمداً خالی کرد تا فرض قدیمی باقی نماند.
+                    elif key in ("perM2", "def") and value in (None, ""):
+                        merged[key] = None
                     # مسیر تصویرِ دقیقِ داخل دفترچه باید جای تصویر پیش‌فرض قبلی را بگیرد.
                     elif key == "sourceImageUrl" and isinstance(value, str):
                         merged[key] = value
@@ -9769,14 +9961,15 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 for key in protected_product_fields:
                     if key in old_product and (key != "sourceImageUrl" or old_product.get(key)):
                         clean[key] = old_product[key]
-                if not clean.get("sourceImageUrl") and not clean.get("images") and not clean.get("catalogImageUnavailable"):
-                    clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
                 live_co["products"][index] = clean
                 updated += 1
             else:
                 clean, _ = _mat_clean_product(source_product, source_product.get("images") if isinstance(source_product.get("images"), list) else [])
-                if not clean.get("sourceImageUrl") and not clean.get("images") and not clean.get("catalogImageUnavailable"):
-                    clean["sourceImageUrl"] = _mat_default_catalog_image(live_co, clean)
+                # Imported catalog data cannot grant itself a verification or media license.
+                clean["confidence"] = "review"
+                clean["verification"] = {"datasheetUrl": "", "page": "", "reviewedAt": "", "reviewer": ""}
+                clean["mediaLicense"] = {"status": "review-required", "source": "", "rightsHolder": "", "approvedAt": ""}
+                clean["publicationStatus"] = "published" if has_product_image(clean) else "draft"
                 live_co["products"].append(clean)
                 product_index[pid] = len(live_co["products"]) - 1
                 added += 1
@@ -9808,6 +10001,7 @@ async def handle_materials_save(request: web.Request) -> web.Response:
             c.pop("logo", None)                      # رسانه فقط از مسیر ربات/API رسانه عوض می‌شود
             if isinstance(oc.get("logo"), dict):
                 c["logo"] = oc["logo"]
+            c["logoLicense"] = oc.get("logoLicense", {"status": "review-required", "source": "", "rightsHolder": "", "approvedAt": ""})
             c["sponsor"] = bool(c.get("sponsor"))
             _mat_clean_company(c)
             oprods = {p.get("id"): p for p in oc.get("products", [])}
@@ -9815,6 +10009,17 @@ async def handle_materials_save(request: web.Request) -> web.Response:
             for p in c.get("products", []):
                 op = oprods.get(p.get("id")) or {}
                 np_, _ = _mat_clean_product(p, op.get("images") or [])
+                # فقط endpoint بازبینی مجاز است وضعیت تأیید را تغییر دهد؛ فرم عادی نمی‌تواند آن را جعل کند.
+                if op.get("confidence") == "verified" and isinstance(op.get("verification"), dict) and all(op["verification"].get(k) for k in ("datasheetUrl", "page", "reviewedAt", "reviewer")):
+                    np_["confidence"] = "verified"
+                    np_["verification"] = copy.deepcopy(op["verification"])
+                else:
+                    if np_.get("confidence") == "verified": np_["confidence"] = "review"
+                    np_["verification"] = {"datasheetUrl": "", "page": "", "reviewedAt": "", "reviewer": ""}
+                # رسانه و مجوز فقط از APIهای اختصاصی مدیریت می‌شوند.
+                np_["mediaLicense"] = copy.deepcopy(op.get("mediaLicense", {"status": "review-required", "source": "", "rightsHolder": "", "approvedAt": ""}))
+                np_["publicationStatus"] = "published" if (op.get("publicationStatus") == "published" and has_product_image(op)) else "draft"
+                np_["imageKind"] = "family" if op.get("imageKind") == "family" else "product"
                 # فایل‌ها و تاریخچه‌ی قیمت فقط از APIهای اختصاصی/ثبت قیمت مدیریت می‌شوند.
                 np_["docs"] = op.get("docs", p.get("docs", [])) if isinstance(op.get("docs", p.get("docs", [])), list) else []
                 history = op.get("priceLog", p.get("priceLog", []))
@@ -9827,12 +10032,109 @@ async def handle_materials_save(request: web.Request) -> web.Response:
                 np_["dealers"] = op.get("dealers", p.get("dealers", [])) if isinstance(op.get("dealers", p.get("dealers", [])), list) else []
                 cleaned.append(np_)
             c["products"] = cleaned
-        _mat_write({
+        await asyncio.to_thread(_mat_write, {
             "v": 2, "companies": companies,
             "packs": payload.get("packs") if isinstance(payload.get("packs"), list) else old.get("packs", []),
             "seedRev": old.get("seedRev", 0),
+            "showIncompleteProducts": bool(payload.get("showIncompleteProducts", old.get("showIncompleteProducts", False))),
         })
     return web.json_response({"ok": True})
+
+
+async def handle_materials_review(request: web.Request) -> web.Response:
+    """مدیریت وضعیت تأیید محصول و مجوز رسانه؛ اعتبارسنجی فقط در سرور انجام می‌شود."""
+    if not _mat_admin(request):
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    try:
+        body = await request.json()
+        action = str(body.get("action") or "")
+        co_id, pid = str(body.get("company") or ""), str(body.get("product") or "")
+    except Exception:
+        return web.json_response({"ok": False, "error": "bad json"}, status=400)
+    async with _mat_lock:
+        data = load_materials_data()
+        if action == "show-incomplete":
+            data["showIncompleteProducts"] = bool(body.get("enabled"))
+            await asyncio.to_thread(_mat_write, data)
+            return web.json_response({"ok": True, "data": data})
+        co = next((x for x in data.get("companies", []) if x.get("id") == co_id), None)
+        product = next((x for x in (co or {}).get("products", []) if x.get("id") == pid), None) if pid else None
+        if not co or (pid and not product):
+            return web.json_response({"ok": False, "error": "برند یا محصول پیدا نشد"}, status=404)
+        if action in ("verify-product", "publication") and not product:
+            return web.json_response({"ok": False, "error": "شناسه‌ی محصول الزامی است."}, status=400)
+        if action == "verify-product":
+            url = str(body.get("datasheetUrl") or "").strip()[:500]
+            page = str(body.get("page") or "").strip()[:20]
+            reviewed_at = str(body.get("reviewedAt") or "").strip()[:30]
+            reviewer = str(body.get("reviewer") or "").strip()[:100]
+            if not verification_is_valid({"datasheetUrl": url, "page": page, "reviewedAt": reviewed_at, "reviewer": reviewer}):
+                return web.json_response({"ok": False, "error": "برای تأیید، لینک HTTPS دیتاشیت، شماره صفحه، تاریخ بررسی و نام بررسی‌کننده الزامی است."}, status=400)
+            product["verification"] = {"datasheetUrl": url, "page": page, "reviewedAt": reviewed_at, "reviewer": reviewer}
+            product["confidence"] = "verified"
+            product["source"] = ("دیتاشیت: " + url + "؛ صفحه " + page)[:120]
+            product["lastVerified"] = reviewed_at
+        elif action == "approve-license":
+            source = str(body.get("source") or "").strip()[:500]
+            rights_holder = str(body.get("rightsHolder") or "").strip()[:160]
+            approved_at = str(body.get("approvedAt") or "").strip()[:30]
+            if not license_is_valid({"source": source, "rightsHolder": rights_holder, "approvedAt": approved_at}):
+                return web.json_response({"ok": False, "error": "منبع تصویر، دارنده‌ی حق و تاریخ تأیید الزامی است."}, status=400)
+            lic = {"status": "approved", "source": source, "rightsHolder": rights_holder, "approvedAt": approved_at}
+            if pid:
+                if not has_product_image(product):
+                    return web.json_response({"ok": False, "error": "برای محصول تصویری ثبت نشده است."}, status=400)
+                product["mediaLicense"] = lic
+            else:
+                if not co.get("logo"):
+                    return web.json_response({"ok": False, "error": "برای برند لوگویی ثبت نشده است."}, status=400)
+                co["logoLicense"] = lic
+        elif action == "publication":
+            if not product:
+                return web.json_response({"ok": False, "error": "محصول لازم است"}, status=400)
+            requested = str(body.get("status") or "draft")
+            if requested == "published" and not product_is_publishable(product):
+                return web.json_response({"ok": False, "error": "انتشار عمومی نیازمند تصویر واقعی، دیتاشیت تأییدشده و مجوز رسانه‌ی approved است."}, status=400)
+            product["publicationStatus"] = "published" if requested == "published" else "draft"
+        else:
+            return web.json_response({"ok": False, "error": "عملیات نامعتبر است."}, status=400)
+        await asyncio.to_thread(_mat_write, data)
+    return web.json_response({"ok": True, "data": data})
+
+async def handle_materials_preferences(request: web.Request) -> web.Response:
+    user = _materials_verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not user:
+        return web.json_response({"ok": False, "error": "برای ذخیره‌ی تنظیمات، مینی‌اپ را از تلگرام باز کن."}, status=401)
+    uid = str(int(user.get("id", 0)))
+    if request.method == "GET":
+        data = await asyncio.to_thread(_mat_json_read, MATERIALS_PREFERENCES_FILE, {})
+        entry = data.get(uid, {}) if isinstance(data, dict) else {}
+        return web.json_response({"ok": True, "preferences": entry if isinstance(entry, dict) else {}})
+    if _mat_rate_limited(f"preferences:{uid}", 60, 3600):
+        return web.json_response({"ok": False, "error": "تعداد تغییر تنظیمات زیاد است؛ بعداً دوباره تلاش کن."}, status=429)
+    try:
+        body = await request.json()
+        mode = str(body.get("mode") or "simple")
+        if mode not in ("simple", "pro"):
+            raise ValueError()
+    except Exception:
+        return web.json_response({"ok": False, "error": "حالت کاربری نامعتبر است."}, status=400)
+    data = await asyncio.to_thread(_mat_json_read, MATERIALS_PREFERENCES_FILE, {})
+    if not isinstance(data, dict): data = {}
+    data[uid] = {"mode": mode, "updatedAt": datetime.now(timezone.utc).isoformat()}
+    await asyncio.to_thread(_mat_json_write, MATERIALS_PREFERENCES_FILE, data)
+    return web.json_response({"ok": True, "preferences": data[uid]})
+
+async def handle_materials_license_export(request: web.Request) -> web.Response:
+    if not _mat_admin(request):
+        return web.json_response({"ok": False, "error": "forbidden"}, status=403)
+    data = load_materials_data()
+    products = {}
+    for co in data.get("companies", []):
+        for p in co.get("products", []):
+            lic = p.get("mediaLicense") or {}
+            products[p.get("id", "")] = {"credit": lic.get("source", ""), "license": lic.get("status", "review-required"), "rightsHolder": lic.get("rightsHolder", ""), "approvedAt": lic.get("approvedAt", "")}
+    return web.json_response({"schemaVersion": 1, "products": products, "companies": {c.get("id", ""): {"logoLicense": c.get("logoLicense", {})} for c in data.get("companies", [])}})
 
 MAT_SHEET_MAX_BYTES = 8 * 1024 * 1024    # سقف حجم درخواست برگه
 MAT_SHEET_MAX_PAGES = 8
@@ -9922,6 +10224,14 @@ async def handle_materials_upload_request(request: web.Request) -> web.Response:
             return web.json_response({"ok": False, "error": "ربات نتوانست پیام بدهد؛ اول /start بزن"}, status=502)
         return web.json_response({"ok": True})
 
+    if kind == "bulk-image":
+        _mat_pending[uid] = {"kind": "bulk-image", "ts": datetime.now(timezone.utc).timestamp()}
+        try:
+            await bot.send_message(uid, "📷 تصاویر را به‌صورت Document بفرست و مسیر کامل را در Caption پیام وارد کن (چون تلگرام ممکن است پوشه‌ها را از نام فایل حذف کند): brands/<brandId>/products/<productId>/NN.webp. هر تصویر جداگانه اعتبارسنجی می‌شود و مجوز آن review-required می‌ماند. این مسیر تصاویر را در کاتالوگ تلگرام ثبت می‌کند؛ برای انتشار در GitHub Pages باید فایل خام را جداگانه در مخزن ravaq-media قرار بدهی.")
+        except Exception as e:
+            logger.warning("bulk media upload message failed: %s", e); _mat_pending.pop(uid,None)
+            return web.json_response({"ok":False,"error":"ربات نتوانست پیام بدهد؛ اول /start بزن"},status=502)
+        return web.json_response({"ok":True})
     data = load_materials_data()
     co = next((c for c in data.get("companies", []) if c.get("id") == co_id), None)
     if kind not in ("logo", "image", "file") or not co:
@@ -9961,7 +10271,7 @@ async def handle_materials_media_remove(request: web.Request) -> web.Response:
                     gone = next(i for i in pr["images"] if i.get("key") == key)
                     pr["images"] = keep
         if gone:
-            _mat_write(data)
+            await asyncio.to_thread(_mat_write, data)
     if not gone:
         return web.json_response({"ok": False, "error": "not found"}, status=404)
     _mat_purge(gone)
@@ -9982,11 +10292,68 @@ def _mat_json_write(path: Path, value) -> None:
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)
 
-def _mat_event(event: str, company: str = "", product: str = "", query: str = "") -> None:
-    data = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []})
-    data.setdefault("events", []).append({"event": event[:30], "company": company[:80], "product": product[:100], "query": query[:100], "at": datetime.now(timezone.utc).isoformat()})
-    data["events"] = data["events"][-20000:]
-    _mat_json_write(MATERIALS_EVENTS_FILE, data)
+_MAT_EVENT_QUEUE: list[dict] = []
+_MAT_EVENT_FLUSH_LOCK = asyncio.Lock()
+_MAT_EVENT_FLUSH_TASK: asyncio.Task | None = None
+_MAT_EVENT_TYPES = {"view", "compare", "estimate", "catalog", "download", "quote", "search_no_result", "model3d", "education", "wizard"}
+
+def _mat_event(event: str, company: str = "", product: str = "", query: str = "", user_id: int = 0) -> None:
+    ev = event if event in _MAT_EVENT_TYPES else "view"
+    row = {"event": ev, "company": str(company)[:80], "product": str(product)[:100], "query": str(query)[:100] if ev == "search_no_result" else "", "user_id": int(user_id or 0), "at": datetime.now(timezone.utc).isoformat()}
+    # Daily de-duplication is only applied to authenticated product events.
+    if row["user_id"] and row["product"]:
+        day = row["at"][:10]
+        if any(x.get("user_id") == row["user_id"] and x.get("event") == ev and x.get("product") == row["product"] and str(x.get("at", ""))[:10] == day for x in _MAT_EVENT_QUEUE):
+            return
+    _MAT_EVENT_QUEUE.append(row)
+    if len(_MAT_EVENT_QUEUE) >= 100:
+        try:
+            asyncio.get_running_loop().create_task(_mat_flush_events())
+        except RuntimeError:
+            pass
+
+async def _mat_flush_events() -> None:
+    if not _MAT_EVENT_QUEUE:
+        return
+    async with _MAT_EVENT_FLUSH_LOCK:
+        if not _MAT_EVENT_QUEUE:
+            return
+        batch = _MAT_EVENT_QUEUE[:]
+        try:
+            def _flush_sync():
+                data = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []})
+                events = data.get("events", []) if isinstance(data, dict) else []
+                # Avoid repeated user/product/type/day rows across process restarts too.
+                existing = {(x.get("user_id"), x.get("event"), x.get("product"), str(x.get("at", ""))[:10]) for x in events if x.get("user_id") and x.get("product")}
+                for row in batch:
+                    key = (row.get("user_id"), row.get("event"), row.get("product"), str(row.get("at", ""))[:10])
+                    if row.get("user_id") and row.get("product") and key in existing:
+                        continue
+                    events.append(row)
+                    if row.get("user_id") and row.get("product"): existing.add(key)
+                _mat_json_write(MATERIALS_EVENTS_FILE, {"events": events[-20000:]})
+            await asyncio.to_thread(_flush_sync)
+            del _MAT_EVENT_QUEUE[:len(batch)]
+        except Exception as e:
+            logger.warning("materials event batch flush failed: %s", e)
+
+async def _mat_event_flusher(app: web.Application) -> None:
+    while True:
+        await asyncio.sleep(60)
+        await _mat_flush_events()
+
+async def _mat_event_flusher_start(app: web.Application) -> None:
+    global _MAT_EVENT_FLUSH_TASK
+    _MAT_EVENT_FLUSH_TASK = asyncio.create_task(_mat_event_flusher(app))
+
+async def _mat_event_flusher_stop(app: web.Application) -> None:
+    global _MAT_EVENT_FLUSH_TASK
+    if _MAT_EVENT_FLUSH_TASK:
+        _MAT_EVENT_FLUSH_TASK.cancel()
+        try: await _MAT_EVENT_FLUSH_TASK
+        except asyncio.CancelledError: pass
+        _MAT_EVENT_FLUSH_TASK = None
+    await _mat_flush_events()
 
 # محدودسازی ساده‌ی نرخ درخواست برای جلوگیری از اسپم فرم‌ها و رشد بی‌رویه‌ی JSONها.
 # این محدودیت در سطح هر پردازه است؛ برای چند worker باید rate limit مشترک استفاده شود.
@@ -10019,7 +10386,7 @@ async def handle_materials_projects(request: web.Request) -> web.Response:
     uid = str(int(user.get("id", 0)))
     if request.method != "GET" and _mat_rate_limited(f"projects:{uid}", 30, 3600):
         return web.json_response({"ok": False, "error": "تعداد ذخیره‌سازی‌ها زیاد است؛ کمی بعد دوباره تلاش کن."}, status=429)
-    data = _mat_json_read(MATERIALS_PROJECTS_FILE, {})
+    data = await asyncio.to_thread(_mat_json_read, MATERIALS_PROJECTS_FILE, {})
     if request.method == "GET":
         return web.json_response({"ok": True, "projects": data.get(uid, [])})
     try:
@@ -10036,7 +10403,7 @@ async def handle_materials_projects(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"ok": False, "error": "ساختار پروژه معتبر نیست."}, status=400)
     data[uid] = clean
-    _mat_json_write(MATERIALS_PROJECTS_FILE, data)
+    await asyncio.to_thread(_mat_json_write, MATERIALS_PROJECTS_FILE, data)
     return web.json_response({"ok": True, "projects": clean})
 
 async def handle_materials_send_file(request: web.Request) -> web.Response:
@@ -10060,7 +10427,7 @@ async def handle_materials_send_file(request: web.Request) -> web.Response:
     co, pr, doc = found
     try:
         await bot.send_document(int(user["id"]), doc["fid"], caption=f"📎 {doc.get('title') or doc.get('file_name') or 'فایل اجرایی'}\n{co.get('name','')} — {pr.get('name','')}\nارسال از کتابخانه‌ی رواق", protect_content=False)
-        _mat_event("download", co.get("name", ""), pr.get("name", ""))
+        _mat_event("download", co.get("name", ""), pr.get("name", ""), user_id=int(user.get("id", 0)))
     except Exception as e:
         logger.warning("materials file send failed: %s", e)
         return web.json_response({"ok": False, "error": "ارسال فایل ناموفق بود؛ ابتدا ربات را Start کن."}, status=502)
@@ -10084,13 +10451,13 @@ async def handle_materials_quote(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "محصول و برند مشخص نیست."}, status=400)
     uid = int(user.get("id", 0)); uname = str(user.get("username") or user.get("first_name") or uid)[:80]
     entry = {"user_id": uid, "user": uname, "company": company, "product": name, "city": city, "quantity": qty, "contact": contact, "note": note, "at": datetime.now(timezone.utc).isoformat()}
-    qdata = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}); qdata.setdefault("quotes", []).append(entry); qdata["quotes"] = qdata["quotes"][-5000:]; _mat_json_write(MATERIALS_QUOTES_FILE, qdata)
+    qdata = await asyncio.to_thread(_mat_json_read, MATERIALS_QUOTES_FILE, {"quotes": []}); qdata.setdefault("quotes", []).append(entry); qdata["quotes"] = qdata["quotes"][-5000:]; await asyncio.to_thread(_mat_json_write, MATERIALS_QUOTES_FILE, qdata)
     msg = "📩 <b>استعلام قیمت — رواق</b>\n" + "\n".join([f"برند: {html_escape(company)}", f"محصول: {html_escape(name)}", f"شهر: {html_escape(city or 'ثبت نشده')}", f"مقدار: {html_escape(qty or 'ثبت نشده')}", f"راه تماس: {html_escape(contact or 'از طریق تلگرام')}", f"توضیح: {html_escape(note or '—')}", f"کاربر: {html_escape(uname)} (ID: <code>{uid}</code>)"])
     sent = 0
     for admin_id in ADMIN_IDS:
         try: await bot.send_message(admin_id, msg); sent += 1
         except Exception: pass
-    _mat_event("quote", company, name)
+    _mat_event("quote", company, name, user_id=uid)
     if not sent:
         # درخواست قبلاً ذخیره شده است؛ خطای اعلان نباید کاربر را به ارسال دوباره وادار کند.
         logger.error("استعلام %s ذخیره شد اما هیچ اعلانی به مدیران نرسید.", entry.get("at"))
@@ -10105,14 +10472,27 @@ async def handle_materials_event(request: web.Request) -> web.Response:
     try: body = await request.json()
     except Exception: body = {}
     ev = str(body.get("event") or "view")
-    if ev not in ("view", "compare", "estimate", "catalog", "download", "quote", "search_no_result", "model3d", "education", "wizard"): ev = "view"
-    _mat_event(ev, str(body.get("company") or ""), str(body.get("product") or ""), str(body.get("query") or ""))
+    if ev not in _MAT_EVENT_TYPES: ev = "view"
+    data = load_materials_data()
+    company_in = str(body.get("company") or "")[:100]
+    product_in = str(body.get("product") or "")[:120]
+    company = next((c for c in data.get("companies", []) if company_in in (str(c.get("id") or ""), str(c.get("name") or ""))), None)
+    product = None
+    if company and product_in:
+        product = next((p for p in company.get("products", []) if product_in in (str(p.get("id") or ""), str(p.get("name") or ""))), None)
+    # Invalid/free-form company/product strings are discarded instead of becoming sponsor statistics.
+    clean_company = str(company.get("name") or "") if company else ""
+    clean_product = str(product.get("name") or "") if product else ""
+    if ev in ("download", "quote", "view", "model3d") and not clean_product:
+        clean_company = clean_product = ""
+    _mat_event(ev, clean_company, clean_product, str(body.get("query") or "")[:100], int(user.get("id", 0)))
     return web.json_response({"ok": True})
 
 async def handle_materials_sponsor_dashboard(request: web.Request) -> web.Response:
     if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
-    events = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []}).get("events", [])
-    quotes = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}).get("quotes", [])
+    events_data, quotes_data = await asyncio.gather(asyncio.to_thread(_mat_json_read, MATERIALS_EVENTS_FILE, {"events": []}), asyncio.to_thread(_mat_json_read, MATERIALS_QUOTES_FILE, {"quotes": []}))
+    events = events_data.get("events", [])
+    quotes = quotes_data.get("quotes", [])
     now = datetime.now(timezone.utc); cutoff = now - timedelta(days=30)
     sponsored = {str(c.get("name") or "") for c in load_materials_data().get("companies", []) if c.get("sponsor")}
     recent = [e for e in events if e.get("at") and e.get("at") >= cutoff.isoformat() and e.get("company") in sponsored]
@@ -10131,7 +10511,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
     if not user:
         return web.json_response({"ok": False, "error": "برای ثبت تجربه، مینی‌اپ را از تلگرام باز کن."}, status=401)
     uid_for_limit = int(user.get("id", 0))
-    data = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []})
+    data = await asyncio.to_thread(_mat_json_read, MATERIALS_COMMUNITY_FILE, {"items": []})
     if request.method == "GET":
         public = []
         for item in data.get("items", []):
@@ -10152,7 +10532,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
             voters = target.setdefault("voted_by", [])
             if voter in voters: return web.json_response({"ok": True, "votes": int(target.get("votes", 0)), "voted": True})
             if len(voters) >= 100000: return web.json_response({"ok": False, "error": "ظرفیت رأی تکمیل است."}, status=409)
-            voters.append(voter); target["votes"] = len(voters); _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+            voters.append(voter); target["votes"] = len(voters); await asyncio.to_thread(_mat_json_write, MATERIALS_COMMUNITY_FILE, data)
             return web.json_response({"ok": True, "votes": target["votes"], "voted": True})
         title = str(body.get("title") or "").strip()[:120]
         material = str(body.get("material") or "").strip()[:120]
@@ -10170,7 +10550,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
     author_photo_url = str(body.get("author_photo_url") or user.get("photo_url") or "").strip()[:1000]
     if author_photo_url and not author_photo_url.startswith("https://"): author_photo_url = ""
     entry = {"id": uuid.uuid4().hex[:12], "user_id": int(user.get("id", 0)), "user": str((str(user.get("first_name") or "") + " " + str(user.get("last_name") or "")).strip() or user.get("username") or "کاربر")[:80], "username": str(user.get("username") or "")[:80], "author_photo_url": author_photo_url, "title": title, "material": material, "details": details, "context": context, "photo_url": photo_url, "rating": rating, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(), "votes": 0}
-    data.setdefault("items", []).append(entry); data["items"] = data["items"][-3000:]; _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+    data.setdefault("items", []).append(entry); data["items"] = data["items"][-3000:]; await asyncio.to_thread(_mat_json_write, MATERIALS_COMMUNITY_FILE, data)
     for admin_id in ADMIN_IDS:
         try:
             await bot.send_message(admin_id, "🧱 <b>تجربه‌ی اجرایی جدید برای بررسی</b>\n" + "\n".join([f"مصالح: {html_escape(material)}", f"عنوان: {html_escape(title)}", f"کاربر: {html_escape(entry['user'])} / <code>{entry['user_id']}</code>", f"شرح: {html_escape(details[:700])}", f"شناسه: <code>{entry['id']}</code>"]) + "\nبرای تأیید یا رد از پنل ادمین مینی‌اپ استفاده کن.")
@@ -10179,7 +10559,7 @@ async def handle_materials_community(request: web.Request) -> web.Response:
 
 async def handle_materials_community_admin(request: web.Request) -> web.Response:
     if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
-    data = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []})
+    data = await asyncio.to_thread(_mat_json_read, MATERIALS_COMMUNITY_FILE, {"items": []})
     if request.method == "GET":
         return web.json_response({"ok": True, "items": data.get("items", [])[-300:]})
     try: body = await request.json()
@@ -10191,13 +10571,14 @@ async def handle_materials_community_admin(request: web.Request) -> web.Response
     if action == "delete": data["items"].remove(found)
     elif action == "expert": found["expert_verified"] = not bool(found.get("expert_verified")); found["expert_verified_at"] = datetime.now(timezone.utc).isoformat()
     else: found["status"] = "approved" if action == "approve" else "rejected"; found["reviewed_at"] = datetime.now(timezone.utc).isoformat()
-    _mat_json_write(MATERIALS_COMMUNITY_FILE, data)
+    await asyncio.to_thread(_mat_json_write, MATERIALS_COMMUNITY_FILE, data)
     return web.json_response({"ok": True, "items": data.get("items", [])[-300:]})
 
 async def handle_materials_market_dashboard(request: web.Request) -> web.Response:
     if not _mat_admin(request): return web.json_response({"ok": False, "error": "forbidden"}, status=403)
-    events = _mat_json_read(MATERIALS_EVENTS_FILE, {"events": []}).get("events", [])
-    quotes = _mat_json_read(MATERIALS_QUOTES_FILE, {"quotes": []}).get("quotes", [])
+    events_data, quotes_data = await asyncio.gather(asyncio.to_thread(_mat_json_read, MATERIALS_EVENTS_FILE, {"events": []}), asyncio.to_thread(_mat_json_read, MATERIALS_QUOTES_FILE, {"quotes": []}))
+    events = events_data.get("events", [])
+    quotes = quotes_data.get("quotes", [])
     now = datetime.now(timezone.utc); cutoff = now - timedelta(days=30)
     recent = [e for e in events if e.get("at") and e.get("at") >= cutoff.isoformat()]
     searches = [e for e in recent if e.get("event") == "search_no_result"]
@@ -10206,7 +10587,8 @@ async def handle_materials_market_dashboard(request: web.Request) -> web.Respons
         for x in items:
             k = str(x.get(key) or "ثبت‌نشده")[:120]; out[k] = out.get(k, 0) + 1
         return sorted([{"name": k, "count": v} for k, v in out.items()], key=lambda x: (-x["count"], x["name"]))[:30]
-    community = _mat_json_read(MATERIALS_COMMUNITY_FILE, {"items": []}).get("items", [])
+    community_data = await asyncio.to_thread(_mat_json_read, MATERIALS_COMMUNITY_FILE, {"items": []})
+    community = community_data.get("items", [])
     return web.json_response({"ok": True, "period": "۳۰ روز اخیر", "events": len(recent), "quotes": len([q for q in quotes if q.get("at", "") >= cutoff.isoformat()]), "noResultSearches": len(searches), "popularProducts": agg(recent, "product"), "searchGaps": agg(searches, "query"), "eventTypes": agg(recent, "event"), "communityPending": len([x for x in community if x.get("status") == "pending"])})
 
 def create_app() -> web.Application:
@@ -10224,8 +10606,20 @@ def create_app() -> web.Application:
     app.router.add_static("/prompts/", path=PROMPTS_DIR, name="prompts_assets")
     # مسیرهای API باید قبل از static ثبت بشن تا با مسیرِ فایل‌ها قاطی نشن
     app.router.add_get("/materials", handle_materials_page)
+    app.router.add_get("/materials/base.css", _materials_static_file)
+    app.router.add_get("/materials/mat.css", _materials_static_file)
+    app.router.add_get("/materials/script.js", _materials_static_file)
+    app.router.add_get("/materials/calc-core.js", _materials_static_file)
+    app.router.add_get(r"/materials/{asset:[A-Za-z0-9._-]+}", _materials_static_file)
+    app.router.add_get(r"/materials/modules/{asset:[A-Za-z0-9._-]+}", _materials_static_file)
+    app.router.add_static("/materials/images/", path=MATERIALS_DIR / "images", name="materials_images")
+    app.router.add_static("/materials/fonts/", path=MATERIALS_DIR / "fonts", name="materials_fonts")
     app.router.add_get("/materials/api/data", handle_materials_data)
     app.router.add_post("/materials/api/save", handle_materials_save)
+    app.router.add_post("/materials/api/review", handle_materials_review)
+    app.router.add_get("/materials/api/license-export", handle_materials_license_export)
+    app.router.add_route("GET", "/materials/api/preferences", handle_materials_preferences)
+    app.router.add_route("POST", "/materials/api/preferences", handle_materials_preferences)
     app.router.add_post("/materials/api/sheet", handle_materials_sheet)
     app.router.add_post("/materials/api/upload-request", handle_materials_upload_request)
     app.router.add_post("/materials/api/media-remove", handle_materials_media_remove)
@@ -10241,12 +10635,13 @@ def create_app() -> web.Application:
     app.router.add_post("/materials/api/community-admin", handle_materials_community_admin)
     app.router.add_get("/materials/api/market-dashboard", handle_materials_market_dashboard)
     app.router.add_get("/materials/m/{key}", handle_materials_media)
-    app.router.add_static("/materials/", path=MATERIALS_DIR, name="materials_assets")
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
     app.on_startup.append(on_startup)
+    app.on_startup.append(_mat_event_flusher_start)
     app.on_startup.append(start_self_ping)
+    app.on_cleanup.append(_mat_event_flusher_stop)
     app.on_cleanup.append(stop_self_ping)
     app.on_cleanup.append(stop_vip_expiry_checker)
     app.on_cleanup.append(stop_pending_join_checker)

@@ -1,0 +1,7 @@
+GET /materials: 200 bytes= 6451
+GET /materials/fonts/ravaq-arabic-400.woff2 200 bytes= 41624
+GET /materials/base.446293b7ba3d.css 200 bytes= 37759
+GET /materials/mat.242f31cd3329.css 200 bytes= 14560
+GET /materials/calc-core.fa52d579f9c8.js 200 bytes= 4051
+GET /materials/script.395533c5a740.js 200 bytes= 177685
+GET /materials/modules/glossary.c3ed4ab0d3b8.js 200 bytes= 1669
