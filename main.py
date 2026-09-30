@@ -614,7 +614,16 @@ async def restore_data_dir_from_telegram(force: bool = False) -> tuple[bool, str
                 _clear_data_dir_files()
                 for staged_path, target in staged:
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    os.replace(staged_path, target)
+                    # staging is created under the system temp directory (/tmp), which can
+                    # be a different filesystem from Render's project directory. Copy to a
+                    # temporary file beside the destination, then atomically replace it.
+                    local_tmp = target.with_name(f".{target.name}.restore-{uuid.uuid4().hex}.tmp")
+                    try:
+                        shutil.copy2(staged_path, local_tmp)
+                        os.replace(local_tmp, target)
+                    finally:
+                        local_tmp.unlink(missing_ok=True)
+                        staged_path.unlink(missing_ok=True)
             except Exception:
                 logger.exception("بازیابی کامل نشد؛ در حال برگرداندن دادهٔ محلی قبلی.")
                 _clear_data_dir_files()
