@@ -92,7 +92,7 @@ function updateNavNeon() {
 }
 function tabs() {
   // معماری اطلاعات ساده‌تر: پنج مقصد اصلی؛ ابزارهای تخصصی در یک صفحه‌ی منظم گروه‌بندی شده‌اند.
-  const T = [['cat', 'کاتالوگ', fa(D.companies.length)], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['tools', 'ابزارها', '۰۷'], ['education', 'راهنمای اجرا', 'آموزش'], ['community', 'تجربه‌ها', 'جامعه']];
+  const T = [['cat', 'کاتالوگ', fa(D.companies.length)], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['tools', 'ابزارها', '۱۰'], ['education', 'راهنمای اجرا', 'آموزش'], ['community', 'تجربه‌ها', 'جامعه']];
   if (S.admin) T.push(['manage', 'مدیریت', 'ادمین']); else T.push(['profile', 'پروفایل', 'حساب']);
   $('#index').innerHTML = T.map(t => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
   document.querySelectorAll('#bottomNav [data-tab]').forEach(b => { const active = b.dataset.tab === S.tab; b.classList.toggle('active', active); if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); b.hidden = (b.dataset.tab === 'manage' && !S.admin) || (b.dataset.tab === 'profile' && S.admin); });
@@ -102,13 +102,40 @@ function tabs() {
   const hero = document.querySelector('.hero'); if (hero) hero.classList.toggle('compact', S.tab !== 'cat');
 }
 function toolsView() {
- const groups = [
-  ['شروع پروژه', 'متره، برآورد و مدیریت کار', [['room','متره‌ی فضا','محاسبه‌ی کف، دیوار و سقف'],['est','برآورد هزینه','جمع مصالح و هزینه‌های پروژه'],['projects','پروژه‌های من','ادامه‌ی کارهای ذخیره‌شده']]],
-  ['انتخاب مصالح', 'مقایسه و تصمیم‌گیری', [['wizard','راهنمای انتخاب','از مشکل پروژه شروع کن'],['cmp','مقایسه‌ی مصالح','مشخصات را کنار هم ببین'],['calc','محاسبات تخصصی','ماشین‌حساب‌های مرتبط']]],
-  ['مرجع و پیگیری', 'فایل‌ها، قیمت‌ها و ذخیره‌ها', [['library','فایل‌های اجرایی','DWG، PDF، BIM و دفترچه‌ها'],['prices','تاریخچه‌ی قیمت','منبع و تاریخ ثبت'],['dealers','نمایندگی و استعلام','پیداکردن راه تماس'],['fav','ذخیره‌شده‌ها','محصولات نشان‌شده'],['recent','اخیراً دیده‌شده','بازگشت سریع به شناسنامه‌ها']]]
- ];
- const card = ([id,title,desc]) => `<button class="tool-card" data-tab="${id}"><b>${title}</b><small>${desc}</small><span class="tool-arrow">←</span></button>`;
- return `<div class="tools-intro"><span class="eyebrow">جعبه‌ابزار رواق</span><h2>برای چه کاری آمده‌ای؟</h2><p>یک مسیر را انتخاب کن؛ ابزارهای مرتبط در همان بخش جمع شده‌اند.</p></div><div class="tool-primary">${card(['room','شروع متره','اندازه‌گیری فضا و مقدار مصالح'])}${card(['wizard','انتخاب مصالح','پیشنهاد بر اساس نیاز پروژه'])}${card(['est','برآورد هزینه','جمع‌بندی اقلام و هزینه‌ها'])}</div>${groups.map((g,i)=>`<details class="tool-group" ${i===0?'open':''}><summary><span><b>${g[0]}</b><small>${g[1]}</small></span><span class="tool-group-count">${fa(g[2].length)} ابزار</span></summary><div class="tool-grid">${g[2].map(card).join('')}</div></details>`).join('')}`;
+ // میز نقشه‌کشی رواق: هر ابزار فقط یک بار، با آیکن و رنگ اختصاصی؛ «پروژه‌های من» در ناوبری پایین است و اینجا تکرار نمی‌شود.
+ const ic = {
+  room: '<path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2M10 10l2 2M13 7l2 2"/>',
+  wizard: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+  est: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8.5 7.5h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/>',
+  cmp: '<path d="M12 4v16M6 20h12M5 7h14"/><path d="m5 7-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',
+  calc: '<path d="M4 20V4l16 16Z"/><path d="M8 15.5V11l4.5 4.5Z"/>',
+  prices: '<path d="M3 20h18"/><path d="m4 15 5-5 4 3 7-8"/><path d="M15 5h5v5"/>',
+  library: '<path d="M3 8a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  dealers: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  fav: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+  recent: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+ };
+ const recentN = (ld('rq.mat.recent', []) || []).length;
+ const badge = { room: S.rooms.length ? fa(S.rooms.length) + ' فضا' : '', est: S.est.length ? fa(S.est.length) + ' قلم' : '', cmp: S.cmp.length ? fa(S.cmp.length) + ' مورد' : '', fav: S.fav.length ? fa(S.fav.length) + ' محصول' : '', recent: recentN ? fa(recentN) + ' مورد' : '' };
+ const T = {
+  room: ['room', 'متره‌ی فضا', 'کف، دیوار و سقف را اندازه بگیر؛ مقدار مصالح خودش حساب می‌شود', '#6FE3C4'],
+  wizard: ['wizard', 'راهنمای انتخاب', 'از مشکل پروژه شروع کن؛ مصالح مناسب را پیشنهاد می‌گیری', '#8D7CFF'],
+  est: ['est', 'برآورد هزینه', 'مصالح و هزینه‌های پروژه را جمع ببند', '#E3B26F'],
+  cmp: ['cmp', 'مقایسه‌ی مصالح', 'مشخصات را کنار هم ببین', '#8AA2FF'],
+  calc: ['calc', 'محاسبات تخصصی', 'ماشین‌حساب‌های اجرایی', '#E36F9A'],
+  prices: ['prices', 'تاریخچه‌ی قیمت', 'منبع و تاریخ ثبت', '#F0C878'],
+  library: ['library', 'فایل‌های اجرایی', 'DWG، PDF، BIM و دفترچه‌ها', '#7FD1E8'],
+  dealers: ['dealers', 'نمایندگی و استعلام', 'راه تماس را پیدا کن', '#B58AFF'],
+  fav: ['fav', 'ذخیره‌شده‌ها', 'محصولات نشان‌شده', '#E36F9A'],
+  recent: ['recent', 'اخیراً دیده‌شده', 'بازگشت سریع به شناسنامه‌ها', '#70F5D0']
+ };
+ let n = 0;
+ const card = (k, cls) => { const [id, title, desc, tc] = T[k]; n++; return `<button type="button" class="tb-card ${cls || ''}" data-tab="${id}" style="--tc:${tc};--i:${n}"><span class="tb-ico"><svg viewBox="0 0 24 24" aria-hidden="true">${ic[id]}</svg></span><span class="tb-txt"><strong>${title}</strong><small>${desc}</small></span>${badge[id] ? `<em class="tb-badge">${badge[id]}</em>` : ''}<span class="tb-go" aria-hidden="true">←</span></button>`; };
+ const sheet = (code, title, sub, keys, cls) => `<section class="tb-sheet"><header class="tb-sheet-h"><span class="tb-code">${code}</span><span class="tb-sheet-t"><strong>${title}</strong><small>${sub}</small></span></header><div class="tb-grid ${cls || ''}">${keys.map((k, i) => card(k, cls === 'tb-hero-grid' && i === 0 ? 'tb-wide' : '')).join('')}</div></section>`;
+ return `<div class="tb-hero"><span class="eyebrow">میز نقشه‌کشی رواق</span><h2>ابزارهایت را روی میز بچین.</h2><p>از اندازه‌گیری فضا تا برآورد هزینه؛ هر ابزار فقط یک بار و در جای درست خودش.</p><div class="tb-rule" aria-hidden="true"><i></i></div></div>`
+  + sheet('A-01', 'شروع پروژه', 'اندازه بگیر، انتخاب کن، برآورد بزن', ['room', 'wizard', 'est'], 'tb-hero-grid')
+  + sheet('A-02', 'بسنج و تصمیم بگیر', 'مقایسه، محاسبه و قیمت', ['cmp', 'calc', 'prices'])
+  + sheet('A-03', 'مرجع و پیگیری', 'فایل‌ها، تماس‌ها و ذخیره‌ها', ['library', 'dealers', 'fav', 'recent']);
 }
 function recentView() {
  const ids = ld('rq.mat.recent', []); const rows = ids.map(id=>{const [c,p]=find(id);return c&&p?{c,p}:null}).filter(Boolean);
