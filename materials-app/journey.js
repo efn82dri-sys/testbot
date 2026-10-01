@@ -21,7 +21,7 @@ const RO = [
  u => `<span>وضعیت</span><b>${u > .4 ? 'آماده‌ی تحویل' : 'نصب نهایی'}</b>`
 ];
 const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>', PAUSE = '<svg viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>';
-let host, built, running = false, vis = true, paused = false, t = 0, last = 0, raf = 0, scene = null, ui = {}, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches, obs, lastS = -1, lastRo = '';
+let host, built, running = false, vis = true, paused = false, t = 0, last = 0, raf = 0, scene = null, ui = {}, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches, obs, lastS = -1, lastRo = '', errN = 0;
 function build(D) {
   const prod = D.companies.reduce((n, c) => n + c.products.length, 0);
   host.innerHTML = `<div class="jr" data-s="0"><div class="jr-stage"><canvas class="jr-cv" aria-label="انیمیشن سه‌بعدی مسیر ساخت مصالح از معدن تا ساختمان" role="img"></canvas><div class="jr-load"><i></i><span>در حال ساخت صحنه‌ی سه‌بعدی…</span></div><div class="jr-fade"></div><div class="jr-vig"></div></div>
@@ -49,16 +49,17 @@ async function loadScene() {
   } catch (e) { ui.jr.classList.add('nogl'); ui.load.hidden = true; console.warn('RQJourney: WebGL unavailable', e); }
 }
 function tick(now) {
-  raf = 0; if (!running) return; const dt = Math.min(.05, last ? (now - last) / 1000 : .016); last = now; if (!paused) t = (t + dt) % TOTAL;
+  raf = 0; if (!running) return;
+  raf = requestAnimationFrame(tick);
+  const dt = Math.min(.05, last ? (now - last) / 1000 : .016); last = now; if (!paused) t = (t + dt) % TOTAL;
   const s = Math.min(N - 1, Math.floor(t / DUR)), lt = t - s * DUR, u = lt / DUR, tr = cl(lt / TR);
   const f = Math.max(cl((t - (TOTAL - .6)) / .6), 1 - cl(t / .6)); ui.fade.style.opacity = f.toFixed(3);
   if (s !== lastS) { lastS = s; ui.jr.dataset.s = s; ui.chs.forEach((x, i) => x.classList.toggle('on', i === s)); ui.bars.forEach((b, i) => b.classList.toggle('on', i === s)); }
   ui.bars.forEach((b, i) => b.style.setProperty('--f', i < s ? 1 : i === s ? u.toFixed(3) : 0));
   const h = RO[s](u); if (h !== lastRo) { lastRo = h; ui.ro.innerHTML = h; }
-  if (scene) scene.frame(s, u, t, dt, tr);
-  raf = requestAnimationFrame(tick);
+  if (scene) { try { scene.frame(s, u, t, dt, tr); errN = 0; } catch (e) { console.warn('RQJourney frame error', e); if (++errN > 30) { scene = null; ui.jr.classList.remove('ready'); ui.jr.classList.add('nogl'); } } }
 }
-function start() { if (running || !built || reduce && scene && false) return; running = true; last = 0; raf = requestAnimationFrame(tick); }
+function start() { if (running || !built) return; running = true; last = 0; raf = requestAnimationFrame(tick); }
 function stop() { running = false; raf && cancelAnimationFrame(raf); raf = 0; }
 window.RQJourney = {
   sync(D, show) {
