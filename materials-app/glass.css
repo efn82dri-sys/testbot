@@ -200,3 +200,57 @@ body { background: var(--bg); }
   .sd-panel, .bottom-nav, .app-bar { background-color: var(--bg-solid); }
 }
 @media (prefers-reduced-motion: reduce) { .bg::before, .bg::after { animation: none; } }
+
+/* ============================================================
+   نوار ناوبری پایین — کم‌عرض‌تر + آیکونِ دوحالته با انیمیشن
+   هر تب دو آیکون دارد: .ic-off (پیش‌فرض، خطی) و .ic-on (انتخاب‌شده،
+   توپُر-نیمه‌شفاف). با کلاس .active که خودِ script.js می‌گذارد عوض
+   می‌شوند؛ هیچ تغییری در جاوااسکریپت لازم نیست.
+   ============================================================ */
+.bottom-nav { width: min(404px, calc(100% - 48px)); padding: 6px; gap: 2px; }
+@media (max-width: 390px) { .bottom-nav { width: calc(100% - 32px); } }
+@media (max-width: 340px) { .bottom-nav { width: calc(100% - 16px); } }
+@media (min-width: 760px) { .bottom-nav { width: 404px; } }
+
+.bottom-icon { position: relative; width: 28px; height: 26px; overflow: visible; }
+.bottom-icon svg { grid-area: 1 / 1; width: 21px; height: 21px; transition: opacity .22s ease, transform .38s var(--ease-spring); }
+
+/* آیکونِ حالت عادی */
+.bottom-icon .ic-off { opacity: 1; transform: none; }
+/* آیکونِ حالت انتخاب: پنهان و کوچک تا لحظه‌ی انتخاب */
+.bottom-icon .ic-on { opacity: 0; transform: scale(.4) rotate(-18deg); stroke-width: 1.7; }
+.bottom-icon .ic-on .f { fill: currentColor; fill-opacity: .30; }
+.bottom-icon .ic-on .d { stroke-width: 2.6; }
+
+.bottom-item.active .ic-off { opacity: 0; transform: scale(.4) rotate(18deg); }
+.bottom-item.active .ic-on  { opacity: 1; transform: none; animation: nav-pop .62s var(--ease-spring) both; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--item-color, var(--accent)) 60%, transparent)); }
+
+/* حلقه‌ی نئونیِ لحظه‌ی لمس */
+.bottom-icon::after { content: ""; position: absolute; inset: -4px -2px; border-radius: 50%; border: 1.5px solid var(--item-color, var(--accent)); opacity: 0; transform: scale(.4); pointer-events: none; }
+.bottom-item.active .bottom-icon::after { animation: nav-ring .6s ease-out both; }
+
+@keyframes nav-pop {
+  0%   { transform: scale(.35) rotate(-24deg); }
+  55%  { transform: scale(1.28) rotate(6deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes nav-ring { 0% { opacity: .75; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.7); } }
+
+/* شخصیتِ مخصوصِ هر آیکون */
+.bottom-item[data-tab="tools"].active .ic-on     { animation-name: nav-twist; }
+.bottom-item[data-tab="education"].active .ic-on { animation-name: nav-toss; }
+.bottom-item[data-tab="community"].active .ic-on { animation-name: nav-wobble; }
+.bottom-item[data-tab="manage"].active .ic-on    { animation-name: nav-shield; }
+@keyframes nav-twist  { 0% { transform: scale(.4) rotate(-80deg); } 60% { transform: scale(1.22) rotate(14deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes nav-toss   { 0% { transform: translateY(8px) scale(.5); } 50% { transform: translateY(-6px) scale(1.18) rotate(-8deg); } 100% { transform: none; } }
+@keyframes nav-wobble { 0% { transform: scale(.5); } 35% { transform: scale(1.2) rotate(-9deg); } 65% { transform: scale(1.05) rotate(7deg); } 100% { transform: none; } }
+@keyframes nav-shield { 0% { transform: scale(.5); } 50% { transform: scale(1.25); } 75% { transform: scale(.95); } 100% { transform: scale(1); } }
+
+/* حالت متن زیر آیکون */
+.bottom-item span:last-child { transition: transform .3s var(--ease-spring), font-weight .2s; }
+.bottom-item.active span:last-child { font-weight: 700; transform: translateY(-1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-item.active .ic-on, .bottom-item.active .bottom-icon::after { animation: none !important; }
+  .bottom-icon svg { transition: opacity .01ms; }
+}
