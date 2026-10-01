@@ -494,3 +494,10 @@ body { padding-bottom: calc(var(--nav-h) + 28px + env(safe-area-inset-bottom, 0p
 @media(min-width:620px) { .tb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .tb-card.tb-wide { grid-column: auto; min-height: 126px; flex-direction: column; align-items: flex-start; } .tb-card.tb-wide .tb-badge { top: 12px; transform: none; left: 12px; } .tb-card.tb-wide .tb-go { top: auto; bottom: 10px; transform: none; } .tb-card.tb-wide:hover .tb-go { transform: translateX(-4px); } }
 @media(max-width:360px) { .tb-grid { grid-template-columns: 1fr; } }
 @media(prefers-reduced-motion:reduce) { .tb-rule i { animation: none; right: 40%; } .tb-card { animation: none; opacity: 1; transition: none; } .tb-ico, .tb-go { transition: none; } }
+/* مرحله ۲ — پیش‌نمایش پکیج و وضعیت کمبود کاتالوگ */
+.pk-row { position:relative; }
+.pk-row.is-missing { border-color: color-mix(in srgb, var(--danger) 38%, var(--line)); }
+.pk-row .wr { margin-top:8px; }
+.pk-row .rw { justify-content:space-between; gap:12px; }
+.pk[disabled] { opacity:.5; cursor:not-allowed; }
+.ok { margin:10px 0; padding:10px 12px; border:1px solid color-mix(in srgb,var(--brand-jade) 35%,var(--line)); border-radius:12px; background:color-mix(in srgb,var(--brand-jade) 9%,var(--glass)); color:var(--accent-text); font-size:12px; font-weight:800; }

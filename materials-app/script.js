@@ -236,7 +236,9 @@ function openProd(pid) {
   const modelHtml = modelUrl ? `<div class="grp">پیش‌نمایش سه‌بعدی</div><model-viewer src="${esc(modelUrl)}" alt="مدل سه‌بعدی ${esc(p.name)}" camera-controls auto-rotate shadow-intensity="0.7" style="width:100%;height:280px;background:var(--surface-2);border-radius:16px"></model-viewer><p class="hint">مدل صرفاً برای مشاهده‌ی ظاهری است؛ ابعاد و قابلیت اجرا باید از نقشه و دیتاشیت تأیید شود.</p>` : (S.edit ? `<div class="hint">برای افزودن مدل سه‌بعدی، فیلد model3d.url با لینک عمومی فایل GLB/GLTF معتبر تکمیل شود.</div>` : '');
   if(modelUrl) phase4Track('model3d',c.name,p.name);
   const installHtml = p.install && ((p.install.steps||[]).length || (p.install.mistakes||[]).length) ? `<div class="grp">راهنمای اجرا</div><button class="act" data-tab="education">مشاهده آموزش‌های اجرا</button>` : '';
-  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}${modelHtml}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}${installHtml}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}${histHtml}${docsHtml}
+  const productPacks = (D.packs || []).filter(k => (k.items || []).some(it => (it.productId || it.p) === p.id));
+  const packsHtml = productPacks.length ? `<div class="grp">این محصول در این پکیج‌هاست</div>${productPacks.map(k => `<div class="ln"><h4><span>${esc(k.title)}</span><em>${k.status === 'catalog_shortage' ? 'کمبود کاتالوگ' : 'آماده'}</em></h4><p>${esc(k.desc || '')}</p></div>`).join('')}` : '';
+  sheet(`<div class="sd-head"><button type="button" class="act" data-a="tobrand">‹ ${esc(c.name)}</button></div>${gal}${modelHtml}<h3 style="margin:0 0 4px;font-size:18px;color:var(--ink)">${esc(p.name)}</h3>${p.desc ? `<p style="color:var(--ink-dim);font-size:13px;margin:0 0 8px">${esc(p.desc)}</p>` : ''}${price}${feats}${installHtml}${packsHtml}<div class="grp">مشخصات فنی</div>${specs}${stdsHtml}${tcHtml}${feHtml}${ratings(p)}${trace}${histHtml}${docsHtml}
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
   <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button><button type="button" class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="${esc(p.id)}">استعلام قیمت</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
   if(modelUrl && !customElements.get('model-viewer')) { const ms=document.createElement('script'); ms.type='module'; ms.src='https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js'; document.head.appendChild(ms); }
@@ -330,18 +332,18 @@ function estView() {
       : `<label class="fl"><span>متراژ (م²)</span><input inputmode="decimal" data-l="${l.id}" data-k="q" value="${l.q}"></label>` + (m === 'area' ? `<label class="fl"><span>مصرف هر م²</span><input inputmode="decimal" data-l="${l.id}" data-k="per" value="${l.per}"></label>` : `<label class="fl"><span>ضخامت (cm)</span><input inputmode="decimal" data-l="${l.id}" data-k="th" value="${l.th}"></label>`);
     return `<div class="ln"><h4><span>${esc(l.name)}</span><em>${esc(l.co)}</em></h4><div class="rw">${ctl}<label class="fl"><span>قیمت هر ${esc(l.unit)} (تومان)</span><input inputmode="decimal" data-l="${l.id}" data-k="price" value="${l.price || ''}" placeholder="وارد کن"></label></div><div class="lt"><small data-lq="${l.id}"></small><span data-lt="${l.id}"></span></div><div class="wr" data-lw="${l.id}" hidden>قیمت این قلم ثبت نشده؛ قیمت روز را وارد کن.</div><button type="button" class="act" data-rm="${l.id}" style="margin-top:8px;color:var(--danger)">حذف</button></div>`;
   }).join('');
-  return packs + `<div class="grp">اقلام برآورد</div>${lines}<div class="tot"><div class="rw" style="margin:0 0 8px"><label class="fl"><span>ضایعات (٪)</span><input inputmode="decimal" data-g="waste" value="${S.cfg.waste}"></label><label class="fl"><span>اجرت و متفرقه (٪)</span><input inputmode="decimal" data-g="labor" value="${S.cfg.labor}"></label></div><div class="r"><span>جمع مصالح</span><b id="tSum"></b></div><div class="r"><span>اجرت و متفرقه</span><b id="tLab"></b></div><div class="g"><span>برآورد نهایی</span><span id="tAll"></span></div><div class="bar2" id="tBar"></div><div class="lg" id="tLg"></div><div class="wr" id="tWr" hidden></div></div><div class="ft"><button type="button" class="act act-primary" data-a="share">ارسال در تلگرام</button><button type="button" class="act" data-a="clear" style="color:var(--danger)">پاک‌کردن همه</button></div>`;
+  return packs + `<div class="grp">اقلام برآورد</div>${lines}<div class="tot"><div class="rw" style="margin:0 0 8px"><label class="fl"><span>ضایعات (٪)</span><input inputmode="decimal" data-g="waste" value="${S.cfg.waste}"></label><label class="fl"><span>اجرت و متفرقه (٪)</span><input inputmode="decimal" data-g="labor" value="${S.cfg.labor}"></label></div><div class="r"><span>جمع مصالح</span><b id="tSum"></b></div><div class="r"><span>اجرت و متفرقه</span><b id="tLab"></b></div><div class="g"><span>برآورد نهایی</span><span id="tAll"></span></div><div class="bar2" id="tBar"></div><div class="lg" id="tLg"></div><div class="wr" id="tWr" hidden></div></div><div class="ft"><button type="button" class="act act-primary" data-a="share">ارسال در تلگرام</button>${S.admin ? '<button type="button" class="act" data-x="pack-save-current">ذخیره به‌عنوان پکیج</button>' : ''}<button type="button" class="act" data-a="clear" style="color:var(--danger)">پاک‌کردن همه</button></div>`;
 }
 function paint() {
   let sum = 0, miss = 0; const by = {};
   S.est.forEach(l => { const n = qty(l), t = n * (l.price || 0); sum += t; by[l.co] = (by[l.co] || 0) + t; if (!l.price) miss++;
     const a = document.querySelector(`[data-lt="${l.id}"]`); if (!a) return;
-    a.textContent = l.price ? fa(t) + ' تومان' : '—'; document.querySelector(`[data-lq="${l.id}"]`).textContent = 'مقدار: ' + fa(n) + ' ' + l.unit + (l.mode !== 'count' ? ` (با ${fa(S.cfg.waste)}٪ ضایعات)` : ''); document.querySelector(`[data-lw="${l.id}"]`).hidden = !!l.price; });
+    a.textContent = l.price ? fa(t) + ' تومان' : 'قیمت ثبت نشده'; document.querySelector(`[data-lq="${l.id}"]`).textContent = 'مقدار: ' + fa(n) + ' ' + l.unit + (l.mode !== 'count' ? ` (با ${fa(S.cfg.waste)}٪ ضایعات)` : ''); document.querySelector(`[data-lw="${l.id}"]`).hidden = !!l.price; });
   const lab = sum * S.cfg.labor / 100, set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   set('tSum', fa(sum) + ' تومان'); set('tLab', fa(lab) + ' تومان'); set('tAll', fa(sum + lab) + ' تومان');
   const ks = Object.keys(by).filter(k => by[k] > 0), bar = document.getElementById('tBar'), lg = document.getElementById('tLg');
   if (bar) { bar.hidden = lg.hidden = !ks.length; bar.innerHTML = ks.map((k, i) => `<i style="width:${by[k] / sum * 100}%;background:${COL[i % 6]}"></i>`).join(''); lg.innerHTML = ks.map((k, i) => `<span><i style="background:${COL[i % 6]}"></i>${esc(k)} ${fa(Math.round(by[k] / sum * 100))}٪</span>`).join(''); }
-  const w = document.getElementById('tWr'); if (w) { w.hidden = !miss; w.textContent = miss ? `${fa(miss)} قلم بدون قیمت است و در جمع نیامده.` : ''; }
+  const w = document.getElementById('tWr'); if (w) { w.hidden = !miss; w.textContent = miss ? `${fa(miss)} قلم بدون قیمت است و در جمع نیامده؛ قیمت ثبت‌نشده صفر در نظر گرفته نشده است.` : ''; }
   const b = document.querySelector('[data-tab="est"] b'); if (b) b.textContent = fa(S.est.length);
   S.total = sum * (1 + S.cfg.labor / 100);
 }
@@ -458,6 +460,21 @@ const AV = { 'داخلی': 3, 'معادل ایرانی': 2, 'وارداتی': 1 
 const TIERS = [['eco', 'اقتصادی'], ['mid', 'متوسط'], ['lux', 'لوکس']];
 const priceOf = p => (S.px[p.id] > 0 ? S.px[p.id] : p.price) || 0;
 const defSurf = p => (SURF[p.surf] ? p.surf : p.mode === 'vol' ? 'floor' : 'wall');
+const packageAmount = (it, r) => {
+  const a = it.amount || { mode: 'fixed', value: it.q == null ? 1 : it.q };
+  const n = Math.max(1, P(r.n) || 1), g = geom(r), surface = SURF[a.surface] ? g[a.surface] : g.wall;
+  if (a.mode === 'area') return a.value == null ? null : surface * P(a.value) * n * (1 + P(S.cfg.waste) / 100);
+  if (a.mode === 'vol') return a.value == null || a.thickness == null ? null : surface * P(a.value) * P(a.thickness) / 100 * n * (1 + P(S.cfg.waste) / 100);
+  return a.value == null ? null : P(a.value) * n;
+};
+const packageItemReady = it => {
+  const a = it.amount || { mode: 'fixed', value: it.q == null ? 1 : it.q };
+  return ['fixed', 'area', 'vol'].includes(a.mode) && a.value != null && P(a.value) > 0 && (a.mode !== 'vol' || (a.thickness != null && P(a.thickness) > 0));
+};
+const packagePlan = (k, r) => (k.items || []).map(it => {
+  const p = find(it.productId || it.p)[1], c = p ? find(p.id)[0] : null, q = p ? packageAmount(it, r) : null, price = p ? priceOf(p) : 0;
+  return { it, p, c, q, price, cost: q != null && price > 0 ? q * price : null, ready: !!p && packageItemReady(it) };
+});
 const newRoom = n => ({ id: uid(), name: 'اتاق ' + fa(n), n: 1, L: '', W: '', H: '', dn: '', dw: '', dh: '', wn: '', ww: '', wh: '', items: [] });
 const $$ = s => document.querySelectorAll(s);
 
@@ -548,6 +565,19 @@ function pick(title, filter, cb, note) {
   S.pick = { q: '', filter, cb };
   sheet(`<h3 style="margin:4px 0 8px;color:var(--ink)">${title}</h3>${note ? `<p class="hint">${note}</p>` : ''}<div class="fl" style="margin-bottom:8px"><input type="search" data-i="ps" placeholder="جست‌وجو…" autocomplete="off"></div><div id="pkL">${pickList()}</div>`);
 }
+function packageSheet(k, r) {
+  const plan = packagePlan(k, r), missing = plan.filter(x => !x.ready), priced = plan.filter(x => x.cost != null).reduce((a, x) => a + x.cost, 0);
+  const canApply = plan.length > 0 && !missing.length;
+  const rows = plan.map(x => {
+    if (!x.p) return `<div class="ln pk-row is-missing"><h4><span>محصول پیدا نشد</span><em>${esc(x.it.productId || x.it.p || '')}</em></h4><p class="hint">شناسه محصول در کاتالوگ فعلی وجود ندارد.</p></div>`;
+    const amount = x.q == null ? 'مقدار مصرف در کاتالوگ ثبت نشده' : fa(x.q) + ' ' + x.p.unit;
+    const cost = x.cost == null ? (x.price ? '—' : 'قیمت ثبت نشده') : fa(Math.round(x.cost)) + ' تومان';
+    return `<div class="ln pk-row ${x.ready ? '' : 'is-missing'}"><h4><span>${esc(x.p.name)}</span><em>${esc(x.c.name)}</em></h4><div class="rw"><span class="hint">مقدار: ${amount}</span><span class="hint">هزینه: ${cost}</span></div>${!x.ready ? '<p class="wr">برای محاسبه‌ی این قلم، داده‌ی مصرف/مقدار در کاتالوگ کامل نیست؛ پکیج با برچسب «کمبود کاتالوگ» باقی می‌ماند.</p>' : ''}</div>`;
+  }).join('');
+  const status = missing.length ? `<div class="wr">⚠️ این پکیج «کمبود کاتالوگ» دارد؛ تا تکمیل داده‌ی مصرف، قابل افزودن خودکار نیست.</div>` : `<div class="ok">✓ آماده‌ی افزودن به «${esc(r.name)}»</div>`;
+  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">${esc(k.title)}</h3><p class="hint">${esc(k.desc || '')}</p>${status}<div class="grp">پیش‌نمایش مقدار و هزینه</div>${rows}<div class="tot"><div class="r"><span>جمع اقلام قیمت‌دار</span><b>${fa(Math.round(priced))} تومان</b></div>${plan.some(x => x.price === 0) ? '<p class="hint">قلم بدون قیمت با عبارت «قیمت ثبت نشده» نمایش داده شده و عدد صفر وارد جمع نشده است.</p>' : ''}</div><div class="sd-bar"><button type="button" class="act" data-x="pkback">برگردان</button><button type="button" class="act act-primary" data-x="pkconfirm" data-pk="${esc(k.id)}" data-rid="${esc(r.id)}" ${canApply ? '' : 'disabled'}>تأیید و افزودن</button></div>`);
+}
+
 function roomCard(r) {
   const F = (k, l) => `<label class="fl"><span>${l}</span><input inputmode="decimal" data-i="room" data-rid="${r.id}" data-k="${k}" value="${esc(r[k])}"></label>`;
   const G = (k, l) => `<span>${l} <b data-g="${r.id}:${k}"></b></span>`;
@@ -595,9 +625,9 @@ function paintRoom() {
     r.items.forEach(i => { const p = find(i.pid)[1]; if (p) setT(`[data-iq="${i.id}"]`, 'مقدار: ' + nf(itemQty(r, i, p, true)) + ' ' + p.unit + (p.mode !== 'count' ? ` (با ${fa(P(S.cfg.waste))}٪ ضایعات)` : '')); });
   });
   const T = takeoff('mid');
-  T.lines.forEach(l => { setT(`[data-mq="${l.p.id}"]`, 'مقدار کل: ' + nf(l.q) + ' ' + l.p.unit); setT(`[data-mc="${l.p.id}"]`, l.price ? fa(Math.round(l.cost)) + ' تومان' : 'استعلام'); });
+  T.lines.forEach(l => { setT(`[data-mq="${l.p.id}"]`, 'مقدار کل: ' + nf(l.q) + ' ' + l.p.unit); setT(`[data-mc="${l.p.id}"]`, l.price ? fa(Math.round(l.cost)) + ' تومان' : 'قیمت ثبت نشده'); });
   setT('#rSum', fa(Math.round(T.sum)) + ' تومان'); setT('#rLab', fa(Math.round(T.lab)) + ' تومان'); setT('#rAll', fa(Math.round(T.tot)) + ' تومان');
-  const wr = $('#rWr'); if (wr) { wr.hidden = !T.miss; wr.textContent = T.miss ? `${fa(T.miss)} قلم بدون قیمت است و در جمع نیامده.` : ''; }
+  const wr = $('#rWr'); if (wr) { wr.hidden = !T.miss; wr.textContent = T.miss ? `${fa(T.miss)} قلم بدون قیمت است و در جمع نیامده؛ قیمت ثبت‌نشده صفر در نظر گرفته نشده است.` : ''; }
   const sc = $('#rmScn'); if (sc) sc.innerHTML = scnCards();
   const b = document.querySelector('[data-tab="room"] b'); if (b) b.textContent = fa(S.rooms.length);
 }
@@ -724,7 +754,7 @@ async function sendSheet(tk) {
 /* ---------- رویدادهای فاز ۲ ---------- */
 const persist2 = () => { sv(K.rooms, S.rooms); sv(K.scn, S.scn); sv(K.px, S.px); sv(K.cmp, S.cmp); sv(K.w, S.w); sv(K.dir, S.dir); sv(K.proj, S.proj); sv(K.cc, S.cc); };
 const rm = id => S.rooms.find(r => r.id === id), itm = (r, id) => r && r.items.find(i => i.id === id);
-function addItem(r, p, q) { r.items.push({ id: uid(), pid: p.id, q: q || 1, on: defSurf(p) }); }
+function addItem(r, p, q, opts = {}) { r.items.push({ id: uid(), pid: p.id, q: q || 1, on: opts.on || defSurf(p), per: opts.per, th: opts.th }); }
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-x]'); if (!t) return; const d = t.dataset, r = rm(d.rid);
   switch (d.x) {
@@ -754,6 +784,20 @@ document.addEventListener('click', async e => {
       closeSheet(); S.tab='manage'; render(); toast(`${fa(made.length)} محصول ثبت شد؛ مشخصات ناقص را بعداً تکمیل کن`); return;
     }
     case 'catalog-upload': { if (!S.admin) return toast('دسترسی مدیر لازم است'); return reqUpload('catalog', '', ''); }
+    case 'pack-save-current': {
+  if (!S.admin) return toast('دسترسی مدیر لازم است');
+  if (!S.est.length) return toast('برآورد فعلی خالی است');
+  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">ذخیره‌ی برآورد به‌عنوان پکیج</h3><p class="hint">فقط محصولات واقعی برآورد فعلی وارد پکیج می‌شوند. اگر مقدار مصرفی ناقص باشد، پکیج با برچسب «کمبود کاتالوگ» ذخیره می‌شود.</p><label class="fl"><span>عنوان پکیج</span><input id="packTitle" maxlength="120" placeholder="مثلاً بسته اجرای دیوار داخلی"></label><label class="fl"><span>توضیح کوتاه</span><textarea id="packDesc" rows="3" maxlength="240" placeholder="توضیح قابل نمایش برای کاربر"></textarea></label><div class="sd-bar"><button type="button" class="act" data-x="pkback">برگردان</button><button type="button" class="act act-primary" data-x="pack-save">ذخیره</button></div>`);
+  return;
+}
+case 'pack-save': {
+  if (!S.admin) return toast('دسترسی مدیر لازم است');
+  const title=($('#packTitle')||{}).value?.trim(), desc=($('#packDesc')||{}).value?.trim() || ''; if(!title) return toast('عنوان پکیج را وارد کن');
+  const rows=S.est.map(l=>{const [c,p]=find(l.pid);if(!p)return null;const amount=l.mode==='area'?{mode:'area',surface:defSurf(p),value:P(l.per)||null}:l.mode==='vol'?{mode:'vol',surface:defSurf(p),value:1,thickness:P(l.th)||null}:{mode:'fixed',value:P(l.q)||null};return {productId:p.id,amount};}).filter(Boolean);
+  if(!rows.length)return toast('قلم معتبر برای ساخت پکیج وجود ندارد');
+  const k={id:'pk-'+uid(),title:title.slice(0,120),type:'بسته اجرایی',workType:'ترکیبی',target:{floor:true,wall:true,ceiling:true},desc:desc.slice(0,240),items:rows,status:rows.some(x=>x.amount.value==null||(x.amount.mode==='vol'&&!x.amount.thickness))?'catalog_shortage':'ready'};
+  D.packs=Array.isArray(D.packs)?D.packs:[];D.packs.push(k);const ok=await saveData(true);if(!ok){D.packs.pop();return toast('ذخیره پکیج روی سرور ناموفق بود');}closeSheet();render();toast('پکیج ذخیره شد ✓');return;
+}
     case 'admin-catalog': S.tab='cat'; S.edit=true; render(); toast('حالت ویرایش فعال شد'); return;
     case 'admin-save': return saveData();
     case 'admin-refresh': return reload().then(()=>{render();toast('اطلاعات از سرور به‌روز شد')}).catch(()=>toast('بازخوانی ناموفق بود'));
@@ -763,9 +807,11 @@ document.addEventListener('click', async e => {
     case 'rdup': if (r) { const c = JSON.parse(JSON.stringify(r)); c.id = uid(); c.name = r.name + ' (کپی)'; c.items.forEach(i => (i.id = uid())); S.rooms.splice(S.rooms.indexOf(r) + 1, 0, c); } break;
     case 'rdel': if (r && confirm('این اتاق حذف شود؟')) S.rooms = S.rooms.filter(x => x !== r); else return; break;
     case 'iadd': return pick('افزودن مصالح به «' + esc(r.name) + '»', () => true, (p) => { addItem(r, p); persist2(); closeSheet(); render(); toast('اضافه شد'); });
-    case 'rpk': if (!(D.packs || []).length) return toast('پکیجی ثبت نشده'); return sheet(`<h3 style="margin:4px 0 8px;color:var(--ink)">پکیج آماده برای «${esc(r.name)}»</h3><p class="hint">اقلام تعدادی با همان تعداد می‌آیند؛ اقلام متراژی/حجمی از سطح اتاق محاسبه می‌شوند.</p>${D.packs.map(k => `<button type="button" class="pk" style="width:100%;margin-bottom:8px" data-x="pkgo" data-rid="${r.id}" data-pk="${k.id}"><b>${esc(k.title)}</b><span>${esc(k.desc)}</span></button>`).join('')}`);
-    case 'pkgo': { const k = D.packs.find(x => x.id === d.pk); let n = 0; k && r && k.items.forEach(it => { const p = find(it.p)[1]; if (p) { addItem(r, p, p.mode === 'count' ? it.q : 1); n++; } }); persist2(); closeSheet(); render(); return toast(fa(n) + ' قلم به اتاق اضافه شد'); }
-    case 'iq': { const i = itm(r, d.iid); if (i) i.q = Math.max(1, P(i.q) + Number(d.d)); break; }
+    case 'rpk': if (!(D.packs || []).length) return toast('پکیجی ثبت نشده'); return sheet(`<h3 style="margin:4px 0 8px;color:var(--ink)">پکیج آماده برای «${esc(r.name)}»</h3><p class="hint">پکیج را انتخاب کن؛ قبل از افزودن، مقدار و هزینه‌ی هر قلم روی همین اتاق محاسبه و نمایش داده می‌شود.</p>${D.packs.map(k => `<button type="button" class="pk" style="width:100%;margin-bottom:8px" data-x="pkgo" data-rid="${r.id}" data-pk="${k.id}"><b>${esc(k.title)}</b><span>${esc(k.desc || '')}</span><br><i>${k.status === 'catalog_shortage' ? 'کمبود کاتالوگ' : 'آماده‌ی پیش‌نمایش'} · ${fa((k.items || []).length)} قلم</i></button>`).join('')}`);
+case 'pkgo': { const k = D.packs.find(x => x.id === d.pk); if (!k || !r) return; return packageSheet(k, r); }
+case 'pkback': return closeSheet();
+case 'pkconfirm': { const k = D.packs.find(x => x.id === d.pk); const rr = rm(d.rid); if (!k || !rr) return closeSheet(); const plan = packagePlan(k, rr); if (plan.some(x => !x.ready)) return toast('این پکیج هنوز کمبود کاتالوگ دارد'); plan.forEach(x => { const a=x.it.amount||{mode:'fixed',value:x.it.q||1}; const q=a.mode==='fixed'?a.value:1; addItem(rr,x.p,q,{on:a.surface||defSurf(x.p),per:a.mode==='area'?a.value:undefined,th:a.mode==='vol'?a.thickness:undefined}); }); persist2(); closeSheet(); render(); return toast(fa(plan.length) + ' قلم به اتاق اضافه شد'); }
+case 'iq': { const i = itm(r, d.iid); if (i) i.q = Math.max(1, P(i.q) + Number(d.d)); break; }
     case 'irm': if (r) r.items = r.items.filter(i => i.id !== d.iid); break;
     case 'scs': return scnSheet();
     case 'scr': S.scn = {}; persist2(); scnSheet(); return paintRoom();
@@ -834,7 +880,7 @@ document.addEventListener('click', e => {
   if (d.brand) { hp(); return openBrand(d.brand); }
   if (d.add) { const [c, p] = find(d.add); if (p) phase3Track('estimate', c.name, p.name); addLine(p, c); hp('medium'); toast(`«${p.name}» به برآورد اضافه شد`); return tabs(); }
   if (d.fav) { const i = S.fav.indexOf(d.fav); i < 0 ? S.fav.push(d.fav) : S.fav.splice(i, 1); persist(); hp(); t.classList.toggle('on', i < 0); t.setAttribute('aria-pressed', i < 0); tabs(); if (S.tab === 'fav') render(); return; }
-  if (d.pack) { const k = D.packs.find(x => x.id === d.pack); let n = 0; k.items.forEach(it => { const [c, p] = find(it.p); if (p) { addLine(p, c, it.q); n++; } }); hp('medium'); toast(`${fa(n)} قلم اضافه شد`); return render(); }
+  if (d.pack) { const k=D.packs.find(x=>x.id===d.pack); if(!k) return; if(!S.rooms.length) return toast('ابتدا یک اتاق در «متره‌ی فضا» بساز؛ پکیج بر اساس همان اتاق محاسبه می‌شود'); sheet(`<h3 style="margin:4px 0 8px;color:var(--ink)">اتاق مقصد پکیج</h3><p class="hint">ابتدا اتاق مقصد را انتخاب کن تا مقدار و هزینه‌ی واقعی همان فضا پیش‌نمایش شود.</p>${S.rooms.map(r=>`<button type="button" class="pk" style="width:100%;margin-bottom:8px" data-x="pkgo" data-rid="${r.id}" data-pk="${k.id}"><b>${esc(r.name)}</b><span>${fa(r.n)}× اتاق</span></button>`).join('')}`); return; }
   if (d.st) { const l = S.est.find(x => x.id === d.st); l.q = Math.max(1, l.q + Number(d.d)); persist(); hp(); return render(); }
   if (d.rm) { S.est = S.est.filter(l => l.id !== d.rm); persist(); return render(); }
   if (d.rmimg) { if (confirm('این عکس حذف شود؟')) rmMedia(S.cur, S.curP, d.rmimg).then(() => openProd(S.curP)); return; }
