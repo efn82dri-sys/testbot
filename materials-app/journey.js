@@ -24,6 +24,24 @@ const man = (x, z) => B(x, 0, z, 12, 22, 10, '#E8743B') + B(x, 22, z, 10, 10, 10
 const blk = (x, y, z, o) => B(x, y, z, 42, 24, 30, 'var(--blk)', o) ;
 const pad = (c, w = 560, d = 440) => B(0, 0, 0, w, 8, d, c) ;
 const drop = (r, n) => `--r:${r};--k:clamp(0,calc(var(--l) * ${n} - var(--r)),1)`;
+
+const facade = (x,y,z,w,h,d,c='var(--blk)', rows=4, cols=6) => {
+  let out = B(x,y,z,w,h,d,c);
+  const cw=Math.max(5,(w/cols)-3), ch=Math.max(5,(h/rows)-5);
+  for(let r=0;r<rows;r++) for(let q=0;q<cols;q++){
+    const wx=x-w/2+(q+.5)*(w/cols), wy=y+7+(r+.5)*(h/rows);
+    out += B(wx,wy,z+d/2+1,cw,ch,2,'#20303A',{c:'win'});
+  }
+  return out;
+};
+const road = (x,z,w,d,turn=0) => B(x,0,z,w,3,d,'var(--asph)',{s:`--rz:${turn}deg`}) +
+  Array.from({length:Math.max(3,Math.floor(w/90))},(_,i)=>B(x-w/2+45+i*90,3,z,38,1,3,'#D8D2B9',{s:`--rz:${turn}deg`})).join('');
+const contour = (x,z,w,d,n=4) => Array.from({length:n},(_,i)=>`<u class="contour" style="--x:${x}px;--z:${z}px;--w:${w-i*42}px;--d:${d-i*32}px;--o:${.22-i*.035}"></u>`).join('');
+const pole = (x,z,h=90) => B(x,0,z,4,h,4,'#34383d') + B(x,h,z,16,5,16,'#E9C46A',{c:'lamp',s:'--o:.85'});
+const city = (x,z) => facade(x,z*0.0,z,170,96,110,'#59616A',4,5) + facade(x+150,0,z+20,120,70,90,'#454C55',3,4) + facade(x-170,0,z-20,110,58,80,'#666D73',3,4);
+const detailGround = (x,z) => contour(x,z,760,560,5) + road(x,z+210,720,62) + road(x-270,z-40,300,54,90) + [ [-300,-230],[-210,-250],[240,-220],[320,210],[120,250],[-330,160] ].map(([a,b],i)=>tree(x+a,z+b,.65+(i%3)*.12)).join('') + [ [-260,-150],[180,-130],[300,100],[-100,220] ].map(([a,b])=>pole(x+a,z+b,70)).join('');
+const sceneBadge = (num, label, x, y) => `<u class="scene-tag" style="--x:${x}%;--y:${y}%"><b>${num}</b><span>${label}</span></u>`;
+
 const st = (i, body) => G(i * GAP, 0, 0, body, `--l:var(--l${i})`);
 /* ---- ایستگاه‌ها ---- */
 const S0 = pad('#6b5a4a') + B(40, 8, -30, 320, 40, 240, 'var(--earth)') + B(50, 48, -30, 240, 36, 180, 'var(--earth)') + B(60, 84, -30, 150, 32, 110, 'var(--earth2)') + SH(40, -30, 400, 320)
@@ -51,7 +69,7 @@ const side = Array.from({ length: 6 }, (_, r) => Array.from({ length: 5 }, (_, c
 const S5 = pad('#7d838a', 600, 470) + B(0, 8, 0, 380, 10, 280, '#d4bfa3') + back + side + B(0, 62, -122, 84, 52, 4, '#9CD3E6', { c: 'em', s: '--cc:#FFD58A' })
  + B(-90, 18, 30, 150, 20, 80, '#4a5a6a') + B(-90, 38, -10, 150, 36, 18, '#4a5a6a') + B(40, 18, 40, 70, 24, 50, '#8a6a4a') + B(40, 42, 40, 80, 4, 60, '#a07a56') + B(120, 18, -90, 36, 70, 36, '#e9e6df')
  + B(120, 88, -90, 22, 16, 22, '#FFD58A', { c: 'em glow' }) + B(130, 18, 80, 90, 3, 70, '#a8534a') + B(-120, 18, -40, 30, 46, 30, 'var(--grn2)') + SH(0, 0, 440, 340) + tree(310, 150) + tree(-300, 170, 1.2) + tree(300, -140);
-const SCENE = `<div class="gd"></div>` + [S0, S1, S2, S3, S4, S5].map((s, i) => st(i, s)).join('');
+const SCENE = `<div class="gd"></div>` + [S0, S1, S2, S3, S4, S5].map((s, i) => st(i, detailGround(0,0) + s + (i===5 ? city(260,-120)+city(-260,100) : ''))).join('');
 const RO = [
  l => `<span>برداشت رس</span><u style="--w:${l}"><i></i></u><b>${fa(R(l * 100))}٪</b>`,
  l => `<span>دمای کوره</span><u style="--w:${l}"><i></i></u><b dir="ltr">${fa(R(20 + l * 1080))} °C</b>`,
@@ -63,9 +81,9 @@ const RO = [
 let host, built, off;
 function build(D) {
   const prod = D.companies.reduce((n, c) => n + c.products.length, 0);
-  host.innerHTML = `<div class="jr" data-s="0"><div class="jr-pin"><div class="jr-stage"><div class="jr-fl">${Array.from({ length: 16 }, (_, i) => `<i style="--x:${(i * 37) % 96};--y:${(i * 53) % 80};--v:${.4 + (i % 4) * .3}"></i>`).join('')}</div><div class="jr-cam"><div class="jr-world">${SCENE}</div></div><div class="jr-vig"></div></div>
+  host.innerHTML = `<div class="jr" data-s="0"><div class="jr-pin"><div class="jr-stage"><div class="jr-noise"></div><div class="jr-skyline"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="jr-fl">${Array.from({ length: 16 }, (_, i) => `<i style="--x:${(i * 37) % 96};--y:${(i * 53) % 80};--v:${.4 + (i % 4) * .3}"></i>`).join('')}</div><div class="jr-cam"><div class="jr-world">${SCENE}</div></div><div class="jr-vig"></div><div class="jr-corner"><span>RAW AQ / MATERIAL JOURNEY</span><b>01—06</b></div><div class="jr-compass" aria-hidden="true"><i>N</i><b></b><small>TOP</small></div><div class="jr-scale"><i></i><span>10 m</span><span>25 m</span><span>50 m</span></div><div class="jr-mini"><span>مسیر</span><i></i><b></b><em></em></div></div>
 <nav class="jr-rail" aria-label="مراحل">${CH.map((c, i) => `<button type="button" data-jr="${i}">${c[0]}</button>`).join('')}</nav><span class="jr-hint">اسکرول کن؛ دوربین مسیر را نشانت می‌دهد</span>
-<div class="jr-info">${CH.map((c, i) => `<div class="jr-ch ${i ? '' : 'on'}"><small>مرحله ${fa(i + 1)} از ${fa(N)}</small><h2>${c[1]}</h2><p>${c[2]}</p>${i === N - 1 ? `<button type="button" class="jr-go" data-jr="go">دیدن ${fa(prod)} محصول از ${fa(D.companies.length)} برند</button>` : ''}</div>`).join('')}<div class="jr-ro"></div></div></div></div>`;
+<div class="jr-metrics"><span><b>۰۱</b> منبع</span><span><b>۰۶</b> مرحله</span><span><b>۳۶۰°</b> دید</span></div><div class="jr-info">${CH.map((c, i) => `<div class="jr-ch ${i ? '' : 'on'}"><small>مرحله ${fa(i + 1)} از ${fa(N)}</small><h2>${c[1]}</h2><p>${c[2]}</p>${i === N - 1 ? `<button type="button" class="jr-go" data-jr="go">دیدن ${fa(prod)} محصول از ${fa(D.companies.length)} برند</button>` : ''}</div>`).join('')}<div class="jr-ro"></div></div></div></div>`;
   host.onclick = e => {
     const b = e.target.closest('[data-jr]'); if (!b) return; const v = b.dataset.jr, jr = host.querySelector('.jr');
     if (v === 'go') { const f = document.getElementById('filters'); f && f.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
