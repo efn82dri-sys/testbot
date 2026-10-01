@@ -28,3 +28,16 @@
 .jr-go{align-self:flex-start;margin-top:6px;padding:9px 15px;border-radius:14px;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 22%,transparent);color:#fff;font:800 13px inherit;font-family:inherit;cursor:pointer}
 .jr.nogl .jr-stage{background:radial-gradient(80% 60% at 50% 30%,color-mix(in srgb,var(--sc) 40%,#222),#12151a)}
 @media(min-width:860px){.jr{height:640px}.jr-info{inset:auto;bottom:22px;inset-inline-start:22px;width:min(400px,42%)}}
+/* موبایل: باکس اطلاعات فشرده تا صحنه دیده شود */
+@media(max-width:859px){
+.jr-info{inset:auto 10px 10px;padding:8px 12px 7px;border-radius:15px;background:rgba(16,19,24,.42);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4)}
+.jr-ch{gap:2px;transform:translateY(8px)}
+.jr-ch small{font-size:10px}
+.jr-ch h2{font-size:clamp(14px,4vw,16.5px);line-height:1.4}
+.jr-ch p{font-size:11px;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+.jr-ro{margin-top:5px;padding-top:6px;gap:8px;font-size:11px;min-height:22px}
+.jr-ro b{font-size:13px}
+.jr-ro u{height:4px}
+.jr-ro em{padding:2px 7px}
+.jr-go{margin-top:4px;padding:6px 11px;border-radius:11px;font-size:12px}
+}
