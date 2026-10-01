@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/materials/base.css?v=ravaq12-20260930">
 <link rel="stylesheet" href="/materials/mat.css?v=ravaq15-tools-20261001">
 <link rel="stylesheet" href="/materials/journey.css?v=ravaq18-3d-20261001">
+<link rel="stylesheet" href="/materials/hero3d.css?v=ravaq20-cinematic-20261001">
 </head>
 <body>
 <div class="bg" aria-hidden="true"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span><span class="grain"></span></div>
@@ -52,10 +53,21 @@
   <small class="boot-status" id="bootStatus">در حال همگام‌سازی اطلاعات…</small>
 </div>
 <main class="wrap">
-  <section class="hero">
-    <span class="eyebrow"><i></i>مرجع مصالح بازار اجرای ایران</span>
+  <section class="cinematic-hero" id="cinematicHero" aria-label="دنیای سه‌بعدی ساخت و ساز رواق">
+    <canvas id="hero3d" aria-hidden="true"></canvas>
+    <div class="ch-badge">● LIVE CONSTRUCTION · RAWAQ WORLD</div>
+    <div class="ch-copy">
+      <span class="ch-kicker"><i></i>مرجع مصالح بازار اجرای ایران</span>
+      <h1>اینجا مصالح،<br><span>ساخته می‌شوند.</span></h1>
+      <p>یک دنیای سه‌بعدی زنده؛ از برند و محصول تا اجرا. وارد کاتالوگ شو و مصالح واقعی را از نزدیک بشناس.</p>
+      <div class="ch-actions"><button class="ch-btn primary" id="heroCatalog">ورود به کاتالوگ</button><button class="ch-btn" id="heroJourney">مشاهده سفر مصالح</button></div>
+    </div>
+    <div class="ch-hud"><div class="ch-stat"><b>۷۲</b><small>محصول واقعی</small></div><div class="ch-stat"><b>۳</b><small>برند فعال</small></div><div class="ch-stat"><b>۶</b><small>مرحله‌ی ساخت</small></div></div>
+  </section>
+  <section class="hero legacy-hero">
+    <span class="eyebrow"><i></i>کاتالوگ مصالح و تجهیزات</span>
     <h1>مصالح را آگاهانه انتخاب کن.</h1>
-    <p>کاتالوگ، مشخصات فنی و ابزارهای پروژه؛ در یک فضای منظم و قابل اعتماد.</p>
+    <p>مشخصات فنی، قیمت، فایل‌های اجرایی و ابزارهای پروژه؛ در یک فضای منظم و قابل اعتماد.</p>
     <div class="idx" id="index" role="tablist"></div>
   </section>
   <section class="jr-host" id="journey" hidden aria-label="مسیر ساخت مصالح"></section>
@@ -85,7 +97,15 @@
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/materials/journey.js?v=ravaq20-3d-20261001" defer></script>
-<script src="/materials/script.js?v=ravaq20-3d-20261001" defer></script>
+<script type="module">
+import {createHero} from '/materials/hero3d.js?v=ravaq20-cinematic-20261001';
+const host=document.getElementById('cinematicHero'); const cv=document.getElementById('hero3d');
+if(host&&cv&&!matchMedia('(prefers-reduced-motion: reduce)').matches){createHero(cv,host);}
+else if(host&&cv){cv.style.opacity='.55';}
+document.getElementById('heroCatalog')?.addEventListener('click',()=>document.getElementById('filters')?.scrollIntoView({behavior:'smooth'}));
+document.getElementById('heroJourney')?.addEventListener('click',()=>{const j=document.getElementById('journey'); if(window.RQJourney){window.RQJourney.sync(window.RQ_DATA||{companies:[]},true);j.scrollIntoView({behavior:'smooth'});}});
+</script>
+<script src="/materials/journey.js?v=ravaq21-cinematic-20261001" defer></script>
+<script src="/materials/script.js?v=ravaq21-3d-20261001" defer></script>
 </body>
 </html>
