@@ -866,13 +866,22 @@ try { const th = localStorage.getItem(K.th); th && document.documentElement.setA
 /* ---------- شروع و لودینگ ---------- */
 const bootStartedAt = Date.now();
 let bootFinished = false;
+const bootMessages = ['در حال همگام‌سازی اطلاعات…', 'چیدن آجرهای کاتالوگ…', 'آماده‌سازی مشخصات فنی…', 'روشن‌کردن چراغ‌های رواق…'];
+let bootMsgIdx = 0;
+function bootSay(text) { const st = $('#bootStatus'); if (!st) return; st.textContent = text; st.style.animation = 'none'; void st.offsetWidth; st.style.animation = ''; }
+const bootTicker = setInterval(() => { if (bootFinished) return; bootMsgIdx = (bootMsgIdx + 1) % bootMessages.length; bootSay(bootMessages[bootMsgIdx]); }, 1150);
 function finishBoot(message) {
   if (bootFinished) return;
   bootFinished = true;
+  clearInterval(bootTicker);
   const screen = $('#bootScreen');
-  if (message) { const status = $('#bootStatus'); if (status) status.textContent = message; }
-  const wait = Math.max(0, 2100 - (Date.now() - bootStartedAt));
-  setTimeout(() => { if (screen) { screen.classList.add('boot-out'); setTimeout(() => screen.remove(), 520); } }, wait);
+  const wait = Math.max(0, 2300 - (Date.now() - bootStartedAt));
+  setTimeout(() => {
+    if (!screen) return;
+    if (message) bootSay(message);
+    screen.classList.add('boot-done');
+    setTimeout(() => { screen.classList.add('boot-out'); setTimeout(() => screen.remove(), 620); }, 720);
+  }, wait);
 }
 const bootFailsafe = setTimeout(() => { finishBoot('امکان ادامه وجود دارد'); toast('بارگذاری طول کشید؛ اگر اطلاعات ناقص است، اتصال را بررسی کن'); }, 12000);
 render();
