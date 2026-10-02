@@ -300,8 +300,17 @@ const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده
       </div>
     </section>`;
 function projectsView() {
-  const rows=S.projects||[];
-  return `${liveWorkshop}<div class="tot"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft"><button class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button class="act" data-x="project-new">پروژه‌ی جدید</button><button class="act" data-x="project-refresh">همگام‌سازی</button></div></div>`+(rows.length?rows.map(pr=>`<div class="ln"><h4><span>${esc(pr.name||'پروژه بدون نام')}</span><em>${esc((pr.updatedAt||'').slice(0,10))}</em></h4>${pr.client?`<small>کارفرما: ${esc(pr.client)}</small>`:''}${pr.notes?`<p>${esc(pr.notes)}</p>`:''}<div class="meta"><span>${fa((pr.rooms||[]).length)} فضا</span><span>${fa((pr.estimate||[]).length)} قلم برآورد</span></div><div class="ft"><button class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div></div>`).join(''):'<div class="empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>');
+  const rows = S.projects || [];
+  const savedProjects = rows.length
+    ? `<div class="projects-list">${rows.map(pr => `<article class="ln project-card">
+        <header class="project-card-head"><h4>${esc(pr.name || 'پروژه بدون نام')}</h4><time datetime="${esc((pr.updatedAt || '').slice(0,10))}">${esc((pr.updatedAt || '').slice(0,10) || 'تاریخ ثبت نشده')}</time></header>
+        ${pr.client ? `<p class="project-client">کارفرما: ${esc(pr.client)}</p>` : ''}
+        ${pr.notes ? `<p class="project-notes">${esc(pr.notes)}</p>` : ''}
+        <div class="meta project-meta"><span>${fa((pr.rooms || []).length)} فضا</span><span>${fa((pr.estimate || []).length)} قلم برآورد</span></div>
+        <div class="ft project-actions"><button type="button" class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button type="button" class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div>
+      </article>`).join('')}</div>`
+    : '<div class="empty project-empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>';
+  return `<div class="projects-layout">${liveWorkshop}<section class="tot projects-summary"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft project-summary-actions"><button type="button" class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button type="button" class="act" data-x="project-new">پروژه‌ی جدید</button><button type="button" class="act" data-x="project-refresh">همگام‌سازی</button></div></section>${savedProjects}</div>`;
 }
 function pricesView() {
   const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if((p.priceLog||[]).length) rows.push({c,p,log:p.priceLog});}));
@@ -877,7 +886,7 @@ function GenUIUnavailableGuideShare(text){try{navigator.clipboard.writeText(text
 document.addEventListener('change', e => { if(e.target.matches('[data-csort]')) { S.catalogSort=e.target.value; render(); } if(e.target.matches('[data-guide-cat]')) { S.guideCat=e.target.value; render(); } if(e.target.matches('[data-guide-check]')) { const t=e.target, key='rq.guide.check.'+t.dataset.pid, arr=ld(key,[]), idx=Number(t.dataset.step), next=t.checked?[...new Set([...arr,idx])]:arr.filter(x=>x!==idx); sv(key,next); render(); } });
 document.addEventListener('click', e => {
   if (e.target.closest('a[data-stop]')) return;
-  const t = e.target.closest('[data-x],[data-logo],[data-prod],[data-rmimg],[data-tab],[data-cat],[data-brand],[data-add],[data-fav],[data-pack],[data-st],[data-rm],[data-ep],[data-dp],[data-a],[data-cview],[data-csort],[data-community-type],[data-guide-print],[data-guide-share],[data-product-jump],#sdScrim,#themeBtn,#editBtn,#searchClear,#toTop');
+  const t = e.target.closest('[data-x],[data-logo],[data-prod],[data-rmimg],[data-tab],[data-cat],[data-brand],[data-add],[data-fav],[data-pack],[data-st],[data-rm],[data-ep],[data-dp],[data-a],[data-cview],[data-community-type],[data-guide-print],[data-guide-share],[data-product-jump],#sdScrim,#themeBtn,#editBtn,#searchClear,#toTop');
   if (!t || t.dataset.x) return; const d = t.dataset, id = t.id;
   if (id === 'sdScrim') return closeSheet();
   if (id === 'themeBtn') { const r = document.documentElement, cur = r.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'), nx = cur === 'light' ? 'dark' : 'light'; r.setAttribute('data-theme', nx); try { localStorage.setItem(K.th, nx); } catch (x) {} return hp(); }
@@ -889,7 +898,6 @@ document.addEventListener('click', e => {
   if (d.productJump) { const panel=$('#sdPanel'); const target=[...panel.querySelectorAll('.grp')].find(h=>h.textContent.trim().includes(d.productJump)); if(target) target.scrollIntoView({behavior:'smooth',block:'start'}); else toast('این بخش هنوز اطلاعات ثبت‌شده ندارد'); return; }
   if (d.guidePrint) { const pair=find(d.guidePrint); if(!pair[1])return; const ins=pair[1].install||{}; const w=window.open('','_blank'); if(!w)return toast('اجازه‌ی بازشدن پنجره‌ی چاپ را بده'); w.document.write('<html lang="fa" dir="rtl"><meta charset="utf-8"><title>پرونده اجرا</title><style>body{font:14px sans-serif;line-height:2;padding:28px;color:#222}h1{font-size:22px}li{margin:8px 0}.warn{color:#a33}</style><h1>'+esc(pair[1].name)+'</h1><p>برند: '+esc(pair[0].name)+'</p><p>منبع: '+esc(ins.source||'ثبت نشده')+' | بازبین: '+esc(ins.verifiedBy||'ثبت نشده')+'</p><h2>مراحل اجرا</h2><ol>'+(ins.steps||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ol><h2 class="warn">خطاهای رایج</h2><ul>'+(ins.mistakes||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ul><p>این پرونده جایگزین دیتاشیت و تأیید طراح مسئول نیست.</p><script>window.onload=()=>window.print()<\/script></html>'); w.document.close(); return; }
   if (d.guideShare) { const pair=find(d.guideShare); if(!pair[1])return; const ins=pair[1].install||{}; const text='پرونده اجرا: '+pair[1].name+' — '+pair[0].name+'\nمنبع: '+(ins.source||'ثبت نشده')+'\nمراحل:\n'+(ins.steps||[]).map((x,i)=>(i+1)+'. '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n')+'\nخطاها:\n'+(ins.mistakes||[]).map(x=>'• '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n'); const url='https://t.me/share/url?url='+encodeURIComponent(link(pair[1].id))+'&text='+encodeURIComponent(text); try{if(TG&&TG.openTelegramLink)TG.openTelegramLink(url);else window.open(url,'_blank','noopener');}catch(_){GenUIUnavailableGuideShare(text);} return; }
-  if (t.hasAttribute('data-csort')) { S.catalogSort=t.value; return render(); }
   if (d.logo) { S.brand = S.brand === d.logo ? '' : d.logo; hp(); return render(); }
   if (d.prod) { hp(); return openProd(d.prod); }
   if (d.tab) { S.tab = d.tab; hp(); if (d.tab === 'community' && !S.communityData) S.communityLoading = false; render(); return scrollTo({ top: 0 }); }
