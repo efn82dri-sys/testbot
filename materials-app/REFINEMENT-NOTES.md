@@ -12,3 +12,9 @@
 ## Validation
 - `node --check script.js` passed.
 - Search and rendering changes were syntax-checked. Visual validation should still be done inside Telegram WebView on 360px, 390px, dark and light themes.
+
+
+## V6 — Field Guide spacing cleanup
+- حذف نوار میانی «EXECUTION LIBRARY / پرونده‌های منطبق»؛ این بخش اطلاعات تکراری و بدون اقدام مشخص داشت و بین هدر و ابزار جست‌وجو فضای بی‌دلیل ایجاد می‌کرد.
+- ترتیب نهایی: هدر راهنما → جست‌وجو/فیلتر → پرونده‌ها.
+- فیلترها اکنون بلافاصله بعد از هدر قرار می‌گیرند.
