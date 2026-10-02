@@ -261,9 +261,47 @@ function libraryView() {
   if (!rows.length) return `<div class="empty"><div class="empty-icon">📚</div><h3>کتابخانه‌ی فایل‌های اجرایی</h3><p>دیتیل DWG/PDF، فمیلی رویت، فایل اسکچاپ، تکسچر و دفترچه‌ی محصول پس از ثبت ادمین اینجا نمایش داده می‌شود.</p></div>`;
   return `<div class="grp">${fa(rows.length)} فایل ثبت‌شده</div>`+rows.map(({c,p,d})=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(c.name)} · ${esc(p.name)}</small><div class="meta">${d.version?`<span>نسخه ${esc(d.version)}</span>`:''}${d.date?`<span>${esc(d.date)}</span>`:''}${d.size?`<span>${fa(Math.round(d.size/1024))} KB</span>`:''}</div><div class="ft"><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت ربات</button><button type="button" class="act" data-prod="${esc(p.id)}">مشاهده محصول</button></div></div>`).join('');
 }
+const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده رواق">
+      <div class="rw-live-head">
+        <div>
+          <span class="rw-kicker"><i></i> کارگاه زنده</span>
+          <strong>مصالح، قبل از انتخاب؛ در حال زندگی‌اند.</strong>
+        </div>
+        <span class="rw-live-state"><b></b> LIVE</span>
+      </div>
+
+      <div class="rw-stage" aria-hidden="true">
+        <div class="rw-sky"></div>
+        <div class="rw-grid"></div>
+        <div class="rw-building">
+          <span class="rw-floor rw-floor-3"></span><span class="rw-floor rw-floor-2"></span><span class="rw-floor rw-floor-1"></span>
+          <i class="rw-window w1"></i><i class="rw-window w2"></i><i class="rw-window w3"></i><i class="rw-window w4"></i>
+        </div>
+        <div class="rw-crane">
+          <span class="rw-crane-mast"></span><span class="rw-crane-arm"></span><span class="rw-crane-cable"></span><span class="rw-crane-load"></span>
+        </div>
+        <div class="rw-pallet pallet-a"><i></i><i></i><i></i></div>
+        <div class="rw-pallet pallet-b"><i></i><i></i></div>
+        <div class="rw-bricks"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="rw-worker worker-a"><span class="rw-head"></span><span class="rw-body"></span><span class="rw-leg l"></span><span class="rw-leg r"></span><span class="rw-arm a"></span><span class="rw-arm b"></span></div>
+        <div class="rw-worker worker-b"><span class="rw-head"></span><span class="rw-body"></span><span class="rw-leg l"></span><span class="rw-leg r"></span><span class="rw-arm a"></span><span class="rw-arm b"></span></div>
+        <div class="rw-forklift"><span class="cab"></span><span class="mast"></span><span class="fork"></span><i></i><i></i></div>
+        <div class="rw-material-card">
+          <small>در حال بررسی</small><strong>سنگ طبیعی</strong><span><i></i><i></i><i></i><em>۳۶۰°</em></span>
+        </div>
+        <div class="rw-price-card"><small>استعلام قیمت</small><strong>۲,۸۵۰,۰۰۰</strong><span>تومان / m²</span></div>
+        <div class="rw-route"><i></i><i></i><i></i><span>ارسال به پروژه</span></div>
+      </div>
+
+      <div class="rw-live-foot">
+        <span><i class="rw-mini-dot"></i> بررسی متریال</span>
+        <span><i class="rw-mini-dot amber"></i> بارگیری</span>
+        <span><i class="rw-mini-dot coral"></i> اجرای پروژه</span>
+      </div>
+    </section>`;
 function projectsView() {
   const rows=S.projects||[];
-  return `<div class="tot"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft"><button class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button class="act" data-x="project-new">پروژه‌ی جدید</button><button class="act" data-x="project-refresh">همگام‌سازی</button></div></div>`+(rows.length?rows.map(pr=>`<div class="ln"><h4><span>${esc(pr.name||'پروژه بدون نام')}</span><em>${esc((pr.updatedAt||'').slice(0,10))}</em></h4>${pr.client?`<small>کارفرما: ${esc(pr.client)}</small>`:''}${pr.notes?`<p>${esc(pr.notes)}</p>`:''}<div class="meta"><span>${fa((pr.rooms||[]).length)} فضا</span><span>${fa((pr.estimate||[]).length)} قلم برآورد</span></div><div class="ft"><button class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div></div>`).join(''):'<div class="empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>');
+  return `${liveWorkshop}<div class="tot"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft"><button class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button class="act" data-x="project-new">پروژه‌ی جدید</button><button class="act" data-x="project-refresh">همگام‌سازی</button></div></div>`+(rows.length?rows.map(pr=>`<div class="ln"><h4><span>${esc(pr.name||'پروژه بدون نام')}</span><em>${esc((pr.updatedAt||'').slice(0,10))}</em></h4>${pr.client?`<small>کارفرما: ${esc(pr.client)}</small>`:''}${pr.notes?`<p>${esc(pr.notes)}</p>`:''}<div class="meta"><span>${fa((pr.rooms||[]).length)} فضا</span><span>${fa((pr.estimate||[]).length)} قلم برآورد</span></div><div class="ft"><button class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div></div>`).join(''):'<div class="empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>');
 }
 function pricesView() {
   const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if((p.priceLog||[]).length) rows.push({c,p,log:p.priceLog});}));
