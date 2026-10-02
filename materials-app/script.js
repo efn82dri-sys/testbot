@@ -176,6 +176,7 @@ function render() {
   tabs();
   const L = $('#list');
   L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView, tools: toolsView, recent: recentView, manage: manageView, profile: profileView }[S.tab] || catView)();
+  if (S.tab === 'projects') wkInit();
   if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = `<button type="button" class="chip ${!S.cat ? 'active' : ''}" data-cat="">همه دسته‌ها</button>` + cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)} <small>${fa(D.companies.filter(x=>x.cat===c).reduce((n,x)=>n+x.products.length,0))}</small></button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
@@ -277,44 +278,85 @@ function libraryView() {
   if (!rows.length) return `<div class="empty"><div class="empty-icon">📚</div><h3>کتابخانه‌ی فایل‌های اجرایی</h3><p>دیتیل DWG/PDF، فمیلی رویت، فایل اسکچاپ، تکسچر و دفترچه‌ی محصول پس از ثبت ادمین اینجا نمایش داده می‌شود.</p></div>`;
   return `<div class="grp">${fa(rows.length)} فایل ثبت‌شده</div>`+rows.map(({c,p,d})=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(c.name)} · ${esc(p.name)}</small><div class="meta">${d.version?`<span>نسخه ${esc(d.version)}</span>`:''}${d.date?`<span>${esc(d.date)}</span>`:''}${d.size?`<span>${fa(Math.round(d.size/1024))} KB</span>`:''}</div><div class="ft"><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت ربات</button><button type="button" class="act" data-prod="${esc(p.id)}">مشاهده محصول</button></div></div>`).join('');
 }
-const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده رواق">
-      <div class="rw-live-head">
-        <div>
-          <span class="rw-kicker"><i></i> کارگاه زنده</span>
-          <strong>مصالح، قبل از انتخاب؛ در حال زندگی‌اند.</strong>
-        </div>
-        <span class="rw-live-state"><b></b> LIVE</span>
-      </div>
-
-      <div class="rw-stage" aria-hidden="true">
-        <div class="rw-sky"></div>
-        <div class="rw-grid"></div>
-        <div class="rw-building">
-          <span class="rw-floor rw-floor-3"></span><span class="rw-floor rw-floor-2"></span><span class="rw-floor rw-floor-1"></span>
-          <i class="rw-window w1"></i><i class="rw-window w2"></i><i class="rw-window w3"></i><i class="rw-window w4"></i>
-        </div>
-        <div class="rw-crane">
-          <span class="rw-crane-mast"></span><span class="rw-crane-arm"></span><span class="rw-crane-cable"></span><span class="rw-crane-load"></span>
-        </div>
-        <div class="rw-pallet pallet-a"><i></i><i></i><i></i></div>
-        <div class="rw-pallet pallet-b"><i></i><i></i></div>
-        <div class="rw-bricks"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="rw-worker worker-a"><span class="rw-head"></span><span class="rw-body"></span><span class="rw-leg l"></span><span class="rw-leg r"></span><span class="rw-arm a"></span><span class="rw-arm b"></span></div>
-        <div class="rw-worker worker-b"><span class="rw-head"></span><span class="rw-body"></span><span class="rw-leg l"></span><span class="rw-leg r"></span><span class="rw-arm a"></span><span class="rw-arm b"></span></div>
-        <div class="rw-forklift"><span class="cab"></span><span class="mast"></span><span class="fork"></span><i></i><i></i></div>
-        <div class="rw-material-card">
-          <small>در حال بررسی</small><strong>سنگ طبیعی</strong><span><i></i><i></i><i></i><em>۳۶۰°</em></span>
-        </div>
-        <div class="rw-price-card"><small>استعلام قیمت</small><strong>۲,۸۵۰,۰۰۰</strong><span>تومان / m²</span></div>
-        <div class="rw-route"><i></i><i></i><i></i><span>ارسال به پروژه</span></div>
-      </div>
-
-      <div class="rw-live-foot">
-        <span><i class="rw-mini-dot"></i> بررسی متریال</span>
-        <span><i class="rw-mini-dot amber"></i> بارگیری</span>
-        <span><i class="rw-mini-dot coral"></i> اجرای پروژه</span>
-      </div>
-    </section>`;
+/* ===== کارگاه زنده رواق — v2 (SVG + داده‌ی واقعی کاتالوگ) ===== */
+const wkMan=(x,y,k,s,vest)=>`<g transform="translate(${x} ${y}) scale(${s})"><g class="wk-man ${k}"><ellipse class="wk-sh" cx="0" cy="0" rx="6" ry="1.6"/><rect class="wk-leg a" x="-3.4" y="-9" width="2.8" height="9" rx="1"/><rect class="wk-leg b" x=".6" y="-9" width="2.8" height="9" rx="1"/><rect class="wk-arm b" x="3.2" y="-17.5" width="2.3" height="8.5" rx="1.1"/><rect x="-4.2" y="-18.5" width="8.4" height="10" rx="2.2" fill="${vest}"/><rect x="-4.2" y="-14.4" width="8.4" height="1.5" fill="#f3efe4" opacity=".85"/><rect class="wk-arm a" x="-5.5" y="-17.5" width="2.3" height="8.5" rx="1.1"/><circle cx="0" cy="-22.3" r="3.3" fill="#c48a64"/><path d="M-4.3-22.6a4.3 4.3 0 0 1 8.6 0z" fill="#f2c14e"/><rect x="-5" y="-22.9" width="10" height="1.2" rx=".6" fill="#d9a63a"/></g></g>`;
+function wkScene(){
+  let stars='',sky='',lat='',jib='';
+  for(let i=0;i<16;i++)stars+=`<circle class="wk-star" style="animation-delay:${-(i*.7%4).toFixed(1)}s" cx="${(i*47+13)%350+5}" cy="${(i*29+7)%58+6}" r="${i%4?.6:.9}"/>`;
+  [[8,26,22],[34,38,30],[70,22,18],[96,34,26],[300,30,24],[326,40,34],[346,24,16]].forEach(([x,h,w])=>{sky+=`<rect x="${x}" y="${205-h-18}" width="${w}" height="${h+18}"/>`;for(let j=0;j<3;j++)sky+=`<rect class="wk-lit" x="${x+4+j*6}" y="${205-h-10+j*9}" width="2.2" height="3"/>`});
+  for(let x=214;x<=277;x+=9)lat+=`<path d="M${x} 80 l4.5 8 l4.5 -8" />`;
+  for(let x=20;x<=262;x+=10)jib+=`<path d="M${x} 91 l5 -7 l5 7"/>`;
+  let mast='';for(let y=76;y<200;y+=10)mast+=`<path d="M282 ${y}h8l-8 10h8"/>`;
+  return `<svg class="wk-svg" viewBox="0 0 360 270" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false"><defs>
+<linearGradient id="wkSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1519"/><stop offset=".6" stop-color="#1c2a2c"/><stop offset="1" stop-color="#3a3326"/></linearGradient>
+<linearGradient id="wkGnd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2d29"/><stop offset="1" stop-color="#121413"/></linearGradient>
+<linearGradient id="wkCon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8cfbf"/><stop offset="1" stop-color="#7d7467"/></linearGradient>
+<linearGradient id="wkGls" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#bfe6dd"/><stop offset="1" stop-color="#2c5651"/></linearGradient>
+<linearGradient id="wkYel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27b"/><stop offset="1" stop-color="#c58a30"/></linearGradient>
+<radialGradient id="wkMoon"><stop offset="0" stop-color="#f6e7b8" stop-opacity=".55"/><stop offset="1" stop-color="#f6e7b8" stop-opacity="0"/></radialGradient>
+<radialGradient id="wkLamp"><stop offset="0" stop-color="#ffd98a" stop-opacity=".5"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/></radialGradient>
+<pattern id="wkHaz" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#f2c14e"/><rect width="4" height="8" fill="#1b1b1b"/></pattern></defs>
+<rect width="360" height="270" fill="url(#wkSky)"/><circle cx="62" cy="52" r="46" fill="url(#wkMoon)"/><circle cx="62" cy="52" r="7" fill="#f4e9c4" opacity=".9"/>${stars}
+<g class="wk-sky">${sky}</g>
+<rect y="205" width="360" height="65" fill="url(#wkGnd)"/><g class="wk-gridl"><path d="M0 214H360M0 226H360M0 242H360M0 262H360"/><path d="M60 205L-40 270M140 205L100 270M220 205L230 270M300 205L370 270"/></g>
+<path class="wk-road" d="M0 247H360"/>
+<g class="wk-fence"><rect x="6" y="193" width="92" height="12" fill="url(#wkHaz)" opacity=".85"/><path d="M6 193V205M52 193V205M98 193V205" /></g>
+<g class="wk-yard"><ellipse cx="124" cy="206" rx="34" ry="5" fill="#000" opacity=".35"/><rect x="100" y="198" width="48" height="6" rx="1" fill="#6f4f35"/><g fill="#c76a4b"><rect x="104" y="190" width="12" height="8" rx="1"/><rect x="118" y="190" width="12" height="8" rx="1"/><rect x="132" y="190" width="12" height="8" rx="1"/><rect x="111" y="182" width="12" height="8" rx="1"/><rect x="125" y="182" width="12" height="8" rx="1"/></g></g>
+<g class="wk-bld"><ellipse cx="228" cy="206" rx="60" ry="6" fill="#000" opacity=".4"/>
+<g class="wk-scaf"><path d="M196 126V205M212 126V205M196 146H212M196 166H212M196 186H212M196 146L212 166M196 166L212 146M196 186L212 166M196 166L212 186"/></g>
+<polygon points="262,116 274,111 274,198 262,205" fill="#8f877a"/><polygon points="262,136 274,131 274,134 262,139" fill="#a69d8e"/><polygon points="262,156 274,151 274,154 262,159" fill="#a69d8e"/><polygon points="262,176 274,171 274,174 262,179" fill="#a69d8e"/>
+<g fill="url(#wkGls)"><rect class="wk-gl g1" x="218" y="188" width="14" height="13" rx="1"/><rect class="wk-gl g2" x="238" y="188" width="14" height="13" rx="1"/><rect class="wk-gl g3" x="218" y="168" width="14" height="13" rx="1"/><rect class="wk-gl g4" x="238" y="168" width="14" height="13" rx="1"/><rect class="wk-gl g5" x="238" y="148" width="14" height="13" rx="1"/></g>
+<g fill="url(#wkCon)"><rect x="214" y="201" width="48" height="4"/><rect x="214" y="181" width="48" height="4"/><rect x="214" y="161" width="48" height="4"/><rect x="214" y="141" width="48" height="4"/><rect x="214" y="142" width="3.5" height="60"/><rect x="236" y="142" width="3.5" height="60"/><rect x="258.5" y="116" width="3.5" height="86"/></g>
+<g class="wk-rise"><rect x="214" y="121" width="48" height="4" fill="url(#wkCon)"/><rect x="214" y="122" width="3.5" height="20" fill="url(#wkCon)"/><rect x="236" y="122" width="3.5" height="20" fill="url(#wkCon)"/><path class="wk-rebar" d="M215.5 122V112M237.5 122V112M260 116V106M219 122V114M241 122V114"/></g>
+<path class="wk-net" d="M214 145H262M214 165H262M214 185H262" />
+<g class="wk-spark" transform="translate(224 156)"><circle cx="0" cy="0" r="1.1"/><circle cx="3" cy="-2" r=".8"/><circle cx="-2.5" cy="-3" r=".7"/><circle cx="4" cy="1" r=".7"/></g>
+<line x1="260" y1="116" x2="260" y2="100" stroke="#cfc7b6" stroke-width=".7"/><path class="wk-flag" d="M260 100l12 3-12 3z"/></g>
+<g class="wk-crane"><rect x="282" y="196" width="8" height="9" fill="#4a4237"/><g class="wk-lat">${'' }<rect x="282" y="76" width="8" height="122" fill="none"/>${mast}</g>
+<g class="wk-lat jb">${jib}<path d="M20 91H262M20 84H262"/><path d="M262 88H318M262 82H318" /><path d="M214 84l-0 0"/>${''}</g>
+<path class="wk-stay" d="M286 62L40 84M286 62L318 84"/><rect x="280" y="62" width="12" height="14" rx="2" fill="url(#wkYel)"/><rect x="283" y="65" width="6" height="5" rx="1" fill="#9fd0c8"/><rect x="300" y="86" width="16" height="12" rx="1" fill="#5d564b"/><circle class="wk-bcn" cx="286" cy="58" r="2.2"/>
+<g transform="translate(112 91)"><g class="wk-trol"><rect x="-5" y="-3" width="10" height="5" rx="1" fill="#3b372f"/><rect class="wk-cab" x="-.4" y="2" width=".8" height="1"/><g class="wk-swing"><g class="wk-lod"><path d="M-5 0H5L0 -8z" fill="none" stroke="#dcd3c1" stroke-width=".6"/><rect x="-6.5" y="0" width="13" height="2.2" fill="#d58c36"/><rect x="-5.5" y="2.2" width="11" height="8" rx="1" fill="#c76a4b"/><rect x="-5.5" y="6" width="11" height="1" fill="#e19a7d" opacity=".6"/></g></g></g></g></g>
+<g class="wk-fork"><g class="wk-fk"><ellipse cx="0" cy="0" rx="22" ry="3" fill="#000" opacity=".4"/><rect x="-18" y="-17" width="26" height="11" rx="3" fill="url(#wkYel)"/><path d="M-16-17V-26H-4V-17" fill="none" stroke="#e3ae4f" stroke-width="2"/><rect x="-15" y="-25" width="10" height="7" fill="#9fd0c8" opacity=".8"/><rect x="9" y="-31" width="2.4" height="28" fill="#f6ca70"/><g class="wk-fl"><rect x="10" y="-7" width="16" height="2" fill="#cfd3cf"/><rect x="12" y="-13" width="12" height="6" rx="1" fill="#c76a4b"/></g><circle class="wk-wh" cx="-10" cy="-4" r="4.6"/><circle class="wk-wh" cx="4" cy="-4" r="3.8"/><circle class="wk-bcn" cx="-8" cy="-27" r="1.4" fill="#ff9d4a"/></g></g>
+<g class="wk-cones"><path d="M148 234l3-9 3 9zM156 234l3-9 3 9z" fill="#e8743b"/><path d="M149.8 230h2.4M157.8 230h2.4" stroke="#fff" stroke-width="1"/></g>
+${wkMan(178,238,'walk',1.25,'#e8743b')}${wkMan(205,189,'hit',1.05,'#e8c43b')}${wkMan(96,236,'idle',1.2,'#e8743b')}
+<g class="wk-lampg"><circle cx="30" cy="190" r="30" fill="url(#wkLamp)"/><path d="M30 205V184" stroke="#555" stroke-width="1.4"/><circle cx="30" cy="183" r="2" fill="#ffe3a0"/></g></svg>`;
+}
+function wkPick(i){const a=wkList();if(!a.length)return null;return a[((i%a.length)+a.length)%a.length];}
+function wkList(){const r=[];(D.companies||[]).forEach(c=>(c.products||[]).forEach(p=>{if(p.sourceImageUrl)r.push({c,p})}));return r;}
+function wkCard(it){
+  if(!it)return `<div class="wk-card-in"><small>کارگاه آماده‌ی دریافت محصول</small><strong>کاتالوگ در حال بارگذاری…</strong></div>`;
+  const {c,p}=it,ver=p.lastVerified,spec=(p.specs||[]).length;
+  return `<div class="wk-card-in"><span class="wk-th"><img src="${esc(p.sourceImageUrl)}" alt="" loading="lazy" decoding="async"></span><span class="wk-tx"><small>در حال بررسی · ${esc(c.name)}</small><strong>${esc(p.name)}</strong><em>${spec?fa(spec)+' مشخصه فنی':esc(p.group||'محصول')}${ver?' · بازبینی '+esc(ver):''}</em></span><button type="button" class="wk-go" data-prod="${esc(p.id)}" aria-label="مشاهده ${esc(p.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button></div>`;
+}
+function wkPrice(it){
+  const p=it&&it.p,pr=p&&Number(p.price);
+  return `<small>قیمت اعلامی</small><strong>${pr?fa(pr.toLocaleString('en')):'استعلام'}</strong><em>${pr?'تومان / '+esc(p.unit||''):'بدون قیمت ثبت‌شده'}</em>`;
+}
+function liveWorkshop(){
+  const it=wkPick(0),np=wkList().length,nb=(D.companies||[]).length,npr=(S.projects||[]).length,all=(D.companies||[]).reduce((n,c)=>n+(c.products||[]).length,0);
+  return `<section class="wk" id="wk" data-i="0" aria-label="کارگاه زنده رواق">
+  <div class="wk-head"><div><span class="wk-kicker"><i></i>کارگاه زنده</span><strong>مصالح، قبل از انتخاب؛ در حال زندگی‌اند.</strong></div><span class="wk-live"><b></b>LIVE</span></div>
+  <div class="wk-stage">${wkScene()}<div class="wk-vig"></div>
+    <div class="wk-card wk-prod" id="wkCard" aria-live="polite">${wkCard(it)}</div>
+    <div class="wk-card wk-price" id="wkPrice">${wkPrice(it)}</div>
+    <div class="wk-bar"><i id="wkBar"></i></div>
+  </div>
+  <div class="wk-foot"><ol class="wk-steps" id="wkSteps"><li class="on"><i></i>بررسی متریال</li><li><i></i>بارگیری</li><li><i></i>اجرای پروژه</li></ol>
+  <div class="wk-stats"><span><b>${fa(all||np)}</b>محصول</span><span><b>${fa(nb)}</b>برند</span><span><b>${fa(npr)}</b>پروژه</span></div></div></section>`;
+}
+function wkInit(){
+  clearInterval(window.__wkT);const root=document.getElementById('wk');if(!root)return;
+  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const step=()=>{
+    if(!document.body.contains(root)){clearInterval(window.__wkT);return}
+    const i=(+root.dataset.i||0)+1;root.dataset.i=i;const it=wkPick(i),card=root.querySelector('#wkCard'),pr=root.querySelector('#wkPrice');
+    [card,pr].forEach(e=>e.classList.add('swap'));
+    setTimeout(()=>{card.innerHTML=wkCard(it);pr.innerHTML=wkPrice(it);[card,pr].forEach(e=>e.classList.remove('swap'))},260);
+    root.querySelectorAll('#wkSteps li').forEach((li,n)=>li.classList.toggle('on',n===i%3));
+    const b=root.querySelector('#wkBar');b.style.animation='none';void b.offsetWidth;b.style.animation='';
+  };
+  if(!still)window.__wkT=setInterval(step,4800);
+  root.querySelector('.wk-stage').addEventListener('click',e=>{if(!e.target.closest('.wk-go'))step()});
+}
 function projectsView() {
   const rows = S.projects || [];
   const savedProjects = rows.length
@@ -326,7 +368,7 @@ function projectsView() {
         <div class="ft project-actions"><button type="button" class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button type="button" class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div>
       </article>`).join('')}</div>`
     : '<div class="empty project-empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>';
-  return `<div class="projects-layout">${liveWorkshop}<section class="tot projects-summary"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft project-summary-actions"><button type="button" class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button type="button" class="act" data-x="project-new">پروژه‌ی جدید</button><button type="button" class="act" data-x="project-refresh">همگام‌سازی</button></div></section>${savedProjects}</div>`;
+  return `<div class="projects-layout">${liveWorkshop()}<section class="tot projects-summary"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft project-summary-actions"><button type="button" class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button type="button" class="act" data-x="project-new">پروژه‌ی جدید</button><button type="button" class="act" data-x="project-refresh">همگام‌سازی</button></div></section>${savedProjects}</div>`;
 }
 function pricesView() {
   const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if((p.priceLog||[]).length) rows.push({c,p,log:p.priceLog});}));
