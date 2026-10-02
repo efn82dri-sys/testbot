@@ -502,3 +502,8 @@ strong,b{font-weight:600!important}
 
 /* Empty states and large decorative numerals stay quiet. */
 .empty h3,.mv-empty,.guide-empty-mark{font-weight:600!important}
+
+/* Rawaq UX cleanup v4: the catalog identity header belongs only to Catalog. */
+.hero.compact{
+  display:none!important;
+}
