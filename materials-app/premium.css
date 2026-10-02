@@ -507,3 +507,145 @@ strong,b{font-weight:600!important}
 .hero.compact{
   display:none!important;
 }
+
+/* ============================================================
+   RAVAQ — Field Guide UX Repair V5
+   Mobile-first correction for long Persian copy and narrow screens.
+   ============================================================ */
+.guide-intro{
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:14px!important;
+  padding:16px!important;
+  align-items:stretch!important;
+}
+.guide-intro-main{min-width:0!important}
+.guide-intro-kicker{
+  flex-wrap:wrap!important;
+  font-weight:500!important;
+}
+.guide-intro-kicker b{font-weight:600!important}
+.guide-intro-kicker em{
+  margin-right:auto!important;
+  font-size:9px!important;
+  font-weight:500!important;
+}
+.guide-intro-main h2{
+  font-size:20px!important;
+  line-height:1.55!important;
+  font-weight:700!important;
+  letter-spacing:-.02em!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+}
+.guide-intro-main p{
+  max-width:100%!important;
+  font-size:12px!important;
+  line-height:1.9!important;
+  white-space:normal!important;
+}
+.guide-intro-stats{
+  width:100%!important;
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:7px!important;
+}
+.guide-intro-stats>div{
+  min-width:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:7px!important;
+  padding:8px 10px!important;
+  border-radius:11px!important;
+  text-align:right!important;
+}
+.guide-intro-stats b{font-weight:600!important;font-size:16px!important}
+.guide-intro-stats small{font-weight:400!important;font-size:10px!important;white-space:nowrap!important}
+
+.guide-quickbar{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:5px!important;
+  align-items:start!important;
+  padding:5px 2px!important;
+}
+.guide-quickbar>div{min-width:0!important}
+.guide-quickbar small{
+  max-width:none!important;
+  text-align:right!important;
+  line-height:1.7!important;
+  color:var(--rq-muted)!important;
+}
+
+.guide-toolbar{
+  grid-template-columns:minmax(0,1fr)!important;
+  gap:7px!important;
+  padding:8px!important;
+  margin:8px 0!important;
+}
+.guide-search{min-height:40px!important}
+.guide-search input{font-weight:400!important;font-size:12px!important}
+.guide-toolbar select{width:100%!important;max-width:none!important;min-height:40px!important;font-weight:400!important}
+
+.guide-file-title{min-width:0!important}
+.guide-kicker{font-weight:500!important;font-size:10px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.guide-file-title h3{
+  font-weight:600!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere!important;
+  line-height:1.65!important;
+}
+.guide-file-title small{
+  font-weight:400!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere!important;
+  line-height:1.6!important;
+}
+.guide-state{font-weight:500!important}
+.guide-meta span{font-weight:400!important;line-height:1.65!important}
+
+/* Two dense columns are the source of most of the visual compression on phones.
+   Stack them so execution steps and risks get a readable measure. */
+@media(max-width:600px){
+  .guide-intro{
+    grid-template-columns:minmax(0,1fr)!important;
+    padding:14px!important;
+    border-radius:17px!important;
+  }
+  .guide-intro-main h2{font-size:17px!important;line-height:1.55!important}
+  .guide-intro-main p{font-size:11px!important;line-height:1.85!important}
+  .guide-intro-stats{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .guide-intro-stats>div{padding:7px 8px!important}
+  .guide-intro-stats b{font-size:15px!important}
+  .guide-intro-stats small{font-size:9px!important}
+  .guide-quickbar{grid-template-columns:minmax(0,1fr)!important;gap:3px!important}
+  .guide-quickbar small{font-size:10px!important}
+  .guide-dual{grid-template-columns:minmax(0,1fr)!important;gap:7px!important}
+  .guide-correct,.guide-risk{padding:10px!important}
+  .guide-correct h4,.guide-risk h4{font-size:11px!important}
+  .guide-steps label,.guide-mistake p{font-size:11px!important;line-height:1.85!important}
+  .guide-mistake small{font-size:10px!important;line-height:1.7!important}
+  .guide-actions{display:grid!important;grid-template-columns:1fr 1fr!important}
+  .guide-actions .act{min-width:0!important;font-size:10px!important}
+}
+@media(max-width:390px){
+  .guide-intro{padding:12px!important}
+  .guide-intro-kicker{font-size:10px!important}
+  .guide-intro-kicker em{font-size:8px!important}
+  .guide-intro-main h2{font-size:16px!important}
+  .guide-intro-stats{gap:5px!important}
+  .guide-intro-stats>div{padding:6px!important}
+  .guide-intro-stats b{font-size:14px!important}
+  .guide-intro-stats small{font-size:8px!important}
+  .guide-file>summary{grid-template-columns:30px minmax(0,1fr) auto!important;gap:7px!important;padding:9px!important}
+  .guide-symbol,.guide-symbol .mono{width:30px!important;height:30px!important}
+  .guide-state{font-size:9px!important;padding:4px 5px!important}
+}
+@media(max-width:350px){
+  .guide-state{display:none!important}
+  .guide-intro-stats small{font-size:8px!important}
+}
