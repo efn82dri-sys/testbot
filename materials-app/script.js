@@ -120,20 +120,25 @@ const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); doc
 /* ---------- نما ---------- */
 function updateNavNeon() {
  const nav = $('#bottomNav'); if (!nav) return;
- let indicator = nav.querySelector('.nav-neon');
- if (!indicator) { indicator = document.createElement('span'); indicator.className = 'nav-neon'; indicator.setAttribute('aria-hidden','true'); nav.prepend(indicator); }
  const items = [...nav.querySelectorAll('.bottom-item:not([hidden])')];
  const active = items.find(b => b.dataset.tab === S.tab) || items[0]; if (!active) return;
  const colors = {cat:'#6FE3C4',projects:'#E3B26F',tools:'#8AA2FF',education:'#E36F9A',community:'#B58AFF',manage:'#7FD1E8',profile:'#F0C878'};
  const color = colors[active.dataset.tab] || '#6FE3C4';
- const previous = nav.dataset.neonColor || color;
- const width = Math.max(40, active.clientWidth - 2);
- indicator.style.width = width + 'px';
- indicator.style.left = (active.offsetLeft + 1) + 'px';
- indicator.style.setProperty('--neon-from', previous); indicator.style.setProperty('--neon-to', color);
- nav.style.setProperty('--active-tab-color', color); nav.dataset.neonColor = color;
+ const bubble = nav.querySelector('.nav-active-bubble');
+ if (bubble) {
+   const size = Math.max(56, Math.min(64, active.clientHeight - 1));
+   const center = active.offsetLeft + active.offsetWidth / 2;
+   bubble.style.width = size + 'px';
+   bubble.style.height = size + 'px';
+   bubble.style.left = (center - size / 2) + 'px';
+   bubble.style.setProperty('--bubble-color', color);
+   bubble.dataset.tab = active.dataset.tab;
+ }
+ nav.style.setProperty('--active-tab-color', color);
+ nav.dataset.neonColor = color;
  nav.querySelectorAll('.bottom-item').forEach(b => b.style.setProperty('--item-color', colors[b.dataset.tab] || color));
 }
+
 function tabs() {
   // معماری اطلاعات ساده‌تر: پنج مقصد اصلی؛ ابزارهای تخصصی در یک صفحه‌ی منظم گروه‌بندی شده‌اند.
   const T = [['cat', 'کاتالوگ', fa(D.companies.length)], ['projects', 'پروژه‌های من', fa(S.projects.length)], ['tools', 'ابزارها', '۱۰'], ['education', 'راهنمای اجرا', 'آموزش'], ['community', 'تجربه‌ها', 'جامعه']];
