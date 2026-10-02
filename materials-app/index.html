@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#070914" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#E9EEFB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#25292b">
+<script>
+(function(){try{var k='rq.mat.theme',saved=localStorage.getItem(k),theme=saved||(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',theme);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',theme==='light'?'#e9e5dd':'#25292b');}catch(e){}})();
+</script>
 <title>مصالح و تجهیزات — رواق</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap">
-<link rel="stylesheet" href="/materials/base.css?v=ravaq13-20261002">
-<link rel="stylesheet" href="/materials/mat.css?v=ravaq-workshop-lower-scene-20261002">
-<link rel="stylesheet" href="/materials/glass.css?v=ravaq-field-compact-20261002">
-<link rel="stylesheet" href="/materials/clay.css?v=claymorphism-readable-20261002">
+<!-- بدون درخواست فونت خارجی؛ از فونت‌های موجود روی دستگاه استفاده می‌شود. -->
+<link rel="stylesheet" href="/materials/base.css?v=ravaq-a11y-v6-20261002">
+<link rel="stylesheet" href="/materials/mat.css?v=ravaq-a11y-v6-20261002">
+<link rel="stylesheet" href="/materials/glass.css?v=ravaq-a11y-v6-20261002">
+<link rel="stylesheet" href="/materials/clay.css?v=ravaq-a11y-v6-20261002">
+
 </head>
 <body>
 <div class="bg" aria-hidden="true"><span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span><span class="grain"></span></div>
@@ -74,7 +75,7 @@
   <section class="list" id="list" aria-live="polite"></section>
   <footer class="foot"><span>رواق — مرجع فایل‌های معماری و عمران</span><span class="heart">برآوردها تقریبی‌اند و جایگزین استعلام رسمی نیستند</span></footer>
 </main>
-<div class="sd" id="sd" hidden role="dialog" aria-modal="true"><div class="sd-scrim" id="sdScrim"></div><div class="sd-panel" id="sdPanel"></div></div>
+<div class="sd" id="sd" hidden role="dialog" aria-modal="true" aria-label="جزئیات و پنل گفتگو"><div class="sd-scrim" id="sdScrim"></div><div class="sd-panel" id="sdPanel"></div></div>
 <button class="to-top" id="toTop" hidden aria-label="بازگشت به بالا"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
 <nav class="bottom-nav" id="bottomNav" aria-label="ناوبری اصلی">
   <span class="nav-neon" aria-hidden="true"></span>
@@ -88,6 +89,6 @@
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/materials/script.js?v=ravaq-workshop-detail-20261002" defer></script>
+<script src="/materials/script.js?v=ravaq-a11y-v6-20261002" defer></script>
 </body>
 </html>
