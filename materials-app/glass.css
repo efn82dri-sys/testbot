@@ -751,3 +751,111 @@ body { background: var(--bg); }
   .catalog-controls { gap: 5px; }
   .catalog-controls select[data-csort] { flex-basis: 132px; width: 132px; max-width: 46%; }
 }
+
+/* ============================================================
+   RAVAQ — Unified Gradient Language
+   Bring the signature tool-card gradients across the app while
+   keeping text contrast and semantic status colors intact.
+   ============================================================ */
+:root {
+  --ravaq-grad-a: var(--accent, #70F5D0);
+  --ravaq-grad-b: var(--accent-deep, #8D7CFF);
+  --ravaq-grad-warm: #D96F55;
+  --ravaq-grad-cool: #4E8BFF;
+  --ravaq-grad-sheen: linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,0) 48%, rgba(255,255,255,.035));
+}
+
+/* Main cards: tinted upper edge + quiet secondary color wash */
+.mc,
+.project-card.ln,
+.profile-link,
+.admin-action,
+.featured-experience,
+.experience-card,
+.field-empty,
+.guide-file,
+.community-compact-intro,
+.compare-tray,
+.tool-group,
+.form-advanced,
+.admin-metrics > div {
+  background-image:
+    radial-gradient(115% 90% at 100% 0%, color-mix(in srgb, var(--card-accent, var(--ravaq-grad-a)) 11%, transparent), transparent 66%),
+    linear-gradient(145deg, color-mix(in srgb, var(--card-accent, var(--ravaq-grad-a)) 4%, var(--glass)), color-mix(in srgb, var(--ravaq-grad-b) 3%, var(--glass)) 58%, var(--glass));
+  border-color: color-mix(in srgb, var(--card-accent, var(--ravaq-grad-a)) 17%, var(--line));
+}
+
+/* Tool cards retain their individual color identity */
+.tb-card,
+.tool-card {
+  background-image:
+    radial-gradient(100% 90% at 100% 0%, color-mix(in srgb, var(--tcx, var(--tc, var(--ravaq-grad-a))) 18%, transparent), transparent 68%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tcx, var(--tc, var(--ravaq-grad-a))) 9%, var(--glass-strong)), color-mix(in srgb, var(--ravaq-grad-b) 4%, var(--glass)) 68%, var(--glass));
+  border-color: color-mix(in srgb, var(--tcx, var(--tc, var(--ravaq-grad-a))) 25%, var(--line));
+}
+.tb-card::before,
+.tool-card::before { opacity: .72; }
+
+/* Compact action buttons use the same gradient language */
+.act,
+.icon-btn,
+.search-clear,
+.to-top,
+.chip,
+.pill,
+.guide-actions .act,
+.experience-actions .act {
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--item-color, var(--ravaq-grad-a)) 10%, var(--glass-strong)), color-mix(in srgb, var(--ravaq-grad-b) 5%, var(--glass)) 72%);
+  border-color: color-mix(in srgb, var(--item-color, var(--ravaq-grad-a)) 20%, var(--line));
+}
+.act-primary,
+.admin-action-primary,
+.field-hero-actions .act:first-child,
+.community-compact-intro .act,
+.tool-primary .tool-card:first-child {
+  background-image: linear-gradient(120deg,
+    color-mix(in srgb, var(--accent) 19%, var(--glass-strong)),
+    color-mix(in srgb, var(--accent-deep) 13%, var(--glass)) 58%,
+    color-mix(in srgb, var(--accent) 7%, var(--glass)));
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+  box-shadow: inset 0 1px 0 var(--hi), 0 7px 20px -16px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+/* Selected chips and active navigation receive a restrained gradient, not a solid fill */
+.chip.active,
+.chip[aria-pressed="true"] {
+  background-image: linear-gradient(120deg, color-mix(in srgb, var(--accent) 19%, var(--glass-strong)), color-mix(in srgb, var(--accent-deep) 12%, var(--glass)));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.bottom-item.active {
+  background-image: linear-gradient(145deg, color-mix(in srgb, var(--item-color, var(--accent)) 17%, var(--glass)), color-mix(in srgb, var(--accent-deep) 8%, var(--glass)));
+  border: 1px solid color-mix(in srgb, var(--item-color, var(--accent)) 20%, transparent);
+}
+
+/* Guide's green/red panels keep their semantic hues, with depth added only */
+.guide-correct {
+  background-image: linear-gradient(145deg, rgba(42, 171, 119, .13), rgba(42, 171, 119, .035) 62%, transparent) !important;
+}
+.guide-risk {
+  background-image: linear-gradient(145deg, rgba(220, 79, 92, .13), rgba(220, 79, 92, .035) 62%, transparent) !important;
+}
+
+/* Project workshop overlays remain intentionally high-contrast */
+.rw-material-card,
+.rw-price-card {
+  background-image: linear-gradient(145deg, rgba(112,245,208,.12), transparent 48%, rgba(141,124,255,.09)), linear-gradient(145deg, rgba(32,37,38,.96), rgba(12,15,16,.96));
+}
+:root[data-theme="light"] .rw-material-card,
+:root[data-theme="light"] .rw-price-card {
+  background-image: linear-gradient(145deg, rgba(112,245,208,.13), transparent 48%, rgba(141,124,255,.10)), linear-gradient(145deg, rgba(32,37,38,.97), rgba(12,15,16,.97));
+}
+
+/* Keep gradients calm and controls readable on narrow screens */
+@media (max-width: 420px) {
+  .mc, .project-card.ln, .profile-link, .admin-action, .featured-experience, .experience-card {
+    background-image: radial-gradient(110% 80% at 100% 0%, color-mix(in srgb, var(--card-accent, var(--ravaq-grad-a)) 8%, transparent), transparent 68%), linear-gradient(145deg, color-mix(in srgb, var(--ravaq-grad-b) 2%, var(--glass)), var(--glass));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc, .project-card.ln, .profile-link, .admin-action, .act, .chip, .tb-card, .tool-card { transition: none !important; }
+}

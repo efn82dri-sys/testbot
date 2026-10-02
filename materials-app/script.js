@@ -287,7 +287,7 @@ const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده
       </div>
 
       <div class="rw-stage" aria-hidden="true">
-        <svg class="rw-scene-art" viewBox="0 0 640 340" role="presentation" focusable="false" preserveAspectRatio="xMidYMid slice">
+        <svg class="rw-scene-art" viewBox="0 -34 640 360" role="presentation" focusable="false" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id="rw-concrete-top" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e4ddd0"/><stop offset=".52" stop-color="#bcb3a4"/><stop offset="1" stop-color="#8b8275"/></linearGradient>
             <linearGradient id="rw-concrete-front" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#b5ab9b"/><stop offset="1" stop-color="#72695e"/></linearGradient>
