@@ -1,0 +1,294 @@
+/* ============================================================
+   رواق — لایه‌ی Glassmorphism (v3 - فاز ۰ تا ۴)
+   ============================================================ */
+
+/* ---------- ۱) توکن‌ها: تیره (پیش‌فرض) ---------- */
+:root {
+  --bg: #070914; --bg-solid: #0E1226;
+  --bg-elev: rgba(18, 22, 44, .60);
+  --bg-sunk: rgba(5, 7, 18, .55);
+  --glass: rgba(255, 255, 255, .07);
+  --glass-strong: rgba(255, 255, 255, .13);
+  --line: rgba(255, 255, 255, .15);
+  --line-soft: rgba(255, 255, 255, .08);
+  --ink: #F4F6FF; --ink-dim: #B6BDD3; --ink-faint: #8890AA;
+  --accent: #70F5D0; --accent-deep: #8D7CFF; --accent-ink: #04201A; --accent-text: #86F7DC;
+  --neon-a: #70F5D0; --neon-b: #8D7CFF; --danger: #FF7B8E;
+  --surface-2: rgba(255, 255, 255, .10);
+  --surface-card: rgba(255, 255, 255, .07);
+  --surface-muted: rgba(255, 255, 255, .05);
+  --border-strong: rgba(255, 255, 255, .18);
+  --hi: rgba(255, 255, 255, .22);
+  --sheen: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.02) 42%, rgba(255,255,255,0) 60%);
+  --g-shadow: 0 18px 40px -22px rgba(0, 0, 0, .75), 0 2px 10px -4px rgba(0, 0, 0, .35);
+  --shadow-sm: 0 6px 18px -10px rgba(0,0,0,.6); --shadow-md: var(--g-shadow); --shadow-lg: 0 34px 70px -30px rgba(0,0,0,.85);
+  --blur: 20px;
+  --o1: #70F5D0; --o2: #8D7CFF; --o3: #E36F9A; --o4: #E3B26F; --o5: #4E8BFF;
+  --orb-op: .50;
+  color-scheme: dark;
+}
+
+/* ---------- تیره/روشن: روشن ---------- */
+:root[data-theme="light"] {
+  --bg: #E9EEFB; --bg-solid: #F4F6FD;
+  --bg-elev: rgba(255, 255, 255, .62);
+  --bg-sunk: rgba(255, 255, 255, .45);
+  --glass: rgba(255, 255, 255, .52);
+  --glass-strong: rgba(255, 255, 255, .78);
+  --line: rgba(255, 255, 255, .85);
+  --line-soft: rgba(70, 80, 130, .12);
+  --ink: #141829; --ink-dim: #3C4560; --ink-faint: #59627E;
+  --accent: #0AA384; --accent-deep: #5B4BE0; --accent-ink: #FFFFFF; --accent-text: #087A62;
+  --neon-a: #0AA384; --neon-b: #6A57F0; --danger: #D23B52;
+  --surface-2: rgba(255, 255, 255, .7);
+  --surface-card: rgba(255, 255, 255, .55);
+  --surface-muted: rgba(255, 255, 255, .4);
+  --border-strong: rgba(255, 255, 255, .9);
+  --hi: rgba(255, 255, 255, .95);
+  --sheen: linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,.18) 45%, rgba(255,255,255,.05) 70%);
+  --g-shadow: 0 18px 40px -24px rgba(50, 60, 120, .38), 0 2px 10px -4px rgba(50, 60, 120, .12);
+  --shadow-sm: 0 6px 18px -10px rgba(50,60,120,.25); --shadow-md: var(--g-shadow); --shadow-lg: 0 34px 70px -34px rgba(50,60,120,.4);
+  --o1: #5FE8C6; --o2: #A79BFF; --o3: #FF9DBF; --o4: #FFD08A; --o5: #8FB4FF;
+  --orb-op: .62;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #E9EEFB; --bg-solid: #F4F6FD; --bg-elev: rgba(255,255,255,.62); --bg-sunk: rgba(255,255,255,.45);
+    --glass: rgba(255,255,255,.52); --glass-strong: rgba(255,255,255,.78); --line: rgba(255,255,255,.85); --line-soft: rgba(70,80,130,.12);
+    --ink: #141829; --ink-dim: #3C4560; --ink-faint: #59627E;
+    --accent: #0AA384; --accent-deep: #5B4BE0; --accent-ink: #fff; --accent-text: #087A62; --neon-a: #0AA384; --neon-b: #6A57F0; --danger: #D23B52;
+    --surface-2: rgba(255,255,255,.7); --surface-card: rgba(255,255,255,.55); --surface-muted: rgba(255,255,255,.4); --border-strong: rgba(255,255,255,.9);
+    --hi: rgba(255,255,255,.95);
+    --sheen: linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,.18) 45%, rgba(255,255,255,.05) 70%);
+    --g-shadow: 0 18px 40px -24px rgba(50,60,120,.38), 0 2px 10px -4px rgba(50,60,120,.12);
+    --shadow-sm: 0 6px 18px -10px rgba(50,60,120,.25); --shadow-md: var(--g-shadow); --shadow-lg: 0 34px 70px -34px rgba(50,60,120,.4);
+    --o1: #5FE8C6; --o2: #A79BFF; --o3: #FF9DBF; --o4: #FFD08A; --o5: #8FB4FF; --orb-op: .62;
+    color-scheme: light;
+  }
+}
+
+/* ---------- ۲) پس‌زمینه‌ی Aurora ---------- */
+body { background: var(--bg); }
+.bg { background:
+  radial-gradient(60% 50% at 85% 0%, color-mix(in srgb, var(--o2) 22%, transparent), transparent 70%),
+  radial-gradient(55% 45% at 0% 100%, color-mix(in srgb, var(--o1) 18%, transparent), transparent 70%); }
+.orb { filter: blur(70px); opacity: var(--orb-op); animation-duration: 26s; }
+.orb-a { width: 360px; height: 360px; background: var(--o1); top: -120px; right: -100px; }
+.orb-b { width: 340px; height: 340px; background: var(--o2); bottom: -90px; left: -90px; }
+.orb-c { width: 280px; height: 280px; background: var(--o3); top: 38%; right: -90px; opacity: calc(var(--orb-op) * .8); }
+.bg::before, .bg::after { content: ""; position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; animation: float 32s ease-in-out infinite reverse; }
+.bg::before { width: 260px; height: 260px; background: var(--o5); top: 22%; left: -110px; opacity: calc(var(--orb-op) * .7); }
+.bg::after  { width: 220px; height: 220px; background: var(--o4); bottom: 18%; right: 10%; opacity: calc(var(--orb-op) * .45); animation-delay: -11s; }
+.grain { opacity: .05; }
+
+/* ---------- ۳) سطح‌های شیشه‌ای (لایه‌ی اول: با بلور) ---------- */
+.app-bar, .bottom-nav, .sd-panel, .search-wrap, .tb-hero, .tb-card, .mc, .profile-card,
+.tools-intro, .admin-welcome, .tot, .rm, .toast, .to-top, .icon-btn, .cmpw, .tool-card,
+.mc-prod, .dossier, .cmp-tray, .res-head, .exp-box, .sd-tabs, .sd-summary, .pack-tile {
+  background-image: var(--sheen);
+  background-color: var(--glass);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(165%);
+          backdrop-filter: blur(var(--blur)) saturate(165%);
+  border: 1px solid var(--line);
+  box-shadow: var(--g-shadow), inset 0 1px 0 var(--hi), inset 0 0 0 1px rgba(255,255,255,.03);
+}
+.app-bar { background-color: color-mix(in srgb, var(--bg-solid) 38%, transparent); border-width: 0 0 1px; border-radius: 0; box-shadow: inset 0 -1px 0 var(--line-soft), 0 10px 30px -22px rgba(0,0,0,.5); }
+.icon-btn { box-shadow: var(--shadow-sm), inset 0 1px 0 var(--hi); }
+.icon-btn:hover { box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 1px 0 var(--hi); }
+.search-wrap { border-radius: 999px; }
+.search-wrap::before { display: none; }
+.search-wrap:focus-within { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 26px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 1px 0 var(--hi); }
+.mc, .tb-card, .tool-card, .mc-prod { border-radius: 20px; }
+.mc:hover, .tb-card:hover, .tool-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); box-shadow: var(--g-shadow), 0 0 28px -6px color-mix(in srgb, var(--tcx, var(--accent)) 45%, transparent), inset 0 1px 0 var(--hi); }
+
+/* ---------- ۴) سطح‌های شیشه‌ای (لایه‌ی دوم: بدون بلور) ---------- */
+.pr2, .ln, .it, .sc, .pkr, .tile, .chip, .act, .sq, .lgb, .profile-link, .admin-action,
+.form-advanced, .tool-group, .admin-metrics > div, .pk, .tr, .gm span, .meta span, .cf, .pill, .tb-code, .co .sq, .im.ph, .tool-primary .tool-card {
+  background-image: var(--sheen);
+  background-color: var(--glass);
+  border-color: var(--line);
+  box-shadow: inset 0 1px 0 var(--hi);
+}
+.it { border-style: solid; border-color: var(--line-soft); }
+.pk { border-style: solid; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.lgb { border-radius: 20px; }
+.lgb.has-logo, .mono.has-logo { background: rgba(255,255,255,.92); box-shadow: 0 6px 18px -8px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.6); }
+.hero p, .pal-desc { color: var(--ink-dim); }
+
+/* ---------- ۵) ورودی‌ها ---------- */
+.fl input, .fl select, .fl textarea, .qi, #search, .rm-n:focus {
+  background-color: color-mix(in srgb, var(--bg-solid) 28%, transparent);
+  border-color: var(--line);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.18);
+}
+#search { background-color: transparent; box-shadow: none; }
+.fl input:focus, .fl select:focus, .fl textarea:focus, .qi:focus, .rm-n:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* ---------- ۶) نئونِ نرم ---------- */
+.chip.active, .tile.on, .sq.pl, .sd-bar .act.hot, .mv-label {
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent) 55%, color-mix(in srgb, var(--accent) 70%, var(--neon-b)));
+  background-color: var(--accent); color: var(--accent-ink); border-color: transparent;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 55%, transparent), 0 8px 20px -8px color-mix(in srgb, var(--accent) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.5);
+}
+.tile.on b, .tile.on::before, .tile.on::after { color: inherit; border-color: var(--accent-ink); }
+.act-primary, .sq.on, .fts, .sc.mid, .tot { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.act-primary:hover, .sq.on, .sc.mid { box-shadow: 0 0 20px -4px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1px 0 var(--hi); }
+.tot { background-image: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), var(--sheen); }
+.fts { background-color: color-mix(in srgb, var(--accent) 10%, var(--glass)); }
+.mono { background: linear-gradient(135deg, var(--accent), var(--accent-deep)); box-shadow: 0 0 20px -2px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1px 0 rgba(255,255,255,.45); }
+.brand .dot, .pr-note-dot, .spd { box-shadow: 0 0 10px var(--accent), 0 0 22px color-mix(in srgb, var(--accent) 60%, transparent); }
+.cmp td.win { background: color-mix(in srgb, var(--accent) 18%, transparent); text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 50%, transparent); }
+.bar2 { background: rgba(255,255,255,.08); box-shadow: inset 0 1px 2px rgba(0,0,0,.25); }
+.bar2 i { box-shadow: 0 0 10px currentColor; }
+.dots i.on { box-shadow: 0 0 10px var(--accent); }
+.tb-hero { border-color: color-mix(in srgb, var(--neon-a) 35%, var(--line)); }
+.tb-ico { background: color-mix(in srgb, var(--tcx, var(--accent)) 16%, rgba(255,255,255,.04)); box-shadow: 0 0 18px -4px color-mix(in srgb, var(--tcx, var(--accent)) 50%, transparent), inset 0 1px 0 var(--hi); }
+
+/* ---------- ۷) ناوبری پایین ---------- */
+.bottom-nav, :root[data-theme="light"] .bottom-nav { border-radius: 28px; background-color: color-mix(in srgb, var(--bg-solid) 34%, transparent); border-color: var(--line); box-shadow: 0 22px 50px -18px rgba(0,0,0,.55), inset 0 1px 0 var(--hi); }
+:root[data-theme="light"] .bottom-nav { background-color: rgba(255,255,255,.55); }
+.bottom-item.active { background: color-mix(in srgb, var(--item-color, var(--accent)) 14%, transparent); box-shadow: inset 0 1px 0 var(--hi); }
+.bottom-nav .nav-neon { box-shadow: 0 0 8px var(--neon-to, #6FE3C4), 0 0 22px color-mix(in srgb, var(--neon-to, #6FE3C4) 70%, transparent); }
+
+/* ---------- ۸) شیت و پوشش ---------- */
+.sd-scrim { background: rgba(6, 8, 20, .45); -webkit-backdrop-filter: blur(6px) saturate(120%); backdrop-filter: blur(6px) saturate(120%); }
+:root[data-theme="light"] .sd-scrim { background: rgba(200, 210, 240, .35); }
+.sd-panel { background-color: color-mix(in srgb, var(--bg-solid) 52%, transparent); border-radius: 30px 30px 0 0; border-bottom: 0; --blur: 30px; box-shadow: 0 -24px 60px -20px rgba(0,0,0,.6), inset 0 1px 0 var(--hi); }
+:root[data-theme="light"] .sd-panel { background-color: rgba(255,255,255,.66); }
+.sd-grab { background: var(--hi); opacity: .6; }
+.sd-bar { border-top-color: var(--line-soft); }
+.sd-note { background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* ---------- ۹) لودینگ اولیه ---------- */
+.boot-screen { background:
+  radial-gradient(50% 40% at 80% 15%, color-mix(in srgb, var(--o2) 30%, transparent), transparent 70%),
+  radial-gradient(50% 40% at 15% 90%, color-mix(in srgb, var(--o1) 24%, transparent), transparent 70%),
+  var(--bg); }
+.boot-mark { background-image: var(--sheen); background-color: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); box-shadow: 0 0 40px color-mix(in srgb, var(--boot-a) 30%, transparent), inset 0 1px 0 var(--hi); }
+.bp-track { background: rgba(255,255,255,.12); box-shadow: inset 0 1px 2px rgba(0,0,0,.3); }
+
+/* ---------- ۱۰) روشن: خوانایی ---------- */
+:root[data-theme="light"] .meta span, :root[data-theme="light"] .cf, :root[data-theme="light"] .act { border-color: var(--line); }
+:root[data-theme="light"] .act-primary { background-color: color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,.6)); color: #066B58; }
+:root[data-theme="light"] .tile { color: var(--ink-dim); }
+:root[data-theme="light"] .bar2 { background: rgba(70,80,130,.12); }
+:root[data-theme="light"] .mv-label, :root[data-theme="light"] .chip.active { color: #fff; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .bottom-nav { background-color: rgba(255,255,255,.55); }
+  :root:not([data-theme="dark"]) .sd-panel { background-color: rgba(255,255,255,.66); }
+  :root:not([data-theme="dark"]) .sd-scrim { background: rgba(200,210,240,.35); }
+  :root:not([data-theme="dark"]) .act-primary { background-color: color-mix(in srgb, var(--accent) 14%, rgba(255,255,255,.6)); color: #066B58; }
+  :root:not([data-theme="dark"]) .chip.active, :root:not([data-theme="dark"]) .mv-label { color: #fff; }
+}
+
+/* ---------- ۱۱) عملکرد و دسترس‌پذیری ---------- */
+@media (max-width: 640px) { :root { --blur: 14px; } .orb { filter: blur(56px); } }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, :root[data-theme="light"] { --glass: color-mix(in srgb, var(--bg-solid) 90%, #fff); --glass-strong: color-mix(in srgb, var(--bg-solid) 96%, #fff); --bg-elev: var(--bg-solid); }
+  .sd-panel, .bottom-nav, .app-bar { background-color: var(--bg-solid); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root, :root[data-theme="light"] { --glass: color-mix(in srgb, var(--bg-solid) 92%, #fff); --glass-strong: var(--bg-solid); --bg-elev: var(--bg-solid); --blur: 0px; }
+  .sd-panel, .bottom-nav, .app-bar { background-color: var(--bg-solid); }
+}
+@media (prefers-reduced-motion: reduce) { .bg::before, .bg::after { animation: none; } }
+
+/* ============================================================
+   نوار ناوبری پایین — آیکون دوحالته
+   ============================================================ */
+.bottom-nav { width: min(404px, calc(100% - 48px)); padding: 6px; gap: 2px; }
+@media (max-width: 390px) { .bottom-nav { width: calc(100% - 32px); } }
+@media (max-width: 340px) { .bottom-nav { width: calc(100% - 16px); } }
+@media (min-width: 760px) { .bottom-nav { width: 404px; } }
+
+.bottom-icon { position: relative; width: 28px; height: 26px; overflow: visible; }
+.bottom-icon svg { grid-area: 1 / 1; width: 21px; height: 21px; transition: opacity .22s ease, transform .38s var(--ease-spring); }
+.bottom-icon .ic-off { opacity: 1; transform: none; }
+.bottom-icon .ic-on { opacity: 0; transform: scale(.4) rotate(-18deg); stroke-width: 1.7; }
+.bottom-icon .ic-on .f { fill: currentColor; fill-opacity: .30; }
+.bottom-icon .ic-on .d { stroke-width: 2.6; }
+.bottom-item.active .ic-off { opacity: 0; transform: scale(.4) rotate(18deg); }
+.bottom-item.active .ic-on  { opacity: 1; transform: none; animation: nav-pop .62s var(--ease-spring) both; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--item-color, var(--accent)) 60%, transparent)); }
+.bottom-icon::after { content: ""; position: absolute; inset: -4px -2px; border-radius: 50%; border: 1.5px solid var(--item-color, var(--accent)); opacity: 0; transform: scale(.4); pointer-events: none; }
+.bottom-item.active .bottom-icon::after { animation: nav-ring .6s ease-out both; }
+@keyframes nav-pop { 0% { transform: scale(.35) rotate(-24deg); } 55% { transform: scale(1.28) rotate(6deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes nav-ring { 0% { opacity: .75; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.7); } }
+.bottom-item[data-tab="tools"].active .ic-on     { animation-name: nav-twist; }
+.bottom-item[data-tab="education"].active .ic-on { animation-name: nav-toss; }
+.bottom-item[data-tab="community"].active .ic-on { animation-name: nav-wobble; }
+.bottom-item[data-tab="manage"].active .ic-on    { animation-name: nav-shield; }
+@keyframes nav-twist  { 0% { transform: scale(.4) rotate(-80deg); } 60% { transform: scale(1.22) rotate(14deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes nav-toss   { 0% { transform: translateY(8px) scale(.5); } 50% { transform: translateY(-6px) scale(1.18) rotate(-8deg); } 100% { transform: none; } }
+@keyframes nav-wobble { 0% { transform: scale(.5); } 35% { transform: scale(1.2) rotate(-9deg); } 65% { transform: scale(1.05) rotate(7deg); } 100% { transform: none; } }
+@keyframes nav-shield { 0% { transform: scale(.5); } 50% { transform: scale(1.25); } 75% { transform: scale(.95); } 100% { transform: scale(1); } }
+.bottom-item span:last-child { transition: transform .3s var(--ease-spring), font-weight .2s; }
+.bottom-item.active span:last-child { font-weight: 700; transform: translateY(-1px); }
+@media (prefers-reduced-motion: reduce) {
+  .bottom-item.active .ic-on, .bottom-item.active .bottom-icon::after { animation: none !important; }
+  .bottom-icon svg { transition: opacity .01ms; }
+}
+
+/* ============================================================
+   فاز ۰ — توکن‌های رنگ معنایی + کیت کامپوننت
+   ============================================================ */
+:root {
+  --ok: #34D399;   --ok-soft: color-mix(in srgb, #34D399 16%, transparent);
+  --ok-line: color-mix(in srgb, #34D399 48%, transparent); --ok-ink: #A7F3D0;
+  --warn: #FBBF24; --warn-soft: color-mix(in srgb, #FBBF24 16%, transparent);
+  --warn-line: color-mix(in srgb, #FBBF24 48%, transparent); --warn-ink: #FDE68A;
+  --bad: #F87171;  --bad-soft: color-mix(in srgb, #F87171 16%, transparent);
+  --bad-line: color-mix(in srgb, #F87171 48%, transparent); --bad-ink: #FECACA;
+  --info: #A78BFA; --info-soft: color-mix(in srgb, #A78BFA 16%, transparent);
+  --info-line: color-mix(in srgb, #A78BFA 48%, transparent); --info-ink: #DDD6FE;
+  --fresh: var(--ok); --stale: var(--warn); --unknown: var(--ink-faint);
+}
+:root[data-theme="light"] {
+  --ok: #0F9D6B;   --ok-soft: color-mix(in srgb, #0F9D6B 12%, transparent);
+  --ok-line: color-mix(in srgb, #0F9D6B 40%, transparent); --ok-ink: #065F46;
+  --warn: #B45309; --warn-soft: color-mix(in srgb, #B45309 12%, transparent);
+  --warn-line: color-mix(in srgb, #B45309 40%, transparent); --warn-ink: #7C2D12;
+  --bad: #DC2626;  --bad-soft: color-mix(in srgb, #DC2626 12%, transparent);
+  --bad-line: color-mix(in srgb, #DC2626 40%, transparent); --bad-ink: #7F1D1D;
+  --info: #6D4FD8; --info-soft: color-mix(in srgb, #6D4FD8 12%, transparent);
+  --info-line: color-mix(in srgb, #6D4FD8 40%, transparent); --info-ink: #3730A3;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ok: #0F9D6B;   --ok-soft: color-mix(in srgb, #0F9D6B 12%, transparent);
+    --ok-line: color-mix(in srgb, #0F9D6B 40%, transparent); --ok-ink: #065F46;
+    --warn: #B45309; --warn-soft: color-mix(in srgb, #B45309 12%, transparent);
+    --warn-line: color-mix(in srgb, #B45309 40%, transparent); --warn-ink: #7C2D12;
+    --bad: #DC2626;  --bad-soft: color-mix(in srgb, #DC2626 12%, transparent);
+    --bad-line: color-mix(in srgb, #DC2626 40%, transparent); --bad-ink: #7F1D1D;
+    --info: #6D4FD8; --info-soft: color-mix(in srgb, #6D4FD8 12%, transparent);
+    --info-line: color-mix(in srgb, #6D4FD8 40%, transparent); --info-ink: #3730A3;
+  }
+}
+
+.kit-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 10.5px; font-weight: 800; line-height: 1.7; border: 1px solid var(--line); color: var(--ink-dim); background: color-mix(in srgb, var(--glass) 80%, transparent); white-space: nowrap; }
+.kit-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
+.kit-chip.ok    { color: var(--ok-ink);    background: var(--ok-soft);    border-color: var(--ok-line); }
+.kit-chip.warn  { color: var(--warn-ink);  background: var(--warn-soft);  border-color: var(--warn-line); }
+.kit-chip.bad   { color: var(--bad-ink);   background: var(--bad-soft);   border-color: var(--bad-line); }
+.kit-chip.info  { color: var(--info-ink);  background: var(--info-soft);  border-color: var(--info-line); }
+.kit-chip.plain::before { display: none; }
+
+.kit-head { display: flex; align-items: center; gap: 10px; margin: 22px 2px 12px; }
+.kit-head > i { flex: 0 0 auto; width: 4px; height: 22px; border-radius: 3px; background: linear-gradient(180deg, var(--accent), var(--accent-deep)); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 50%, transparent); }
+.kit-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--ink); }
+.kit-head small { color: var(--ink-dim); font-size: 11.5px; font-weight: 500; }
+.kit-head .spacer { flex: 1; }
+
+.kit-card { padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--glass); box-shadow: inset 0 1px 0 var(--hi); }
+.kit-card.ok    { background: linear-gradient(160deg, var(--ok-soft), var(--glass) 65%);    border-color: var(--ok-line); }
+.kit-card.warn  { background: linear-gradient(160deg, var(--warn-soft), var(--glass) 65%);  border-color: var(--warn-line); }
+.kit-card.bad   { background: linear-gradient(160deg, var(--bad-soft), var(--glass) 65%);   border-color: var(--bad-line); }
+.kit-card.info  { background: linear-gradient(160deg, var(--info-soft), var(--glass) 65%);  border-color: var(--info-line); }
+
+.kit-skel { border-radius: 12px; background: linear-gradient(100deg, var(--glass) 30%, var(--glass-strong) 50%, var(--glass) 70%); background-size: 200% 100%; animation: shm 1.4s linear infinite; }
+.kit-skel-row { display: grid; gap: 8px; margin: 10px 0; }
