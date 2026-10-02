@@ -633,3 +633,121 @@ body { background: var(--bg); }
   .experience-detail summary { font-size:8.5px; }
 }
 .experience-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin:2px 0 4px; color:var(--ink-dim); font-size:9px; line-height:1.55; }
+
+/* ============================================================
+   RAVAQ final theme audit — dark/light contrast + compact sort
+   Explicit palettes prevent inherited low-contrast green/red text.
+   ============================================================ */
+:root {
+  --field-good: #42D99A;
+  --field-good-ink: #8CF0BE;
+  --field-good-bg: rgba(49,185,125,.13);
+  --field-good-line: rgba(76,220,158,.34);
+  --field-risk: #FF858D;
+  --field-risk-ink: #FFADB3;
+  --field-risk-bg: rgba(232,83,83,.13);
+  --field-risk-line: rgba(255,125,137,.34);
+  --field-muted-text: #D0D6E5;
+  --field-control-bg: #121728;
+  --field-control-ink: #F4F6FF;
+  --field-control-line: rgba(255,255,255,.18);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --field-good-ink: #8CF0BE;
+  --field-risk-ink: #FFADB3;
+  --field-muted-text: #D0D6E5;
+  --field-control-bg: #121728;
+  --field-control-ink: #F4F6FF;
+  --field-control-line: rgba(255,255,255,.18);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --field-good: #16845A;
+  --field-good-ink: #087247;
+  --field-good-bg: #EAF8F0;
+  --field-good-line: #B9E5CB;
+  --field-risk: #C43B47;
+  --field-risk-ink: #A82432;
+  --field-risk-bg: #FFF0F0;
+  --field-risk-line: #F0C6C8;
+  --field-muted-text: #344054;
+  --field-control-bg: #FFFFFF;
+  --field-control-ink: #202938;
+  --field-control-line: #C8D0D7;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --field-good: #16845A;
+    --field-good-ink: #087247;
+    --field-good-bg: #EAF8F0;
+    --field-good-line: #B9E5CB;
+    --field-risk: #C43B47;
+    --field-risk-ink: #A82432;
+    --field-risk-bg: #FFF0F0;
+    --field-risk-line: #F0C6C8;
+    --field-muted-text: #344054;
+    --field-control-bg: #FFFFFF;
+    --field-control-ink: #202938;
+    --field-control-line: #C8D0D7;
+  }
+}
+
+/* Guide cards: force legible text and separate semantic colors from surfaces. */
+.guide-correct { background: var(--field-good-bg) !important; border-color: var(--field-good-line) !important; }
+.guide-risk { background: var(--field-risk-bg) !important; border-color: var(--field-risk-line) !important; }
+.guide-correct h4, .guide-correct h4 b, .guide-correct .guide-section-symbol,
+.guide-steps label, .guide-steps label > span:last-child { color: var(--field-muted-text); }
+.guide-correct h4, .guide-correct .guide-section-symbol, .guide-steps .step-no { color: var(--field-good-ink) !important; }
+.guide-risk h4, .guide-risk h4 b, .guide-risk .guide-section-symbol,
+.guide-mistake p, .guide-mistake small { color: var(--field-muted-text) !important; }
+.guide-risk h4, .guide-risk .guide-section-symbol, .guide-mistake .severity,
+.guide-meta .guide-warning { color: var(--field-risk-ink) !important; }
+.guide-state.verified { color: var(--field-good-ink) !important; background: var(--field-good-bg) !important; border-color: var(--field-good-line) !important; }
+.guide-state.unverified { color: var(--field-risk-ink) !important; background: var(--field-risk-bg) !important; border-color: var(--field-risk-line) !important; }
+.guide-meta span { color: var(--field-muted-text); border-color: var(--line); }
+.guide-meta .guide-warning { background: var(--field-risk-bg); border-color: var(--field-risk-line); }
+.guide-section-symbol { background: color-mix(in srgb, var(--field-good) 13%, transparent) !important; }
+.guide-risk .guide-section-symbol { background: color-mix(in srgb, var(--field-risk) 13%, transparent) !important; }
+.guide-steps .step-no { background: color-mix(in srgb, var(--field-good) 15%, transparent) !important; }
+.guide-mistake .severity { background: color-mix(in srgb, var(--field-risk) 14%, transparent); }
+.experience-card-main > p, .experience-preview, .experience-byline small,
+.experience-material-line, .experience-votes { color: var(--ink-dim); }
+.experience-success .experience-type-tag, .experience-success .experience-card-rail > span,
+.experience-actions .act-voted { color: var(--field-good-ink); background: var(--field-good-bg); border-color: var(--field-good-line); }
+.experience-warning .experience-type-tag, .experience-warning .experience-card-rail > span { color: var(--field-risk-ink); background: var(--field-risk-bg); border-color: var(--field-risk-line); }
+.experience-tip .experience-type-tag, .experience-tip .experience-card-rail > span { color: #D99A3D; background: rgba(217,154,61,.13); border-color: rgba(217,154,61,.28); }
+.experience-question .experience-type-tag, .experience-question .experience-card-rail > span { color: var(--accent-deep); background: color-mix(in srgb, var(--accent-deep) 13%, transparent); border-color: color-mix(in srgb, var(--accent-deep) 28%, transparent); }
+
+/* Compact catalogue sort control: no full-width, stretched select on phones. */
+.catalog-controls select[data-csort] {
+  width: 148px;
+  min-width: 0;
+  max-width: 148px;
+  min-height: 35px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: var(--field-control-bg);
+  color: var(--field-control-ink);
+  border: 1px solid var(--field-control-line);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: none;
+}
+.catalog-controls select[data-csort] option {
+  color: var(--field-control-ink);
+  background: var(--field-control-bg);
+}
+@media (max-width: 480px) {
+  .catalog-toolbar { align-items: center; flex-direction: row; flex-wrap: wrap; gap: 8px 10px; padding: 10px 11px; }
+  .catalog-toolbar > div:first-child { flex: 0 0 auto; }
+  .catalog-controls { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .catalog-controls .chip { min-height: 32px; padding: 6px 9px; font-size: 10px; }
+  .catalog-controls select[data-csort] { flex: 0 1 148px; width: 148px; max-width: 48%; min-height: 34px; padding: 6px 8px; font-size: 10px; }
+}
+@media (max-width: 350px) {
+  .catalog-toolbar { padding: 9px; }
+  .catalog-controls { gap: 5px; }
+  .catalog-controls select[data-csort] { flex-basis: 132px; width: 132px; max-width: 46%; }
+}
