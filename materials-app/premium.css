@@ -455,3 +455,50 @@ button:disabled{opacity:.45!important}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
+
+/* ============================================================
+   RAVAQ — Typography Calibration V3
+   Rule: weight is hierarchy, not decoration.
+   400 body / 500 UI / 600 emphasis / 700 headings / 800 rare accent
+   ============================================================ */
+body{font-weight:400!important;letter-spacing:0!important}
+.brand{font-weight:700!important}
+.eyebrow{font-weight:600!important}
+.hero h1{font-weight:700!important;letter-spacing:-.025em!important}
+.hero p{font-weight:400!important}
+.idx button,.idx [role="tab"]{font-weight:500!important}
+.idx .active,.idx [aria-selected="true"]{font-weight:600!important}
+#search{font-weight:400!important}
+.chip{font-weight:500!important}
+.chip.active,.chip[aria-pressed="true"]{font-weight:600!important}
+.section-head,.list-head,.grp{font-weight:600!important}
+.grp{font-weight:600!important}
+.pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-weight:600!important}
+.pal-desc,.meta,.hint,.profile-note,.project-meta,.experience-context{font-weight:400!important}
+.meta span,.pill,.badge,.tag,.status,.meta-pill,.cf{font-weight:500!important}
+.pr2 h4{font-weight:600!important}
+.pr2 .pc{font-weight:600!important}
+.fch b{font-weight:600!important}
+.sq{font-weight:500!important}
+.sq.pl{font-weight:600!important}
+button.primary,.btn-primary,.admin-action-primary,.pal-actions button:first-child,.project-actions button:first-child{font-weight:600!important}
+button.secondary,.btn-secondary,.admin-action,.pal-actions button,.project-actions button{font-weight:500!important}
+.tools-intro h2,.admin-welcome h2{font-weight:700!important}
+.tool-no{font-weight:600!important}
+.tool-card b{font-weight:600!important}
+.bottom-item{font-weight:500!important}
+.bottom-item.active{font-weight:600!important}
+.bottom-item span:last-child{font-weight:500!important}
+.cmp tbody th{font-weight:500!important}
+.cmp td.win{font-weight:600!important}
+
+/* Neutralize legacy ultra-bold defaults from Clay/Glass/Mat layers. */
+.clay,.glass,.neo,.claymorphism,.glassmorphism{font-weight:400}
+strong,b{font-weight:600!important}
+.pal strong,.pal b,.card strong,.card b,.product-card strong,.product-card b{font-weight:600!important}
+
+/* Numerical / technical values can carry slightly more weight without making Persian copy heavy. */
+.price,.catalog-price,.total,.tot .g,.sc b{font-weight:700!important}
+
+/* Empty states and large decorative numerals stay quiet. */
+.empty h3,.mv-empty,.guide-empty-mark{font-weight:600!important}
