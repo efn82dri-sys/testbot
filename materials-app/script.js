@@ -10,7 +10,7 @@ const fa = n => Number(n || 0).toLocaleString('fa-IR', { maximumFractionDigits: 
 const num = v => parseFloat(String(v == null ? '' : v).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[,٬،]/g, '').replace('٫', '.')) || 0;
 const uid = () => Math.random().toString(36).slice(2, 9);
 /* نرمال‌سازی جست‌وجو: ي/ك عربی، اعداد فارسی/عربی، نیم‌فاصله، حروف بزرگ و کوچک */
-const nz = s => String(s == null ? '' : s).toLowerCase().replace(/[يىئ]/g, 'ی').replace(/ك/g, 'ک').replace(/[ۀة]/g, 'ه').replace(/[أإآٱ]/g, 'ا').replace(/[ؤ]/g, 'و').replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\u200c\u200f\u064b-\u065f\u0670]/g, '').replace(/[ـ،؛,:;.!؟?()\[\]{}\-_/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+const nz = s => String(s == null ? '' : s).toLowerCase().replace(/[يئ]/g, 'ی').replace(/ك/g, 'ک').replace(/[ۀة]/g, 'ه').replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\u200c\u200f\u064b-\u065f]/g, '').replace(/\s+/g, ' ');
 /* تاریخ شمسی (۱۴۰۵/۰۷/۰۱) → تعداد روز از آن تاریخ؛ اگر قابل‌تشخیص نبود null */
 const staleDays = js => {
   try {
@@ -158,14 +158,9 @@ function manageView() {
 }
 function render() {
   tabs();
-  const isCatalog = S.tab === 'cat';
-  const hero = document.querySelector('.hero');
-  const filters = $('#filters');
-  if (hero) hero.hidden = !isCatalog;
-  if (filters) filters.hidden = !isCatalog;
   const L = $('#list');
   L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView, tools: toolsView, recent: recentView, manage: manageView, profile: profileView }[S.tab] || catView)();
-  if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = `<button type="button" class="chip ${!S.cat ? 'active' : ''}" data-cat="">همه دسته‌ها</button>` + cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)} <small>${fa(D.companies.filter(x=>x.cat===c).reduce((n,x)=>n+x.products.length,0))}</small></button>`).join(''); const logoQ=nz(S.q||'').split(' ').filter(Boolean); const logoRows=[...D.companies].filter(c=>!logoQ.length||logoQ.every(w=>nz([c.name,c.en,c.cat,c.desc,...(c.products||[]).map(p=>[p.name,p.group,p.desc,p.unit].join(' '))].join(' ')).includes(w))).sort((a, b) => (!!b.sponsor) - (!!a.sponsor)); $('#logos').innerHTML = logoRows.map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join('') || '<span class="hint">برند منطبقی پیدا نشد</span>'; observe(); }
+  if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = `<button type="button" class="chip ${!S.cat ? 'active' : ''}" data-cat="">همه دسته‌ها</button>` + cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)} <small>${fa(D.companies.filter(x=>x.cat===c).reduce((n,x)=>n+x.products.length,0))}</small></button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
 let io; function observe() { const cs = document.querySelectorAll('.mc'); if (!('IntersectionObserver' in window)) return cs.forEach(c => c.classList.add('in-view')); io && io.disconnect(); io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.style.transitionDelay = (Number(e.target.dataset.i) % 4) * 50 + 'ms'; e.target.classList.add('in-view'); io.unobserve(e.target); } }), { threshold: .05 }); cs.forEach(c => io.observe(c)); }
@@ -174,10 +169,10 @@ function catView() {
   const q = nz(S.q.trim()), words = q.split(' ').filter(Boolean);
   const matches = [];
   D.companies.forEach(c => (c.products||[]).forEach(p => {
-    const hay = nz([c.name,c.en,c.cat,c.desc,c.site,p.name,p.group,p.unit,p.desc,p.source,p.availability,p.confidence,p.lastVerified,p.catalog,(p.features||[]).join(' '),(p.specs||[]).map(x=>x.k+' '+x.v).join(' '),(p.standards||[]).map(x=>(x.code||'')+' '+(x.verified||'')).join(' '),(p.install&&p.install.source)||'',(p.install&&p.install.standard)||'',(p.install&&p.install.steps||[]).map(x=>typeof x==='string'?x:(x.text||x.title||'')).join(' '),(p.install&&p.install.mistakes||[]).map(x=>typeof x==='string'?x:[x.text||x.title||'',x.consequence||'',x.severity||''].join(' ')).join(' ')].join(' '));
+    const hay = nz([c.name,c.en,c.cat,c.desc,p.name,p.group,p.desc,(p.features||[]).join(' '),(p.specs||[]).map(x=>x.k+' '+x.v).join(' ')].join(' '));
     if ((!S.cat || c.cat===S.cat) && (!S.brand || c.id===S.brand) && (!words.length || words.every(w=>hay.includes(w)))) matches.push({c,p});
   }));
-  const companies = D.companies.filter(c => { const h=nz([c.name,c.en,c.cat,c.desc,c.site,...c.products.map(p=>[p.name,p.group,p.unit,p.desc,p.source,(p.features||[]).join(' '),(p.specs||[]).map(x=>x.k+' '+x.v).join(' ')].join(' '))].join(' ')); return (!S.cat || c.cat===S.cat) && (!S.brand || c.id===S.brand) && (!words.length || words.every(w=>h.includes(w))); });
+  const companies = D.companies.filter(c => { const h=nz([c.name,c.en,c.cat,c.desc,...c.products.map(p=>p.name+' '+(p.group||''))].join(' ')); return (!S.cat || c.cat===S.cat) && (!S.brand || c.id===S.brand) && (!words.length || words.every(w=>h.includes(w))); });
   if (S.catalogSort==='price') matches.sort((a,b)=>(a.p.price||Infinity)-(b.p.price||Infinity));
   else if (S.catalogSort==='fresh') matches.sort((a,b)=>(b.p.lastVerified||'').localeCompare(a.p.lastVerified||''));
   else if (S.catalogSort==='durability') matches.sort((a,b)=>(b.p.durability||0)-(a.p.durability||0));
@@ -911,12 +906,12 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'search') { S.q = t.value; $('#searchClear').hidden = !t.value; clearTimeout(S.dt); S.dt = setTimeout(render, 90); return; }
+  if (t.id === 'search') { S.q = t.value; $('#searchClear').hidden = !t.value; clearTimeout(S.dt); S.dt = setTimeout(render, 160); return; }
   if (t.dataset.l) { const l = S.est.find(x => x.id === t.dataset.l); l[t.dataset.k] = num(t.value); persist(); return paint(); }
   if (t.dataset.g) { S.cfg[t.dataset.g] = num(t.value); persist(); if (S.tab === 'room') paintRoom(); else if (S.tab === 'est') paint(); return; }
 });
 document.addEventListener('change', e => { const t=e.target; if(t && t.dataset && t.dataset.i==='wizard'){ S.wizard[t.dataset.k]=t.value; phase4Track('wizard','','', {query:S.wizard.problem}); render(); } });
-document.addEventListener('keydown', e => { if (e.target && e.target.id === 'search' && e.key === 'Enter') { e.preventDefault(); clearTimeout(S.dt); S.q=e.target.value; render(); e.target.focus(); return; } if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
 addEventListener('online',()=>toast('اتصال اینترنت برقرار شد')); addEventListener('offline',()=>toast('حالت آفلاین؛ فقط اطلاعات ذخیره‌شده در دسترس است'));
 try { const th = localStorage.getItem(K.th); th && document.documentElement.setAttribute('data-theme', th); } catch (e) {}
