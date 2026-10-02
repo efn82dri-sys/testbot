@@ -127,8 +127,9 @@ function updateNavNeon() {
  const colors = {cat:'#6FE3C4',projects:'#E3B26F',tools:'#8AA2FF',education:'#E36F9A',community:'#B58AFF',manage:'#7FD1E8',profile:'#F0C878'};
  const color = colors[active.dataset.tab] || '#6FE3C4';
  const previous = nav.dataset.neonColor || color;
- indicator.style.width = Math.max(34, Math.min(54, active.clientWidth * .62)) + 'px';
- indicator.style.left = (active.offsetLeft + (active.offsetWidth - Math.max(34, Math.min(54, active.clientWidth * .62))) / 2) + 'px';
+ const width = Math.max(40, active.clientWidth - 2);
+ indicator.style.width = width + 'px';
+ indicator.style.left = (active.offsetLeft + 1) + 'px';
  indicator.style.setProperty('--neon-from', previous); indicator.style.setProperty('--neon-to', color);
  nav.style.setProperty('--active-tab-color', color); nav.dataset.neonColor = color;
  nav.querySelectorAll('.bottom-item').forEach(b => b.style.setProperty('--item-color', colors[b.dataset.tab] || color));

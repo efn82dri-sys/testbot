@@ -658,3 +658,19 @@ strong,b{font-weight:600!important}
 @media (max-width:640px){
   .guide-toolbar{margin-top:12px!important}
 }
+
+/* RAVAQ PREMIUM — sliding bottom dock */
+.bottom-nav{
+  width:min(620px,calc(100% - 20px))!important;
+  padding:6px!important;
+  border-radius:28px!important;
+  background:color-mix(in srgb,var(--rq-surface) 78%,transparent)!important;
+  box-shadow:0 18px 55px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.08)!important;
+  backdrop-filter:blur(28px) saturate(165%)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(165%)!important;
+}
+.bottom-item{min-height:58px!important;border-radius:21px!important;background:transparent!important;box-shadow:none!important;color:var(--rq-faint)!important;}
+.bottom-item.active{color:var(--rq-text)!important;background:transparent!important;}
+.bottom-item.active::before{display:none!important;}
+.bottom-nav .nav-neon{top:6px!important;height:58px!important;border-radius:21px!important;}
+@media(max-width:370px){.bottom-nav{width:calc(100% - 12px)!important;padding:5px!important;border-radius:24px!important}.bottom-nav .nav-neon{top:5px!important;height:58px!important;border-radius:19px!important}.bottom-item{min-height:58px!important}}
