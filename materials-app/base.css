@@ -1,8 +1,13 @@
-/* Self-hosted Kalameh Web fonts */
+/* Self-hosted Kalameh Web fonts — complete UI weight system */
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Thin.woff") format("woff");font-style:normal;font-weight:100;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-ExtraLight.woff") format("woff");font-style:normal;font-weight:200;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Light.woff") format("woff");font-style:normal;font-weight:300;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Regular.woff") format("woff");font-style:normal;font-weight:400;font-display:swap}
 @font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Medium.woff") format("woff");font-style:normal;font-weight:500;font-display:swap}
 @font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-SemiBold.woff") format("woff");font-style:normal;font-weight:600;font-display:swap}
-@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Bold.woff") format("woff");font-style:normal;font-weight:700 800;font-display:swap}
-@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Black.woff") format("woff");font-style:normal;font-weight:900 1000;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Bold.woff") format("woff");font-style:normal;font-weight:700;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-ExtraBold.woff") format("woff");font-style:normal;font-weight:800;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Black.woff") format("woff");font-style:normal;font-weight:900;font-display:swap}
 
 /* ============================================================
    رواق — Mini App prompts
