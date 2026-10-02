@@ -1,3 +1,9 @@
+/* Self-hosted Kalameh Web fonts */
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Medium.woff") format("woff");font-style:normal;font-weight:500;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-SemiBold.woff") format("woff");font-style:normal;font-weight:600;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Bold.woff") format("woff");font-style:normal;font-weight:700 800;font-display:swap}
+@font-face{font-family:"Kalameh";src:url("./fonts/KalamehWeb-Black.woff") format("woff");font-style:normal;font-weight:900 1000;font-display:swap}
+
 /* ============================================================
    رواق — Mini App prompts
    ============================================================ */
@@ -108,7 +114,7 @@ html {
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: 'Vazirmatn', system-ui, -apple-system, Tahoma, sans-serif;
+  font-family: 'Kalameh', system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.85;
   min-height: 100vh;

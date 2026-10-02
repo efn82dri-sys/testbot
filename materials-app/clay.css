@@ -11,7 +11,7 @@
 }
 :root[data-theme="dark"]{--bg:#25292b;--bg-elev:#303638;--bg-sunk:#1c2022;--glass:#2d3335;--glass-strong:#353c3e;--line:rgba(255,255,255,.09);--line-soft:rgba(255,255,255,.055);--ink:#f5f1e8;--ink-dim:#c1b9ac;--ink-faint:#a49b8e;--accent:#80d6bf;--accent-deep:#48ad94;--accent-ink:#163a31;--accent-text:#91e2cb;--shadow-sm:5px 5px 12px rgba(0,0,0,.23),-4px -4px 10px rgba(255,255,255,.025);--shadow-md:9px 9px 20px rgba(0,0,0,.28),-7px -7px 18px rgba(255,255,255,.025);--shadow-lg:14px 14px 28px rgba(0,0,0,.3),-10px -10px 24px rgba(255,255,255,.025);--sb-fill:#303638;--sb-edge-a:rgba(255,255,255,.08);--sb-edge-b:rgba(0,0,0,.22);--sb-shadow:7px 7px 15px rgba(0,0,0,.25),-5px -5px 13px rgba(255,255,255,.025);--sb-inner:inset 1px 1px 1px rgba(255,255,255,.035);color-scheme:dark}
 *{ -webkit-tap-highlight-color:transparent }
-body{background:var(--bg)!important;color:var(--ink);font-family:Tahoma, Arial, sans-serif;font-size:15px;line-height:1.75;letter-spacing:0}
+body{background:var(--bg)!important;color:var(--ink);font-family:'Kalameh', system-ui, sans-serif;font-size:15px;line-height:1.75;letter-spacing:0}
 .bg{opacity:.35}.orb{filter:blur(70px);opacity:.12!important}.grain{opacity:.015!important}
 .app-bar{background:color-mix(in srgb,var(--bg) 88%,transparent)!important;border:0!important;box-shadow:0 5px 18px rgba(70,57,39,.05);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 .brand{font-weight:850;color:var(--ink);font-size:14px}.brand .dot{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 13%,transparent),inset 1px 1px 2px #ffffff80}
@@ -50,7 +50,7 @@ table{border-collapse:separate!important;border-spacing:0!important;width:100%;o
 /* Consolidated accessibility rules; kept in the primary design system to avoid a fifth CSS patch layer. */
 /* Accessibility corrections for Ravaq. Keep selectors scoped; avoid global sizing that breaks chips/steppers. */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body, input, select, textarea, button { font-family: 'Vazirmatn', Tahoma, Arial, sans-serif; }
+body, input, select, textarea, button { font-family: 'Kalameh', system-ui, sans-serif; }
 body { font-size: 15px; }
 :root[data-theme="light"], :root:not([data-theme="dark"]) {
   --ink-faint: #55534f;

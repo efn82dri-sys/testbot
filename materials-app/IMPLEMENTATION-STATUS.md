@@ -69,3 +69,9 @@
 - فایل فونت Vazirmatn مجاز در ورودی موجود نبود؛ نام فونت در CSS حفظ شده اما خودمیزبانی فونت هنوز انجام نشده و در نبود فونت محلی، fallback سیستم استفاده می‌شود.
 - داده‌های ۱۰۰۰تایی ربات همچنان قرنطینه‌اند؛ این بسته به‌عنوان داده‌ی واقعی یا تأییدشده معرفی نمی‌شود. افزودن SKU واقعی نیازمند منبع رسمی قابل‌راستی‌آزمایی است.
 - موارد یکپارچه‌سازی ماژول‌ها، جایگزینی prompt/confirm، چاپ امن و آزمون‌های WebView/سرور همچنان خارج از این اصلاح تکمیلی‌اند.
+
+
+## Font integration — 2026-10-02
+- Added locally hosted Kalameh Web WOFF files for Medium (500), SemiBold (600), Bold (700–800), and Black (900–1000).
+- Main application typography now uses the `Kalameh` family; no Google Fonts request is needed.
+- Font loading and visual layout still require confirmation in Telegram WebView on target devices.
