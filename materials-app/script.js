@@ -176,7 +176,6 @@ function render() {
   tabs();
   const L = $('#list');
   L.innerHTML = ({ est: estView, fav: favView, room: roomView, cmp: cmpView, calc: calcView, library: libraryView, projects: projectsView, prices: pricesView, dealers: dealersView, sponsor: sponsorView, wizard: wizardView, education: educationView, community: communityView, market: marketView, tools: toolsView, recent: recentView, manage: manageView, profile: profileView }[S.tab] || catView)();
-  if (S.tab === 'projects') wkInit();
   if (S.tab === 'cat') { const cats = [...new Set(D.companies.map(c => c.cat).filter(Boolean))]; $('#chips').innerHTML = `<button type="button" class="chip ${!S.cat ? 'active' : ''}" data-cat="">همه دسته‌ها</button>` + cats.map(c => `<button type="button" class="chip ${S.cat === c ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)} <small>${fa(D.companies.filter(x=>x.cat===c).reduce((n,x)=>n+x.products.length,0))}</small></button>`).join(''); $('#logos').innerHTML = [...D.companies].sort((a, b) => (!!b.sponsor) - (!!a.sponsor)).map(c => `<button type="button" class="lgo ${S.brand === c.id ? 'on' : ''}" data-logo="${c.id}" aria-pressed="${S.brand === c.id}">${logoBox(c, 'lgb')}<small>${esc(c.name)}</small>${c.sponsor ? '<i class="spd" title="حامی رواق"></i>' : ''}</button>`).join(''); observe(); }
   if (S.tab === 'est') paint(); else if (S.tab === 'room') paintRoom(); else if (S.tab === 'cmp') paintCmp(); else if (S.tab === 'calc') paintCalc();
 }
@@ -278,85 +277,179 @@ function libraryView() {
   if (!rows.length) return `<div class="empty"><div class="empty-icon">📚</div><h3>کتابخانه‌ی فایل‌های اجرایی</h3><p>دیتیل DWG/PDF، فمیلی رویت، فایل اسکچاپ، تکسچر و دفترچه‌ی محصول پس از ثبت ادمین اینجا نمایش داده می‌شود.</p></div>`;
   return `<div class="grp">${fa(rows.length)} فایل ثبت‌شده</div>`+rows.map(({c,p,d})=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(c.name)} · ${esc(p.name)}</small><div class="meta">${d.version?`<span>نسخه ${esc(d.version)}</span>`:''}${d.date?`<span>${esc(d.date)}</span>`:''}${d.size?`<span>${fa(Math.round(d.size/1024))} KB</span>`:''}</div><div class="ft"><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت ربات</button><button type="button" class="act" data-prod="${esc(p.id)}">مشاهده محصول</button></div></div>`).join('');
 }
-/* ===== کارگاه زنده رواق — v2 (SVG + داده‌ی واقعی کاتالوگ) ===== */
-const wkMan=(x,y,k,s,vest)=>`<g transform="translate(${x} ${y}) scale(${s})"><g class="wk-man ${k}"><ellipse class="wk-sh" cx="0" cy="0" rx="6" ry="1.6"/><rect class="wk-leg a" x="-3.4" y="-9" width="2.8" height="9" rx="1"/><rect class="wk-leg b" x=".6" y="-9" width="2.8" height="9" rx="1"/><rect class="wk-arm b" x="3.2" y="-17.5" width="2.3" height="8.5" rx="1.1"/><rect x="-4.2" y="-18.5" width="8.4" height="10" rx="2.2" fill="${vest}"/><rect x="-4.2" y="-14.4" width="8.4" height="1.5" fill="#f3efe4" opacity=".85"/><rect class="wk-arm a" x="-5.5" y="-17.5" width="2.3" height="8.5" rx="1.1"/><circle cx="0" cy="-22.3" r="3.3" fill="#c48a64"/><path d="M-4.3-22.6a4.3 4.3 0 0 1 8.6 0z" fill="#f2c14e"/><rect x="-5" y="-22.9" width="10" height="1.2" rx=".6" fill="#d9a63a"/></g></g>`;
-function wkScene(){
-  let stars='',sky='',lat='',jib='';
-  for(let i=0;i<16;i++)stars+=`<circle class="wk-star" style="animation-delay:${-(i*.7%4).toFixed(1)}s" cx="${(i*47+13)%350+5}" cy="${(i*29+7)%58+6}" r="${i%4?.6:.9}"/>`;
-  [[8,26,22],[34,38,30],[70,22,18],[96,34,26],[300,30,24],[326,40,34],[346,24,16]].forEach(([x,h,w])=>{sky+=`<rect x="${x}" y="${205-h-18}" width="${w}" height="${h+18}"/>`;for(let j=0;j<3;j++)sky+=`<rect class="wk-lit" x="${x+4+j*6}" y="${205-h-10+j*9}" width="2.2" height="3"/>`});
-  for(let x=214;x<=277;x+=9)lat+=`<path d="M${x} 80 l4.5 8 l4.5 -8" />`;
-  for(let x=20;x<=262;x+=10)jib+=`<path d="M${x} 91 l5 -7 l5 7"/>`;
-  let mast='';for(let y=76;y<200;y+=10)mast+=`<path d="M282 ${y}h8l-8 10h8"/>`;
-  return `<svg class="wk-svg" viewBox="0 0 360 270" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false"><defs>
-<linearGradient id="wkSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0d1519"/><stop offset=".6" stop-color="#1c2a2c"/><stop offset="1" stop-color="#3a3326"/></linearGradient>
-<linearGradient id="wkGnd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2d29"/><stop offset="1" stop-color="#121413"/></linearGradient>
-<linearGradient id="wkCon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8cfbf"/><stop offset="1" stop-color="#7d7467"/></linearGradient>
-<linearGradient id="wkGls" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#bfe6dd"/><stop offset="1" stop-color="#2c5651"/></linearGradient>
-<linearGradient id="wkYel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27b"/><stop offset="1" stop-color="#c58a30"/></linearGradient>
-<radialGradient id="wkMoon"><stop offset="0" stop-color="#f6e7b8" stop-opacity=".55"/><stop offset="1" stop-color="#f6e7b8" stop-opacity="0"/></radialGradient>
-<radialGradient id="wkLamp"><stop offset="0" stop-color="#ffd98a" stop-opacity=".5"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/></radialGradient>
-<pattern id="wkHaz" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#f2c14e"/><rect width="4" height="8" fill="#1b1b1b"/></pattern></defs>
-<rect width="360" height="270" fill="url(#wkSky)"/><circle cx="62" cy="52" r="46" fill="url(#wkMoon)"/><circle cx="62" cy="52" r="7" fill="#f4e9c4" opacity=".9"/>${stars}
-<g class="wk-sky">${sky}</g>
-<rect y="205" width="360" height="65" fill="url(#wkGnd)"/><g class="wk-gridl"><path d="M0 214H360M0 226H360M0 242H360M0 262H360"/><path d="M60 205L-40 270M140 205L100 270M220 205L230 270M300 205L370 270"/></g>
-<path class="wk-road" d="M0 247H360"/>
-<g class="wk-fence"><rect x="6" y="193" width="92" height="12" fill="url(#wkHaz)" opacity=".85"/><path d="M6 193V205M52 193V205M98 193V205" /></g>
-<g class="wk-yard"><ellipse cx="124" cy="206" rx="34" ry="5" fill="#000" opacity=".35"/><rect x="100" y="198" width="48" height="6" rx="1" fill="#6f4f35"/><g fill="#c76a4b"><rect x="104" y="190" width="12" height="8" rx="1"/><rect x="118" y="190" width="12" height="8" rx="1"/><rect x="132" y="190" width="12" height="8" rx="1"/><rect x="111" y="182" width="12" height="8" rx="1"/><rect x="125" y="182" width="12" height="8" rx="1"/></g></g>
-<g class="wk-bld"><ellipse cx="228" cy="206" rx="60" ry="6" fill="#000" opacity=".4"/>
-<g class="wk-scaf"><path d="M196 126V205M212 126V205M196 146H212M196 166H212M196 186H212M196 146L212 166M196 166L212 146M196 186L212 166M196 166L212 186"/></g>
-<polygon points="262,116 274,111 274,198 262,205" fill="#8f877a"/><polygon points="262,136 274,131 274,134 262,139" fill="#a69d8e"/><polygon points="262,156 274,151 274,154 262,159" fill="#a69d8e"/><polygon points="262,176 274,171 274,174 262,179" fill="#a69d8e"/>
-<g fill="url(#wkGls)"><rect class="wk-gl g1" x="218" y="188" width="14" height="13" rx="1"/><rect class="wk-gl g2" x="238" y="188" width="14" height="13" rx="1"/><rect class="wk-gl g3" x="218" y="168" width="14" height="13" rx="1"/><rect class="wk-gl g4" x="238" y="168" width="14" height="13" rx="1"/><rect class="wk-gl g5" x="238" y="148" width="14" height="13" rx="1"/></g>
-<g fill="url(#wkCon)"><rect x="214" y="201" width="48" height="4"/><rect x="214" y="181" width="48" height="4"/><rect x="214" y="161" width="48" height="4"/><rect x="214" y="141" width="48" height="4"/><rect x="214" y="142" width="3.5" height="60"/><rect x="236" y="142" width="3.5" height="60"/><rect x="258.5" y="116" width="3.5" height="86"/></g>
-<g class="wk-rise"><rect x="214" y="121" width="48" height="4" fill="url(#wkCon)"/><rect x="214" y="122" width="3.5" height="20" fill="url(#wkCon)"/><rect x="236" y="122" width="3.5" height="20" fill="url(#wkCon)"/><path class="wk-rebar" d="M215.5 122V112M237.5 122V112M260 116V106M219 122V114M241 122V114"/></g>
-<path class="wk-net" d="M214 145H262M214 165H262M214 185H262" />
-<g class="wk-spark" transform="translate(224 156)"><circle cx="0" cy="0" r="1.1"/><circle cx="3" cy="-2" r=".8"/><circle cx="-2.5" cy="-3" r=".7"/><circle cx="4" cy="1" r=".7"/></g>
-<line x1="260" y1="116" x2="260" y2="100" stroke="#cfc7b6" stroke-width=".7"/><path class="wk-flag" d="M260 100l12 3-12 3z"/></g>
-<g class="wk-crane"><rect x="282" y="196" width="8" height="9" fill="#4a4237"/><g class="wk-lat">${'' }<rect x="282" y="76" width="8" height="122" fill="none"/>${mast}</g>
-<g class="wk-lat jb">${jib}<path d="M20 91H262M20 84H262"/><path d="M262 88H318M262 82H318" /><path d="M214 84l-0 0"/>${''}</g>
-<path class="wk-stay" d="M286 62L40 84M286 62L318 84"/><rect x="280" y="62" width="12" height="14" rx="2" fill="url(#wkYel)"/><rect x="283" y="65" width="6" height="5" rx="1" fill="#9fd0c8"/><rect x="300" y="86" width="16" height="12" rx="1" fill="#5d564b"/><circle class="wk-bcn" cx="286" cy="58" r="2.2"/>
-<g transform="translate(112 91)"><g class="wk-trol"><rect x="-5" y="-3" width="10" height="5" rx="1" fill="#3b372f"/><rect class="wk-cab" x="-.4" y="2" width=".8" height="1"/><g class="wk-swing"><g class="wk-lod"><path d="M-5 0H5L0 -8z" fill="none" stroke="#dcd3c1" stroke-width=".6"/><rect x="-6.5" y="0" width="13" height="2.2" fill="#d58c36"/><rect x="-5.5" y="2.2" width="11" height="8" rx="1" fill="#c76a4b"/><rect x="-5.5" y="6" width="11" height="1" fill="#e19a7d" opacity=".6"/></g></g></g></g></g>
-<g class="wk-fork"><g class="wk-fk"><ellipse cx="0" cy="0" rx="22" ry="3" fill="#000" opacity=".4"/><rect x="-18" y="-17" width="26" height="11" rx="3" fill="url(#wkYel)"/><path d="M-16-17V-26H-4V-17" fill="none" stroke="#e3ae4f" stroke-width="2"/><rect x="-15" y="-25" width="10" height="7" fill="#9fd0c8" opacity=".8"/><rect x="9" y="-31" width="2.4" height="28" fill="#f6ca70"/><g class="wk-fl"><rect x="10" y="-7" width="16" height="2" fill="#cfd3cf"/><rect x="12" y="-13" width="12" height="6" rx="1" fill="#c76a4b"/></g><circle class="wk-wh" cx="-10" cy="-4" r="4.6"/><circle class="wk-wh" cx="4" cy="-4" r="3.8"/><circle class="wk-bcn" cx="-8" cy="-27" r="1.4" fill="#ff9d4a"/></g></g>
-<g class="wk-cones"><path d="M148 234l3-9 3 9zM156 234l3-9 3 9z" fill="#e8743b"/><path d="M149.8 230h2.4M157.8 230h2.4" stroke="#fff" stroke-width="1"/></g>
-${wkMan(178,238,'walk',1.25,'#e8743b')}${wkMan(205,189,'hit',1.05,'#e8c43b')}${wkMan(96,236,'idle',1.2,'#e8743b')}
-<g class="wk-lampg"><circle cx="30" cy="190" r="30" fill="url(#wkLamp)"/><path d="M30 205V184" stroke="#555" stroke-width="1.4"/><circle cx="30" cy="183" r="2" fill="#ffe3a0"/></g></svg>`;
-}
-function wkPick(i){const a=wkList();if(!a.length)return null;return a[((i%a.length)+a.length)%a.length];}
-function wkList(){const r=[];(D.companies||[]).forEach(c=>(c.products||[]).forEach(p=>{if(p.sourceImageUrl)r.push({c,p})}));return r;}
-function wkCard(it){
-  if(!it)return `<div class="wk-card-in"><small>کارگاه آماده‌ی دریافت محصول</small><strong>کاتالوگ در حال بارگذاری…</strong></div>`;
-  const {c,p}=it,ver=p.lastVerified,spec=(p.specs||[]).length;
-  return `<div class="wk-card-in"><span class="wk-th"><img src="${esc(p.sourceImageUrl)}" alt="" loading="lazy" decoding="async"></span><span class="wk-tx"><small>در حال بررسی · ${esc(c.name)}</small><strong>${esc(p.name)}</strong><em>${spec?fa(spec)+' مشخصه فنی':esc(p.group||'محصول')}${ver?' · بازبینی '+esc(ver):''}</em></span><button type="button" class="wk-go" data-prod="${esc(p.id)}" aria-label="مشاهده ${esc(p.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button></div>`;
-}
-function wkPrice(it){
-  const p=it&&it.p,pr=p&&Number(p.price);
-  return `<small>قیمت اعلامی</small><strong>${pr?fa(pr.toLocaleString('en')):'استعلام'}</strong><em>${pr?'تومان / '+esc(p.unit||''):'بدون قیمت ثبت‌شده'}</em>`;
-}
-function liveWorkshop(){
-  const it=wkPick(0),np=wkList().length,nb=(D.companies||[]).length,npr=(S.projects||[]).length,all=(D.companies||[]).reduce((n,c)=>n+(c.products||[]).length,0);
-  return `<section class="wk" id="wk" data-i="0" aria-label="کارگاه زنده رواق">
-  <div class="wk-head"><div><span class="wk-kicker"><i></i>کارگاه زنده</span><strong>مصالح، قبل از انتخاب؛ در حال زندگی‌اند.</strong></div><span class="wk-live"><b></b>LIVE</span></div>
-  <div class="wk-stage">${wkScene()}<div class="wk-vig"></div>
-    <div class="wk-card wk-prod" id="wkCard" aria-live="polite">${wkCard(it)}</div>
-    <div class="wk-card wk-price" id="wkPrice">${wkPrice(it)}</div>
-    <div class="wk-bar"><i id="wkBar"></i></div>
-  </div>
-  <div class="wk-foot"><ol class="wk-steps" id="wkSteps"><li class="on"><i></i>بررسی متریال</li><li><i></i>بارگیری</li><li><i></i>اجرای پروژه</li></ol>
-  <div class="wk-stats"><span><b>${fa(all||np)}</b>محصول</span><span><b>${fa(nb)}</b>برند</span><span><b>${fa(npr)}</b>پروژه</span></div></div></section>`;
-}
-function wkInit(){
-  clearInterval(window.__wkT);const root=document.getElementById('wk');if(!root)return;
-  const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const step=()=>{
-    if(!document.body.contains(root)){clearInterval(window.__wkT);return}
-    const i=(+root.dataset.i||0)+1;root.dataset.i=i;const it=wkPick(i),card=root.querySelector('#wkCard'),pr=root.querySelector('#wkPrice');
-    [card,pr].forEach(e=>e.classList.add('swap'));
-    setTimeout(()=>{card.innerHTML=wkCard(it);pr.innerHTML=wkPrice(it);[card,pr].forEach(e=>e.classList.remove('swap'))},260);
-    root.querySelectorAll('#wkSteps li').forEach((li,n)=>li.classList.toggle('on',n===i%3));
-    const b=root.querySelector('#wkBar');b.style.animation='none';void b.offsetWidth;b.style.animation='';
-  };
-  if(!still)window.__wkT=setInterval(step,4800);
-  root.querySelector('.wk-stage').addEventListener('click',e=>{if(!e.target.closest('.wk-go'))step()});
-}
+const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده رواق">
+      <div class="rw-live-head">
+        <div>
+          <span class="rw-kicker"><i></i> کارگاه زنده</span>
+          <strong>مصالح، قبل از انتخاب؛ در حال زندگی‌اند.</strong>
+        </div>
+        <span class="rw-live-state"><b></b> LIVE</span>
+      </div>
+
+      <div class="rw-stage" aria-hidden="true">
+        <svg class="rw-scene-art" viewBox="0 0 640 340" role="presentation" focusable="false" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="rw-concrete-top" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e4ddd0"/><stop offset=".52" stop-color="#bcb3a4"/><stop offset="1" stop-color="#8b8275"/></linearGradient>
+            <linearGradient id="rw-concrete-front" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#b5ab9b"/><stop offset="1" stop-color="#72695e"/></linearGradient>
+            <linearGradient id="rw-concrete-side" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a39a8b"/><stop offset="1" stop-color="#514d47"/></linearGradient>
+            <linearGradient id="rw-glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b7ddd6"/><stop offset=".42" stop-color="#477b77"/><stop offset="1" stop-color="#1a3334"/></linearGradient>
+            <linearGradient id="rw-steel" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#b9c5c2"/><stop offset=".45" stop-color="#596563"/><stop offset="1" stop-color="#252e30"/></linearGradient>
+            <linearGradient id="rw-yellow" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffdc83"/><stop offset=".5" stop-color="#e5a83e"/><stop offset="1" stop-color="#9e6529"/></linearGradient>
+            <linearGradient id="rw-rust" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ed9b7a"/><stop offset=".48" stop-color="#c4674d"/><stop offset="1" stop-color="#7e3d30"/></linearGradient>
+            <linearGradient id="rw-fork" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7cd73"/><stop offset=".65" stop-color="#d18b30"/><stop offset="1" stop-color="#8e5924"/></linearGradient>
+            <linearGradient id="rw-wood" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#bd9668"/><stop offset="1" stop-color="#68482f"/></linearGradient>
+            <radialGradient id="rw-ground-glow"><stop stop-color="#9ed7c7" stop-opacity=".17"/><stop offset="1" stop-color="#9ed7c7" stop-opacity="0"/></radialGradient>
+            <pattern id="rw-brick-pattern" width="20" height="10" patternUnits="userSpaceOnUse"><rect width="20" height="10" fill="#b65d46"/><path d="M0 0H20M0 5H20M10 0V5M0 5V10" stroke="#e49a7e" stroke-opacity=".58" stroke-width=".8"/></pattern>
+            <pattern id="rw-mesh" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M0 0L8 8M8 0L0 8" stroke="#c2d0cb" stroke-opacity=".26" stroke-width=".7"/></pattern>
+            <filter id="rw-shadow" x="-30%" y="-30%" width="160%" height="180%"><feGaussianBlur stdDeviation="6"/></filter>
+          </defs>
+          <!-- atmospheric blueprint backdrop -->
+          <ellipse cx="344" cy="250" rx="260" ry="110" fill="url(#rw-ground-glow)"/>
+          <g fill="none" stroke="#d5e2dc" stroke-opacity=".12" stroke-width=".8">
+            <path d="M28 230L320 72L612 230L320 320Z" stroke-dasharray="3 6"/>
+            <path d="M70 235L320 100L570 235M118 260L320 150L522 260M168 285L320 203L472 285"/>
+            <path d="M320 70V318M80 205L560 205M130 178L510 178" stroke-dasharray="2 7"/>
+          </g>
+          <!-- site shadow and raised foundation -->
+          <ellipse cx="335" cy="278" rx="238" ry="29" fill="#000" opacity=".32" filter="url(#rw-shadow)"/>
+          <path d="M70 258L316 127L575 258L327 329Z" fill="#13191a" opacity=".65"/>
+          <path d="M72 247L318 116L574 247L328 318Z" fill="#323b3a" stroke="#a9b9b1" stroke-opacity=".32" stroke-width="1.2"/>
+          <path d="M72 247L328 318V329L72 258Z" fill="#202827"/>
+          <path d="M328 318L574 247V258L328 329Z" fill="#171e1f"/>
+          <path d="M88 247L318 130L558 247L328 310Z" fill="none" stroke="#d9e1db" stroke-opacity=".18" stroke-width="1"/>
+          <!-- tower crane: triangulated mast and jib -->
+          <g class="rw-svg-crane">
+            <path d="M242 253L252 253L260 76L250 76Z" fill="url(#rw-yellow)" stroke="#594329" stroke-width="1"/>
+            <path d="M247 91L258 108L246 124L257 141L245 158L256 175L244 192L255 209L243 226L252 253" fill="none" stroke="#4d3c28" stroke-width="2"/>
+            <path d="M257 91L246 108L258 124L247 141L259 158L248 175L260 192L249 209L261 226" fill="none" stroke="#f5c766" stroke-width="1.5"/>
+            <path d="M250 78L210 70L205 74L250 86L292 76L296 71Z" fill="#d69b3c" stroke="#694d2a" stroke-width="1"/>
+            <path d="M252 78L430 58L437 63L257 87Z" fill="url(#rw-yellow)" stroke="#604729" stroke-width="1"/>
+            <path d="M269 78L287 84L304 72L323 81L342 68L360 77L378 65L396 72L416 60" fill="none" stroke="#614824" stroke-width="1.5"/>
+            <path d="M266 78L286 64L306 76L326 62L346 74L366 60L386 71L407 57" fill="none" stroke="#f4c15e" stroke-width="1.2"/>
+            <path d="M252 82L210 70L207 65L215 64L251 74" fill="#e8b451" stroke="#594329" stroke-width="1"/>
+            <rect x="242" y="67" width="20" height="17" rx="2" fill="#e3aa49" stroke="#4b3b28" stroke-width="1.2"/>
+            <path d="M250 66L250 59L257 59L257 67" fill="none" stroke="#e3aa49" stroke-width="2"/>
+            <g class="rw-svg-hoist">
+              <path d="M388 63V125" stroke="#d8d8cb" stroke-width="1.6"/>
+              <path d="M384 125Q388 133 393 125" fill="none" stroke="#d8d8cb" stroke-width="2"/>
+              <g class="rw-svg-load">
+                <path d="M378 128L397 128L402 140L373 140Z" fill="#8e4d3c" stroke="#f4c1a7" stroke-opacity=".65" stroke-width="1"/>
+                <path d="M378 128L397 128L397 136L378 136Z" fill="url(#rw-rust)"/>
+                <path d="M373 140L402 140L397 145L378 145Z" fill="#61392f"/>
+              </g>
+            </g>
+          </g>
+          <!-- building core: slab, columns, exposed structure -->
+          <g class="rw-svg-building">
+            <path d="M286 134L390 81L475 122L369 177Z" fill="#101516" opacity=".6"/>
+            <path d="M282 128L386 75L467 114L363 169Z" fill="url(#rw-concrete-top)" stroke="#e8e1d4" stroke-opacity=".62" stroke-width="1.1"/>
+            <path d="M282 128L363 169V265L282 223Z" fill="url(#rw-concrete-front)" stroke="#d9d0c0" stroke-opacity=".5" stroke-width="1"/>
+            <path d="M363 169L467 114V211L363 265Z" fill="url(#rw-concrete-side)" stroke="#c8bfb0" stroke-opacity=".38" stroke-width="1"/>
+            <!-- floor slab edges -->
+            <path d="M282 160L363 201L467 146L467 154L363 209L282 168Z" fill="#d4cbbc" stroke="#6d675e" stroke-width=".8"/>
+            <path d="M282 192L363 233L467 178L467 186L363 241L282 200Z" fill="#b6ad9e" stroke="#5c5952" stroke-width=".8"/>
+            <!-- structural columns and open bays -->
+            <g fill="#d0c7b8" stroke="#615d55" stroke-width="1">
+              <path d="M294 133L301 136V222L294 218Z"/><path d="M326 149L333 152V238L326 234Z"/><path d="M356 164L363 168V263L356 259Z"/>
+              <path d="M376 119L382 116V207L376 211Z"/><path d="M409 102L415 99V190L409 194Z"/><path d="M440 88L446 85V176L440 179Z"/>
+            </g>
+            <!-- glazed bays and shadowed interior -->
+            <g stroke="#d7e7df" stroke-opacity=".48" stroke-width="1">
+              <path d="M302 142L322 152V179L302 169Z" fill="url(#rw-glass)"/><path d="M334 158L351 166V193L334 184Z" fill="url(#rw-glass)"/>
+              <path d="M302 175L322 185V211L302 201Z" fill="#263b3a"/><path d="M334 191L351 200V226L334 217Z" fill="url(#rw-glass)"/>
+              <path d="M384 124L402 114V139L384 149Z" fill="url(#rw-glass)"/><path d="M416 107L434 97V122L416 132Z" fill="url(#rw-glass)"/>
+              <path d="M384 157L402 147V172L384 182Z" fill="#243d3b"/><path d="M416 140L434 130V155L416 165Z" fill="url(#rw-glass)"/>
+            </g>
+            <!-- unfinished facade / rebar -->
+            <path d="M285 128L386 75L467 114L363 169Z" fill="url(#rw-mesh)" opacity=".6"/>
+            <g stroke="#b9c8c1" stroke-width="1.2" stroke-linecap="round" opacity=".82">
+              <path d="M291 122L291 107M299 118L299 103M307 114L307 99M315 110L315 95M323 106L323 91M331 102L331 87M339 98L339 83M347 94L347 79M355 90L355 75M363 86L363 71M371 82L371 67"/>
+            </g>
+            <!-- side scaffold with diagonal bracing -->
+            <g fill="none" stroke="#c4cfca" stroke-width="1.6" stroke-linecap="round" opacity=".92">
+              <path d="M470 114L492 125V225L470 213M492 125L506 117V216L492 225M470 146L506 158M470 180L506 192M470 114L506 126M470 213L506 216"/>
+              <path d="M470 114L506 158M506 126L470 180M470 146L506 192M506 158L470 213M470 180L506 216" stroke="#81918b" stroke-width="1.1"/>
+            </g>
+            <path d="M467 114L492 125L506 117L481 106Z" fill="#d4cbbb" stroke="#6e6a61" stroke-width=".8"/>
+          </g>
+          <!-- small workers: high-vis PPE, purposeful poses -->
+          <g class="rw-svg-worker rw-worker-one" transform="translate(278 228)">
+            <ellipse cx="0" cy="21" rx="11" ry="3.5" fill="#000" opacity=".32"/>
+            <path d="M-5 10L-7 20L-3 21L1 12M3 11L5 20L9 19L7 9" fill="#252c2d" stroke="#171c1d" stroke-width="1"/>
+            <path d="M-7 -1L7 -1L9 11L-8 11Z" fill="#3c8579" stroke="#c5d8d0" stroke-opacity=".5" stroke-width=".8"/>
+            <path d="M-7 3L8 4M-5 8L8 8" stroke="#f1c45f" stroke-width="2"/>
+            <circle cx="0" cy="-7" r="5.5" fill="#d6a77f"/>
+            <path d="M-7 -8Q-6 -16 1 -15Q7 -14 7 -8Z" fill="url(#rw-yellow)" stroke="#72552d" stroke-width=".8"/>
+            <path d="M-6 -7L7 -7" stroke="#ffe6a1" stroke-width="1.2"/>
+            <path d="M-6 1L-13 7L-10 10L-3 5M6 1L12 -3L14 0L8 7" fill="none" stroke="#d6a77f" stroke-width="3" stroke-linecap="round"/>
+            <path d="M-4 -1L-1 3L2 -1" fill="none" stroke="#e2e9df" stroke-width="1"/>
+          </g>
+          <g class="rw-svg-worker rw-worker-two" transform="translate(450 241) scale(.9)">
+            <ellipse cx="0" cy="20" rx="10" ry="3" fill="#000" opacity=".32"/>
+            <path d="M-5 8L-6 19L-2 20L1 10M3 9L5 19L9 18L7 8" fill="#283032" stroke="#141a1b" stroke-width="1"/>
+            <path d="M-7 -2L7 -2L9 10L-8 10Z" fill="#d58b37" stroke="#f8d58b" stroke-opacity=".6" stroke-width=".8"/>
+            <path d="M-7 3L8 4M-5 8L8 8" stroke="#f5e5b3" stroke-width="1.7"/>
+            <circle cx="0" cy="-8" r="5.2" fill="#c9926e"/>
+            <path d="M-7 -9Q-6 -16 1 -16Q7 -15 7 -9Z" fill="url(#rw-yellow)" stroke="#72552d" stroke-width=".8"/>
+            <path d="M-5 0L-12 -5L-14 -2L-7 5M6 0L12 5L10 8L4 5" fill="none" stroke="#c9926e" stroke-width="3" stroke-linecap="round"/>
+          </g>
+          <!-- brick stacks and timber pallet -->
+          <g transform="translate(160 244)">
+            <path d="M-4 24L35 4L79 24L39 45Z" fill="#090d0e" opacity=".42"/>
+            <path d="M0 12L38 -7L74 10L36 29Z" fill="url(#rw-brick-pattern)" stroke="#f1b29a" stroke-opacity=".55" stroke-width=".8"/>
+            <path d="M0 12L36 29V38L0 21Z" fill="#8d4738"/><path d="M36 29L74 10V19L36 38Z" fill="#75382e"/>
+            <path d="M6 3L43 20M18 -3L55 14M30 -8L67 9" stroke="#e9a188" stroke-opacity=".65" stroke-width="1"/>
+            <path d="M-3 39L36 57L79 36L39 18Z" fill="url(#rw-wood)" stroke="#4b3727" stroke-width="1"/>
+            <path d="M-3 39L-3 44L36 62L79 41L79 36L36 57Z" fill="#503a29"/>
+            <path d="M4 39L43 57M20 31L59 49M37 24L76 42" stroke="#d0a878" stroke-opacity=".55" stroke-width="2"/>
+          </g>
+          <!-- stone sample crates / slabs -->
+          <g transform="translate(498 251)">
+            <ellipse cx="0" cy="21" rx="45" ry="14" fill="#000" opacity=".28"/>
+            <path d="M-37 2L-4 -15L34 2L1 20Z" fill="#d9d1c4" stroke="#f0e9dd" stroke-width=".8"/>
+            <path d="M-37 2L1 20V31L-37 13Z" fill="#8b8174" stroke="#d4c9b8" stroke-width=".7"/>
+            <path d="M1 20L34 2V13L1 31Z" fill="#5c5852" stroke="#b6ab9b" stroke-width=".7"/>
+            <path d="M-31 -3L3 13M-21 -8L13 8M-11 -12L23 4" stroke="#a69a89" stroke-width="1.1" opacity=".7"/>
+            <path d="M-29 -10L3 -26L31 -12L0 4Z" fill="#a9a093" stroke="#e1d8ca" stroke-width=".8"/>
+            <path d="M-29 -10L0 4V10L-29 -4Z" fill="#6d675e"/><path d="M0 4L31 -12V-6L0 10Z" fill="#57534d"/>
+          </g>
+          <!-- compact forklift, moving very subtly -->
+          <g class="rw-svg-forklift" transform="translate(92 264)">
+            <ellipse cx="28" cy="25" rx="36" ry="7" fill="#000" opacity=".3"/>
+            <path d="M3 8L11 -3L34 -3L42 8L42 20L2 20Z" fill="url(#rw-fork)" stroke="#6b4b24" stroke-width="1"/>
+            <path d="M12 -3L15 -16L29 -16L34 -3Z" fill="#d7a03e" stroke="#704d23" stroke-width="1"/>
+            <path d="M16 -5L18 -13L27 -13L30 -5Z" fill="url(#rw-glass)" stroke="#fff1c5" stroke-opacity=".5" stroke-width=".8"/>
+            <path d="M35 -8L39 -8L39 18L35 18Z" fill="#d9a84c" stroke="#664c2a" stroke-width=".8"/>
+            <path d="M38 17L62 17L62 20L38 20Z" fill="#b7c1bd" stroke="#39413f" stroke-width=".8"/>
+            <path d="M3 7L-2 7L-2 16L3 16" fill="#f1c05c"/>
+            <circle cx="11" cy="20" r="7" fill="#202628" stroke="#687270" stroke-width="2"/><circle cx="11" cy="20" r="2.2" fill="#c1c8c3"/>
+            <circle cx="36" cy="20" r="7" fill="#202628" stroke="#687270" stroke-width="2"/><circle cx="36" cy="20" r="2.2" fill="#c1c8c3"/>
+            <path d="M4 2L8 2M31 2L35 2" stroke="#fff0bd" stroke-width="1.4"/>
+          </g>
+          <!-- subtle measurement markers and material labels -->
+          <g fill="none" stroke="#9ce5d2" stroke-opacity=".6" stroke-width=".9">
+            <path d="M270 282L270 294L298 294"/><path d="M456 275L456 287L474 287"/>
+            <circle cx="270" cy="282" r="2.5" fill="#9ce5d2" stroke="none"/><circle cx="456" cy="275" r="2.5" fill="#9ce5d2" stroke="none"/>
+          </g>
+          <g font-family="Arial,sans-serif" font-size="7" letter-spacing="1.2" fill="#d6e8e0" fill-opacity=".7">
+            <text x="281" y="302">STRUCTURE / 03</text><text x="467" y="296">STONE / A2</text>
+          </g>
+          <path d="M112 300L143 284L160 292L129 308Z" fill="#e2b15b" opacity=".75"/>
+          <path d="M118 299L143 286" stroke="#fff0c4" stroke-width="1" opacity=".75"/>
+        </svg>
+        <div class="rw-material-card">
+          <small>در حال بررسی</small><strong>سنگ طبیعی</strong><span><i></i><i></i><i></i><em>۳۶۰°</em></span>
+        </div>
+        <div class="rw-price-card"><small>استعلام قیمت</small><strong>۲,۸۵۰,۰۰۰</strong><span>تومان / m²</span></div>
+        <div class="rw-route"><i></i><i></i><i></i><span>ارسال به پروژه</span></div>
+      </div>
+
+      <div class="rw-live-foot">
+        <span><i class="rw-mini-dot"></i> بررسی متریال</span>
+        <span><i class="rw-mini-dot amber"></i> بارگیری</span>
+        <span><i class="rw-mini-dot coral"></i> اجرای پروژه</span>
+      </div>
+    </section>`;
 function projectsView() {
   const rows = S.projects || [];
   const savedProjects = rows.length
@@ -368,7 +461,7 @@ function projectsView() {
         <div class="ft project-actions"><button type="button" class="act act-primary" data-x="project-load" data-pid="${esc(pr.id)}">بارگذاری پروژه</button><button type="button" class="act" data-x="project-delete" data-pid="${esc(pr.id)}">حذف</button></div>
       </article>`).join('')}</div>`
     : '<div class="empty project-empty"><p>هنوز پروژه‌ای ذخیره نشده است.</p></div>';
-  return `<div class="projects-layout">${liveWorkshop()}<section class="tot projects-summary"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft project-summary-actions"><button type="button" class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button type="button" class="act" data-x="project-new">پروژه‌ی جدید</button><button type="button" class="act" data-x="project-refresh">همگام‌سازی</button></div></section>${savedProjects}</div>`;
+  return `<div class="projects-layout">${liveWorkshop}<section class="tot projects-summary"><b>پروژه‌ها روی سرور رواق</b><p class="hint">پروژه‌ها به حساب تلگرام متصل‌اند؛ برای ذخیره‌ی دائمی، دیسک پایدار Render لازم است.</p><div class="ft project-summary-actions"><button type="button" class="act act-primary" data-x="project-save">ذخیره‌ی وضعیت فعلی</button><button type="button" class="act" data-x="project-new">پروژه‌ی جدید</button><button type="button" class="act" data-x="project-refresh">همگام‌سازی</button></div></section>${savedProjects}</div>`;
 }
 function pricesView() {
   const rows=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>{if((p.priceLog||[]).length) rows.push({c,p,log:p.priceLog});}));

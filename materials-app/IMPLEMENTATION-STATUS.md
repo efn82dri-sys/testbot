@@ -44,3 +44,10 @@
 - طراحی کارت تجربه‌ها، وضعیت ارسال‌های شخصی، حالت بارگذاری، حالت خالی و حالت عدم دسترسی به سرور؛ بدون تولید تجربه یا راهنمای فنی ساختگی.
 - استفاده از توکن‌های تم رواق و قواعد مستقل برای Light/Dark، با breakpointهای موبایل و رعایت کاهش حرکت.
 - منطق رأی‌دهی، ثبت تجربه، بررسی مدیر، چک‌لیست، چاپ و اشتراک‌گذاری قبلی حفظ شده‌اند.
+
+## Living Workshop — Pro Scene Pass — 2026-10-02
+- Replaced the primitive CSS block shapes with a custom inline SVG diorama, preserving the existing overall frame dimensions and project-tab placement.
+- Added multi-plane concrete structure, glazed bays, slab edges, exposed rebar, scaffold bracing, triangulated tower crane, suspended masonry load, brick pallet, stone slabs, PPE workers, compact forklift, isometric foundation, blueprint grid, ambient lighting and contact shadows.
+- Added restrained independent loops for the crane hoist, forklift and worker micro-movement; reduced-motion preferences disable scene animation.
+- Kept the material and quote cards as HTML overlays for legibility, and retained the existing outer card, theme behavior, responsive layout and application logic.
+- Updated asset query strings to avoid stale CSS/JS cache.
