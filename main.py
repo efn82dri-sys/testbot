@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import tempfile
 import uuid
 import zipfile
@@ -9783,11 +9784,11 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 added += 1
 
         _mat_clean_company(live_co)
-    # فایل کامل (کلید companies) مرجع قطعی است: برند/محصولی که در آن نیست از کاتالوگ زنده حذف می‌شود.
+    # فقط اگر در فایل "replaceAll": true باشد، فایل مرجع قطعی است (ورود تک‌برندی چیزی را حذف نمی‌کند): برند/محصولی که در آن نیست از کاتالوگ زنده حذف می‌شود.
     # قیمت و عکسِ محصولاتی که در فایل هستند (هم‌شناسه) دست‌نخورده می‌ماند.
     global _mat_last_removed
     _mat_last_removed = (0, 0)
-    if isinstance(payload, dict) and isinstance(payload.get("companies"), list):
+    if isinstance(payload, dict) and payload.get("replaceAll") is True and isinstance(payload.get("companies"), list):
         keep = {str(c.get("id")): {str(p.get("id")) for p in c.get("products", []) if isinstance(p, dict)} for c in incoming_companies}
         rc = rp = 0
         kept = []
