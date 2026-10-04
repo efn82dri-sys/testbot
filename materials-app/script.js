@@ -98,7 +98,7 @@ const CONF = { datasheet: 'تأییدشده با دیتاشیت', field: 'تجر
 const mUrl = (m, z) => '/materials/m/' + m.key + '?s=' + z;
 const letter = c => esc((c.en || c.name || '').trim()[0] || '؟');
 const logoBox = (c, cls) => c.logo && c.logo.key ? `<div class="${cls} has-logo"><img src="${mUrl(c.logo, 'g')}" alt="${esc(c.name)}" decoding="async"></div>` : `<div class="${cls}">${letter(c)}</div>`;
-const externalProductImage = p => { const u=String(p && p.sourceImageUrl || '').trim(); return (/^https?:\/\//i.test(u) || /^\/materials\/images\/[a-z0-9._-]+\.(?:webp|png|jpe?g)$/i.test(u)) ? u : ''; };
+const externalProductImage = p => ''; /* عکس فقط از آپلود دستی داخل ربات؛ هیچ آدرس بیرونی بارگذاری نمی‌شود */
 const thumb = (c, p) => { const m = (p.images || [])[0]; const ext = externalProductImage(p); return m ? `<div class="im"><img src="${mUrl(m, 't')}" alt="${esc(p.name)}" loading="lazy" decoding="async" onload="this.parentNode.classList.add('ld')"></div>` : ext ? `<div class="im"><img src="${esc(ext)}" alt="${esc(p.name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('ld')" onerror="this.parentNode.classList.add('ph');this.remove()"></div>` : `<div class="im ph"><b>${letter(c)}</b><small>در حال تکمیل</small></div>`; };
 const specsText = a => (a || []).map(x => x.k + ': ' + x.v).join('\n');
 const parseSpecs = t => String(t || '').split('\n').map(l => { const i = l.search(/[:：]/); return i > 0 ? { k: l.slice(0, i).trim(), v: l.slice(i + 1).trim() } : null; }).filter(x => x && x.k && x.v);

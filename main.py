@@ -180,6 +180,9 @@ MATERIALS_PROJECTS_FILE = Path(__file__).parent / "data" / "materials_projects.j
 MATERIALS_EVENTS_FILE = Path(__file__).parent / "data" / "materials_events.json"
 MATERIALS_QUOTES_FILE = Path(__file__).parent / "data" / "materials_quotes.json"
 MATERIALS_COMMUNITY_FILE = Path(__file__).parent / "data" / "materials_community.json"
+MATERIALS_STAGING_FILE = Path(__file__).parent / "data" / "materials_staging.json"
+MATERIALS_IMPORTS_FILE = Path(__file__).parent / "data" / "materials_imports.json"
+MATERIALS_VERSIONS_DIR = Path(__file__).parent / "data" / "materials_versions"
 MAT_IMAGES_MAX = 6                       # حداکثر عکس برای هر محصول
 MAT_TG_LIMIT = 20 * 1024 * 1024          # سقف دانلود فایل توسط ربات
 MAT_PENDING_TTL = 20 * 60                # مهلت انتظار برای عکس بعد از «افزودن عکس» (ثانیه)
@@ -4803,45 +4806,30 @@ async def materials_image_received(message: Message):
         return
     if pend.get("kind") == "catalog":
         doc = message.document
-        if not doc:
-            await message.answer("❗️ فایل کاتالوگ را حتماً به‌صورت «فایل/Document» بفرست؛ عکس یا متن قابل‌قبول نیست.")
-            return
-        filename = (doc.file_name or "").lower()
-        mime = (doc.mime_type or "").lower()
-        if not (filename.endswith(".json") or mime in ("application/json", "text/json", "text/plain")):
-            await message.answer("❗️ فقط فایل JSON کاتالوگ پذیرفته می‌شود؛ مثل materials.json یا leca-products-imported.json")
-            return
-        if (doc.file_size or 0) > MAT_TG_LIMIT:
-            await message.answer("❗️ حجم کاتالوگ بیشتر از ۲۰ مگابایت است.")
-            return
+        if not doc: await message.answer("❗️ فایل کاتالوگ را به‌صورت Document بفرست."); return
+        filename=(doc.file_name or "").lower(); mime=(doc.mime_type or "").lower()
+        if not (filename.endswith(".json") or mime in ("application/json","text/json","text/plain")): await message.answer("❗️ فقط فایل JSON پذیرفته می‌شود."); return
+        if (doc.file_size or 0)>MAT_TG_LIMIT: await message.answer("❗️ حجم کاتالوگ بیشتر از ۲۰ مگابایت است."); return
         try:
-            downloaded = await bot.download(doc.file_id)
-            raw = downloaded.read() if hasattr(downloaded, "read") else bytes(downloaded or b"")
-            payload = json.loads(raw.decode("utf-8-sig"))
+            downloaded=await bot.download(doc.file_id); raw=downloaded.read() if hasattr(downloaded,"read") else bytes(downloaded or b""); payload=json.loads(raw.decode("utf-8-sig"))
+            import copy
             async with _mat_lock:
-                live = load_materials_data()
-                added, updated, company_count = _mat_merge_uploaded_catalog(payload, live)
-                if added + updated <= 0:
-                    raise ValueError("در فایل محصول قابل‌واردکردن پیدا نشد.")
-                _mat_write(live)
-            _mat_pending.pop(uid, None)
-            await message.answer(
-                "✅ کاتالوگ با موفقیت وارد شد.\n\n"
-                f"🏷 برندهای بررسی‌شده: {to_persian_num(company_count)}\n"
-                f"➕ محصولات جدید: {to_persian_num(added)}\n"
-                f"🔄 محصولات به‌روزرسانی‌شده: {to_persian_num(updated)}\n\n"
-                "محصولات قبلی حذف نشدند و قیمت‌ها، تصاویر، فایل‌ها و تاریخچه‌ی قیمت‌های ثبت‌شده حفظ شدند. "
-                "مینی‌اپ مصالح را دوباره باز کن یا از بخش مدیریت «بازخوانی از سرور» را بزن."
-            )
-            logger.info("Catalog import by admin %s: added=%s updated=%s companies=%s", uid, added, updated, company_count)
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            await message.answer("❌ فایل قابل‌خواندن نیست یا JSON معتبر نیست. فایل materials.json یا leca-products-imported.json را به‌صورت Document بفرست.")
-            logger.warning("Invalid catalog JSON uploaded by %s: %s", uid, e)
-        except ValueError as e:
-            await message.answer(f"❌ کاتالوگ وارد نشد: {str(e)[:300]}")
-        except Exception as e:
-            logger.error("Catalog import failed for admin %s: %s", uid, e, exc_info=True)
-            await message.answer("❌ واردکردن کاتالوگ ناموفق بود؛ اطلاعات قبلی تغییر نکرده‌اند. گزارش خطا در لاگ سرور ثبت شد.")
+                live=load_materials_data(); preview=copy.deepcopy(live); before=_mat_quality_catalog(live); added,updated,companies=_mat_merge_uploaded_catalog(payload,preview); after=_mat_quality_catalog(preview); token=secrets.token_hex(8)
+                row={"token":token,"createdAt":datetime.now(timezone.utc).isoformat(),"createdBy":uid,"status":"pending","stats":{"added":added,"updated":updated,"companies":companies,"before":before,"after":after},"data":preview}
+                staging=_mat_staging_read(); staging.setdefault("imports",[]).append(row); staging["imports"]=staging["imports"][-5:]; _mat_staging_write(staging); _mat_import_log({"token":token,"at":datetime.now(timezone.utc).isoformat(),"by":uid,"status":"staged","stats":row["stats"]})
+            _mat_pending.pop(uid,None); st=after["states"]
+            kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ تأیید و انتشار",callback_data=f"matimport:approve:{token}",style="success")],[InlineKeyboardButton(text="❌ رد نسخه",callback_data=f"matimport:reject:{token}",style="danger")]])
+            msg=("📦 <b>نسخه جدید آماده بررسی است</b>\n\n"
+                 f"🏷 برند: {to_persian_num(companies)}\n"
+                 f"➕ جدید: {to_persian_num(added)}\n"
+                 f"🔄 به‌روزشده: {to_persian_num(updated)}\n"
+                 f"🗑 حذف‌شده (در فایل نبود): {to_persian_num(_mat_last_removed[0])} برند · {to_persian_num(_mat_last_removed[1])} محصول\n"
+                 f"📊 کیفیت میانگین: {to_persian_num(after['avgScore'])}/۱۰۰\n"
+                 f"✅ کامل: {to_persian_num(st.get('COMPLETE',0))} · ⚠️ نیازمند بررسی: {to_persian_num(st.get('NEEDS_REVIEW',0))} · 📝 ناقص: {to_persian_num(st.get('INCOMPLETE',0))}\n\n"
+                 "هیچ تغییری هنوز روی کاتالوگ زنده اعمال نشده است.")
+            await message.answer(msg,reply_markup=kb)
+        except (UnicodeDecodeError,json.JSONDecodeError): await message.answer("❌ فایل JSON معتبر نیست.")
+        except Exception as e: logger.warning("materials staged import failed: %s",e,exc_info=True); await message.answer(f"❌ بررسی کاتالوگ ناموفق بود: {str(e)[:180]}")
         return
 
     if pend.get("kind") == "file":
@@ -9401,6 +9389,8 @@ def _mat_merge_seed() -> None:
     هیچ‌وقت به سرور نمی‌رسد. این تابع (یک‌بار به‌ازای هر seedRev) موارد جدید seed را اضافه می‌کند و محصولاتی را که
     ادمین هنوز نه منبع، نه مشخصات و نه ویژگی برایشان ثبت نکرده (یعنی تکمیل‌نشده‌اند) با نسخه‌ی seed جایگزین می‌کند.
     قیمت، عکس و لوگوی ثبت‌شده‌ی ادمین و محصولاتِ دارای منبع هرگز دست نمی‌خورند."""
+    # ⛔ غیرفعال‌شده: برندها و محصولات فقط از فایل JSON قالب (آپلود از داخل ربات) می‌آیند، نه از seed داخل کد.
+    return
     try:
         seed = json.loads(MATERIALS_SEED_FILE.read_text(encoding="utf-8"))
         if not MATERIALS_LIVE_FILE.exists():
@@ -9442,7 +9432,9 @@ def _mat_merge_seed() -> None:
     logger.info("materials: seed rev %s merged", rev)
 
 def load_materials_data() -> dict:
-    path = MATERIALS_LIVE_FILE if MATERIALS_LIVE_FILE.exists() else MATERIALS_SEED_FILE
+    if not MATERIALS_LIVE_FILE.exists():
+        return {"v": 2, "companies": []}   # کاتالوگ خالی تا وقتی JSON قالب از ربات آپلود شود
+    path = MATERIALS_LIVE_FILE
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -9657,7 +9649,8 @@ def _mat_clean_company(c: dict) -> None:
     c["links"] = links
 
 def _mat_default_catalog_image(company: dict, product: dict) -> str:
-    """تصویر نماینده از دفترچهٔ برند؛ گونه‌های یک خانواده تصویر مشترک دارند."""
+    """⛔ غیرفعال: عکس‌ها فقط دستی از داخل ربات آپلود می‌شوند؛ هیچ تصویر پیش‌فرضی تعیین نمی‌شود."""
+    return ""
     if str(company.get("id", "")).lower() != "leca" and "لیکا" not in str(company.get("name", "")):
         return ""
     pid = str(product.get("id") or "").lower()
@@ -9673,6 +9666,8 @@ def _mat_default_catalog_image(company: dict, product: dict) -> str:
         return "/materials/images/leca-structural-concrete.webp"
     return "/materials/images/leca-aggregate.webp"
 
+
+_mat_last_removed = (0, 0)
 
 def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, int]:
     """ادغام امن JSON کاتالوگ در دیتای زنده؛ حذف انجام نمی‌شود و فیلدهای مدیریتی حفظ می‌شوند."""
@@ -9696,6 +9691,12 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
     live.setdefault("companies", [])
     if not isinstance(live["companies"], list):
         raise ValueError("ساختار برندهای کاتالوگ زنده معتبر نیست.")
+    # عکس فقط دستی: هرگونه آدرس تصویر بیرونی در فایل قالب نادیده گرفته می‌شود
+    for _c in incoming_companies:
+        for _p in (_c.get("products") or []) if isinstance(_c, dict) else []:
+            if isinstance(_p, dict):
+                _p["sourceImageUrl"] = ""
+                _p.pop("catalogImageUnavailable", None)
     added = updated = company_count = 0
     protected_company_fields = {"logo", "sponsor", "dealers"}
     protected_product_fields = {"price", "priceSource", "priceUpdatedAt", "images", "docs", "priceLog", "dealers", "manualNotes"}
@@ -9782,6 +9783,25 @@ def _mat_merge_uploaded_catalog(payload: object, live: dict) -> tuple[int, int, 
                 added += 1
 
         _mat_clean_company(live_co)
+    # فایل کامل (کلید companies) مرجع قطعی است: برند/محصولی که در آن نیست از کاتالوگ زنده حذف می‌شود.
+    # قیمت و عکسِ محصولاتی که در فایل هستند (هم‌شناسه) دست‌نخورده می‌ماند.
+    global _mat_last_removed
+    _mat_last_removed = (0, 0)
+    if isinstance(payload, dict) and isinstance(payload.get("companies"), list):
+        keep = {str(c.get("id")): {str(p.get("id")) for p in c.get("products", []) if isinstance(p, dict)} for c in incoming_companies}
+        rc = rp = 0
+        kept = []
+        for c in live["companies"]:
+            cid = str(c.get("id")) if isinstance(c, dict) else ""
+            if cid not in keep:
+                rc += 1; rp += len(c.get("products", []) or []) if isinstance(c, dict) else 0
+                continue
+            before = len(c.get("products", []))
+            c["products"] = [p for p in c.get("products", []) if isinstance(p, dict) and str(p.get("id")) in keep[cid]]
+            rp += before - len(c["products"])
+            kept.append(c)
+        live["companies"] = kept
+        _mat_last_removed = (rc, rp)
     live["v"] = max(int(live.get("v", 1) or 1), 2)
     return added, updated, company_count
 
@@ -9896,6 +9916,39 @@ async def handle_materials_sheet(request: web.Request) -> web.Response:
         logging.warning("materials sheet send failed: %s", e)
         return web.json_response({"ok": False, "error": "ارسال به چت ناموفق بود"}, status=502)
     return web.json_response({"ok": True, "pages": len(raws)})
+
+def _mat_quality_product(p: dict) -> tuple[str,int,list[str]]:
+    required={"name":"نام","group":"گروه","unit":"واحد","desc":"توضیح","features":"ویژگی‌ها","specs":"مشخصات فنی","standards":"استانداردها","source":"منبع","lastVerified":"تاریخ بررسی"}
+    missing=[label for k,label in required.items() if p.get(k) in (None,"",[],{})]; score=max(0,100-round(len(missing)*100/len(required)))
+    return ("COMPLETE" if not missing else ("NEEDS_REVIEW" if score>=50 else "INCOMPLETE"),score,missing)
+
+def _mat_quality_catalog(data: dict) -> dict:
+    companies=data.get("companies",[]) if isinstance(data,dict) else []; products=[p for c in companies if isinstance(c,dict) for p in c.get("products",[]) if isinstance(p,dict)]; states={"COMPLETE":0,"NEEDS_REVIEW":0,"INCOMPLETE":0,"INVALID":0}; scores=[]
+    for p in products: st,sc,_=_mat_quality_product(p); states[st]=states.get(st,0)+1; scores.append(sc)
+    return {"companies":len(companies),"products":len(products),"states":states,"avgScore":round(sum(scores)/len(scores),1) if scores else 0}
+def _mat_staging_read(): return _mat_json_read(MATERIALS_STAGING_FILE,{"version":1,"imports":[]})
+def _mat_staging_write(data): _mat_json_write(MATERIALS_STAGING_FILE,data)
+def _mat_import_log(row):
+    data=_mat_json_read(MATERIALS_IMPORTS_FILE,{"imports":[]}); data.setdefault("imports",[]).append(row); data["imports"]=data["imports"][-100:]; _mat_json_write(MATERIALS_IMPORTS_FILE,data)
+
+@dp.callback_query(F.data.startswith("matimport:"))
+async def materials_import_callback(callback: CallbackQuery):
+    if not is_admin(int(callback.from_user.id)): await callback.answer("دسترسی مدیر لازم است.",show_alert=True); return
+    parts=(callback.data or "").split(":",2)
+    if len(parts)!=3: await callback.answer("درخواست نامعتبر است.",show_alert=True); return
+    action,token=parts[1],parts[2]
+    async with _mat_lock:
+        staging=_mat_staging_read(); row=next((x for x in staging.get("imports",[]) if x.get("token")==token),None)
+        if not row or row.get("status")!="pending": await callback.answer("این نسخه دیگر در انتظار تأیید نیست.",show_alert=True); return
+        if action=="reject":
+            row.update(status="rejected",rejectedAt=datetime.now(timezone.utc).isoformat(),rejectedBy=int(callback.from_user.id)); _mat_staging_write(staging); _mat_import_log({"token":token,"at":datetime.now(timezone.utc).isoformat(),"by":int(callback.from_user.id),"status":"rejected"}); await callback.message.edit_text("❌ نسخه کاتالوگ رد شد و هیچ تغییری روی دیتای زنده اعمال نشد."); await callback.answer(); return
+        ok,_=await backup_data_dir_to_telegram()
+        if not ok: await callback.answer("بکاپ قبل از انتشار ناموفق بود.",show_alert=True); return
+        data=row.get("data") or {}; version=int(load_materials_data().get("catalogVersion",0) or 0)+1; data.update(catalogVersion=version,catalogReleasedAt=datetime.now(timezone.utc).isoformat(),catalogReleasedBy=int(callback.from_user.id))
+        MATERIALS_VERSIONS_DIR.mkdir(parents=True,exist_ok=True); _mat_json_write(MATERIALS_VERSIONS_DIR/f"materials-v{version}.json",data); _mat_write(data)
+        row.update(status="published",publishedAt=datetime.now(timezone.utc).isoformat(),publishedBy=int(callback.from_user.id),version=version); _mat_staging_write(staging); _mat_import_log({"token":token,"at":datetime.now(timezone.utc).isoformat(),"by":int(callback.from_user.id),"status":"published","version":version,"stats":row.get("stats",{})})
+    await callback.message.edit_text(f"✅ <b>کاتالوگ منتشر شد</b>\n\nنسخه: {to_persian_num(version)}\nمحصولات: {to_persian_num(row['stats']['after']['products'])}\n\nبکاپ قبل از انتشار نیز با موفقیت گرفته شد.")
+    await callback.answer("انتشار با موفقیت انجام شد.")
 
 async def handle_materials_upload_request(request: web.Request) -> web.Response:
     uid = _mat_admin(request)
