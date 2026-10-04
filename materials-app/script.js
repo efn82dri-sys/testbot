@@ -114,8 +114,8 @@ const reqUpload = async (kind, co, pid, extra = {}) => { try { const r = await a
 const rmMedia = async (co, pid, key) => { try { const r = await api('media-remove', { method: 'POST', body: JSON.stringify({ co, pid, key }) }); if (!r.ok) toast('حذف نشد'); await reload(); render(); } catch (e) { toast('خطا در ارتباط'); } };
 
 /* ---------- شیت ---------- */
-const sheet = (html, back) => { $('#sdPanel').innerHTML = '<div class="sd-grab"></div><div class="sd-scroll">' + html + '</div>'; const sd = $('#sd'); sd.hidden = false; document.body.classList.add('locked'); requestAnimationFrame(() => sd.classList.add('open')); S.back = back || null; };
-const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); document.body.classList.remove('locked'); S.back = null; setTimeout(() => { if (!sd.classList.contains('open')) { sd.hidden = true; $('#sdPanel').innerHTML = ''; } }, 300); };
+const sheet = (html, back) => { $('#sdPanel').innerHTML = '<div class="sd-grab"></div><div class="sd-scroll">' + html + '</div>'; const sd = $('#sd'); sd.hidden = false; document.body.classList.add('locked'); requestAnimationFrame(() => sd.classList.add('open')); S.back = back || null; syncBack(true); };
+const closeSheet = () => { const sd = $('#sd'); sd.classList.remove('open'); document.body.classList.remove('locked'); S.back = null; syncBack(); setTimeout(() => { if (!sd.classList.contains('open')) { sd.hidden = true; $('#sdPanel').innerHTML = ''; } }, 300); };
 
 /* ---------- نما ---------- */
 function updateNavNeon() {
@@ -140,7 +140,7 @@ function tabs() {
   $('#index').innerHTML = T.map(t => `<button type="button" class="tile ${S.tab === t[0] ? 'on' : ''}" data-tab="${t[0]}" role="tab" aria-selected="${S.tab === t[0]}"><b>${t[2]}</b>${t[1]}</button>`).join('');
   document.querySelectorAll('#bottomNav [data-tab]').forEach(b => { const active = b.dataset.tab === S.tab; b.classList.toggle('active', active); if (active) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); b.hidden = (b.dataset.tab === 'manage' && !S.admin) || (b.dataset.tab === 'profile' && S.admin); });
   updateNavNeon();
-  $('#filters').hidden = S.tab !== 'cat';
+  syncBack(); $('#filters').hidden = S.tab !== 'cat';
   $('#editBtn').hidden = !S.admin; $('#editBtn').setAttribute('aria-pressed', S.edit);
   const hero = document.querySelector('.hero'); if (hero) hero.classList.toggle('compact', S.tab !== 'cat');
 }
@@ -218,10 +218,8 @@ function catView() {
   const companies = D.companies.filter(c => { const h=nz([c.name,c.en,c.cat,c.desc,...c.products.map(p=>p.name+' '+(p.group||''))].join(' ')); return (!S.cat || c.cat===S.cat) && (!S.brand || c.id===S.brand) && (!words.length || words.every(w=>h.includes(w))); });
   const pricedCount = matches.filter(({p}) => validPrice(p) !== null).length;
   const datedCount = matches.filter(({p}) => validEvidenceDate(p) && staleDays(validEvidenceDate(p)) !== null).length;
-  if (S.catalogSort==='price' && pricedCount) matches.sort((a,b)=>(validPrice(a.p) ?? Infinity)-(validPrice(b.p) ?? Infinity));
-  else if (S.catalogSort==='fresh' && datedCount) matches.sort((a,b)=>(validEvidenceDate(b.p)||'').localeCompare(validEvidenceDate(a.p)||''));
-  else { S.catalogSort='name'; matches.sort((a,b)=>a.p.name.localeCompare(b.p.name,'fa')); }
-  const toolbar = `<div class="catalog-toolbar glass-panel"><div><strong>${fa(S.catalogView==='products'?matches.length:companies.length)}</strong><span>${S.catalogView==='products'?'محصول قابل بررسی':'برند'}</span></div><div class="catalog-controls"><button type="button" class="chip ${S.catalogView==='products'?'active':''}" data-cview="products">محصولات</button><button type="button" class="chip ${S.catalogView==='brands'?'active':''}" data-cview="brands">برندها</button>${S.catalogView==='products'?`<select aria-label="مرتب‌سازی محصولات" data-csort><option value="name" ${S.catalogSort==='name'?'selected':''}>مرتب‌سازی: نام</option>${pricedCount?`<option value="price" ${S.catalogSort==='price'?'selected':''}>قیمت ثبت‌شده</option>`:''}${datedCount?`<option value="fresh" ${S.catalogSort==='fresh'?'selected':''}>تازه‌ترین بررسی</option>`:''}</select>`:''}</div></div>`;
+  S.catalogSort='name'; matches.sort((a,b)=>a.p.name.localeCompare(b.p.name,'fa'));
+  const toolbar = `<div class="catalog-toolbar glass-panel"><div><strong>${fa(S.catalogView==='products'?matches.length:companies.length)}</strong><span>${S.catalogView==='products'?'محصول قابل بررسی':'برند'}</span></div><div class="catalog-controls"><button type="button" class="chip ${S.catalogView==='products'?'active':''}" data-cview="products">محصولات</button><button type="button" class="chip ${S.catalogView==='brands'?'active':''}" data-cview="brands">برندها</button></div></div>`;
   const add = S.edit ? '<button type="button" class="act act-primary" data-a="addco" style="margin-top:12px">+ برند جدید</button>' : '';
   if (S.catalogView==='brands') return add + toolbar + (companies.length ? '<div class="grid">' + companies.map((c,i)=>`<article class="mc" data-brand="${c.id}" data-i="${i}" tabindex="0" role="button"><div style="display:flex;gap:10px;align-items:center">${logoBox(c,'mono')}<div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.cat)}</span></div></div></div><p>${esc(c.desc||'')}</p><div class="meta"><span>${fa(c.products.length)} محصول</span>${safe(c.catalog)?'<span class="sp">کاتالوگ</span>':''}${c.sponsor?'<span class="sp">حامی پاکار</span>':''}</div></article>`).join('')+'</div>' : '<div class="empty"><p>برندی با این فیلتر پیدا نشد.</p></div>');
   if (!matches.length) { if (S.q.trim()) { const sk=nz(S.q).slice(0,100); if(S.lastNoResult!==sk){S.lastNoResult=sk;phase4Track('search_no_result','','',{query:sk});} } else S.lastNoResult=''; return add+toolbar+'<div class="empty"><div class="empty-icon">⌕</div><p>محصولی با این مشخصات پیدا نشد.</p><small>فیلترها را تغییر بده یا عبارت دیگری جست‌وجو کن.</small></div>'; }
@@ -832,7 +830,7 @@ function itemRow(r, i) {
 }
 function matList() {
   const T = takeoff('mid'); if (!T.lines.length) return '';
-  return `<div class="grp">فهرست مصالح (سناریوی متوسط)</div>` + T.lines.map(l => `<div class="ln"><h4><span>${esc(l.p.name)}</span><em>${esc(l.c.name)}</em></h4><div class="rw"><label class="fl"><span>قیمت هر ${esc(l.p.unit)} (تومان)${validPrice(l.p)!==null && !(S.px[l.p.id] > 0) ? ' — ثبت‌شده' : ''}</span><input inputmode="decimal" data-i="px" data-pid="${l.p.id}" value="${S.px[l.p.id] > 0 ? S.px[l.p.id] : ''}" placeholder="${validPrice(l.p)!==null ? fa(validPrice(l.p)) : 'وارد کن'}"></label></div><div class="lt"><small data-mq="${l.p.id}"></small><span data-mc="${l.p.id}"></span></div></div>`).join('');
+  return `<div class="grp">فهرست مصالح (سناریوی متوسط)</div>` + T.lines.map(l => `<div class="ln"><h4><span>${esc(l.p.name)}</span><em>${esc(l.c.name)}</em></h4><div class="rw"><label class="fl"><span>قیمت هر ${esc(l.p.unit)} (تومان)${validPrice(l.p)!==null && !(S.px[l.p.id] > 0) ? ' — ثبت‌شده' : ''}</span><input inputmode="decimal" data-i="px" data-pid="${l.p.id}" value="${S.px[l.p.id] > 0 ? S.px[l.p.id] : ''}" placeholder="${validPrice(l.p)!==null ? fa(validPrice(l.p)) : 'وارد کن'}"></label></div><div class="lt"><small data-mq="${l.p.id}"></small><span data-mc="${l.p.id}"></span></div>${calcKind(l.p) ? `<button type="button" class="act" data-x="ccfrom" data-pid="${l.p.id}" style="margin-top:8px">محاسبه‌ی تعداد دقیق ←</button>` : ''}</div>`).join('');
 }
 function roomView() {
   const head = `<div class="rw proj"><label class="fl"><span>نام پروژه</span><input data-i="pj" data-k="name" value="${esc(S.proj.name)}" placeholder="مثلاً آپارتمان ۱۲۰ متری"></label><label class="fl"><span>کارفرما</span><input data-i="pj" data-k="client" value="${esc(S.proj.client)}"></label></div>`;
@@ -907,9 +905,35 @@ function densHint() {
   for (const c of D.companies) for (const p of c.products) for (const s of (p.specs || [])) if (/چگالی|دانسیته|وزن مخصوص/.test(s.k) && /kg|کیلو/i.test(s.v) && specNum(s.v) != null) return { p, v: specNum(s.v), src: p.source };
   return null;
 }
+
+/* ---------- پل متره فضا ← محاسبات تخصصی ---------- */
+const calcKind = p => p.mode === 'vol' ? 'floor' : (p.mode === 'area' && /پانل|گچی/.test(p.name)) ? 'gyp' : (/بلوک/.test(p.name) && p.unit === 'عدد') ? 'block' : /گچ/.test(p.name + ' ' + (p.group || '')) ? 'gyp' : null;
+const dimsOf = p => { const dg = t => String(t).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace('٫', '.'); const src = [...(p.specs || []).map(x => x.v), p.name]; for (const t of src) { const m = dg(t).match(/(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)/); if (m) return { bl: m[1], bt: m[2], bh: m[3] }; } return null; };
+function roomMats() {
+  const m = {};
+  S.rooms.forEach(r => { const g = geom(r), n = Math.max(1, P(r.n) || 1); r.items.forEach(it => { const [c, p] = find(it.pid); if (!p) return; const on = SURF[it.on] ? it.on : defSurf(p), e = m[p.id] || (m[p.id] = { p, c, area: 0, rooms: [], on, th: 0 }); e.area += g[on] * n; if (!e.rooms.includes(r.name)) e.rooms.push(r.name); if (P(it.th)) e.th = P(it.th); }); });
+  return Object.values(m);
+}
+function ccFill(pid) {
+  const e = roomMats().find(x => x.p.id === pid); if (!e) return false;
+  const p = e.p, k = calcKind(p), A = String(R2(e.area)), w = String(P(S.cfg.waste)), v = S.cc.v;
+  if (!k) { S.cc.from = { pid, name: p.name, area: e.area, surf: e.on, rooms: e.rooms, none: 1 }; persist2(); return true; }
+  if (k === 'block') { const d = dimsOf(p) || {}; Object.assign(v.block, { A, o: '0', bl: d.bl || '', bt: d.bt || '', bh: d.bh || '', w }); }
+  else if (k === 'floor') Object.assign(v.floor, { A, T: String(e.th || p.def || ''), w });
+  else if (p.mode === 'area') Object.assign(v.gyp, { Ap: A, po: '0', w });
+  else Object.assign(v.gyp, { A, w });
+  S.cc.k = k; S.cc.from = { pid, name: p.name, area: e.area, surf: e.on, rooms: e.rooms, dims: k === 'block' && !!dimsOf(p) }; persist2(); return true;
+}
+function ccRoomPanel() {
+  const ms = roomMats(), f = S.cc.from;
+  if (!S.rooms.length || !ms.length) return `<div class="empty"><div class="empty-icon">📐</div><p>هنوز مصالحی در متره فضا ثبت نشده. اول اتاق و مصالح را در متره فضا وارد کن؛ بعد اینجا با یک لمس محاسبه می‌شود.</p><button type="button" class="act act-primary" data-tab="room">رفتن به متره فضا</button></div>`;
+  const info = f ? `<div class="hint" style="margin:8px 0">${f.none ? `برای «${esc(f.name)}» ماشین‌حساب اختصاصی نداریم؛ مقدار آن در متره فضا حساب می‌شود.` : `پر شد از متره فضا: ${esc(SURF[f.surf])} = <b>${nf(f.area)} م²</b> (${esc(f.rooms.join('، '))}) — ضایعات ${fa(P(S.cfg.waste))}٪${f.dims === false ? ' — ابعاد بلوک در شناسنامه نیست؛ دستی وارد کن.' : ''}`}</div>` : '';
+  return `<div class="grp">پروژه: ${esc(S.proj.name || 'بدون نام')}</div><p class="hint">مصالحی که در متره فضا استفاده کرده‌ای؛ یکی را بزن تا متراژ خالص و ابعاد خودکار پر شود.</p>${ms.map(e => `<button type="button" class="pkr ${f && f.pid === e.p.id ? 'on' : ''}" data-x="ccfrom" data-pid="${e.p.id}">${thumb(e.c, e.p)}<span><b>${esc(e.p.name)}</b><small>${esc(SURF[e.on])}: ${nf(e.area)} م² · ${esc(e.rooms.join('، '))}</small></span></button>`).join('')}${info}`;
+}
 function calcView() {
   const k = S.cc.k, d = CDEF[k], v = S.cc.v[k], dh = k === 'floor' ? densHint() : null;
-  return `<div class="chips" style="margin:14px 0 6px">${Object.entries(CDEF).map(([id, x]) => `<button type="button" class="chip ${id === k ? 'active' : ''}" data-x="cc" data-k="${id}">${x.t}</button>`).join('')}</div><p class="hint">اعداد فنی (چگالی، مصرف مرجع، ابعاد) را از دیتاشیت وارد کن؛ پاکار عدد فنی از خودش نمی‌گذارد. خروجی‌ها خالی‌اند تا ورودی‌ها کامل شود.</p><div class="rw">${d.f.map(([f, l]) => `<label class="fl" style="min-width:${l.length > 28 ? '100%' : '140px'}"><span>${l}</span><input inputmode="decimal" data-i="calc" data-k="${f}" value="${esc(v[f])}"></label>`).join('')}</div>${dh ? `<button type="button" class="act" data-x="cfill" style="margin-top:8px">برداشتن چگالی «${esc(dh.p.name)}» از شناسنامه (${fa(dh.v)})${dh.src ? ' — ' + esc(dh.src) : ''}</button>` : ''}<div class="tot" id="cOut"></div>`;
+  const src = S.cc.src === 'room'; const seg = `<div class="chips" style="margin:14px 0 6px"><button type="button" class="chip ${!src ? 'active' : ''}" data-x="ccsrc" data-s="man">محاسبه‌ی دستی</button><button type="button" class="chip ${src ? 'active' : ''}" data-x="ccsrc" data-s="room">از متره فضا <small>${fa(roomMats().length)}</small></button></div>`;
+  return seg + (src ? ccRoomPanel() : '') + `<div class="chips" style="margin:14px 0 6px">${Object.entries(CDEF).map(([id, x]) => `<button type="button" class="chip ${id === k ? 'active' : ''}" data-x="cc" data-k="${id}">${x.t}</button>`).join('')}</div><p class="hint">اعداد فنی (چگالی، مصرف مرجع، ابعاد) را از دیتاشیت وارد کن؛ پاکار عدد فنی از خودش نمی‌گذارد. خروجی‌ها خالی‌اند تا ورودی‌ها کامل شود.</p><div class="rw">${d.f.map(([f, l]) => `<label class="fl" style="min-width:${l.length > 28 ? '100%' : '140px'}"><span>${l}</span><input inputmode="decimal" data-i="calc" data-k="${f}" value="${esc(v[f])}"></label>`).join('')}</div>${dh ? `<button type="button" class="act" data-x="cfill" style="margin-top:8px">برداشتن چگالی «${esc(dh.p.name)}» از شناسنامه (${fa(dh.v)})${dh.src ? ' — ' + esc(dh.src) : ''}</button>` : ''}<div class="tot" id="cOut"></div>`;
 }
 function paintCalc() {
   const b = $('#cOut'); if (!b) return; S.cres = calcRun(S.cc.k, S.cc.v[S.cc.k]);
@@ -1042,7 +1066,9 @@ document.addEventListener('click', async e => {
     case 'cmpadd': return pick('افزودن به مقایسه', p => !S.cmp.includes(p.id), p => { if (S.cmp.length < 3) S.cmp.push(p.id); persist2(); closeSheet(); paintCmp(); tabs(); });
     case 'cmpclr': S.cmp = []; persist2(); paintCmp(); return tabs();
     case 'dir': S.dir[d.k] = S.dir[d.k] === 'hi' ? 'lo' : S.dir[d.k] === 'lo' ? '' : 'hi'; persist2(); return paintCmp();
-    case 'cc': S.cc.k = d.k; persist2(); return render();
+    case 'cc': S.cc.k = d.k; S.cc.from = null; persist2(); return render();
+    case 'ccsrc': S.cc.src = d.s; persist2(); return render();
+    case 'ccfrom': { if (!ccFill(d.pid)) return; S.cc.src = 'room'; if (S.tab !== 'calc') { (S.tabHist = S.tabHist || []).push(S.tab); S.tab = 'calc'; } hp('medium'); render(); return toast('متراژ و ابعاد از متره فضا پر شد'); }
     case 'cfill': { const h = densHint(); if (h) { S.cc.v.floor.dl = String(h.v); persist2(); render(); toast('چگالی از شناسنامه برداشته شد'); } return; }
     case 'sendfile': { try { const r=await api('send-file',{method:'POST',body:JSON.stringify({doc_id:d.docid})}); if(r.ok){toast('فایل در چت ربات ارسال شد');hp('medium');} else toast(r.error||'ارسال فایل ناموفق بود'); } catch(e){toast('خطا در ارسال فایل');} return; }
     case 'project-save': return saveProjects();
@@ -1103,7 +1129,7 @@ document.addEventListener('click', e => {
   if (d.guideShare) { const pair=find(d.guideShare); if(!pair[1])return; const ins=pair[1].install||{}; const text='پرونده اجرا: '+pair[1].name+' — '+pair[0].name+'\nمنبع: '+(ins.source||'ثبت نشده')+'\nمراحل:\n'+(ins.steps||[]).map((x,i)=>(i+1)+'. '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n')+'\nخطاها:\n'+(ins.mistakes||[]).map(x=>'• '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n'); const url='https://t.me/share/url?url='+encodeURIComponent(link(pair[1].id))+'&text='+encodeURIComponent(text); try{if(TG&&TG.openTelegramLink)TG.openTelegramLink(url);else window.open(url,'_blank','noopener');}catch(_){GenUIUnavailableGuideShare(text);} return; }
   if (d.logo) { S.brand = S.brand === d.logo ? '' : d.logo; hp(); return render(); }
   if (d.prod) { hp(); return openProd(d.prod); }
-  if (d.tab) { S.tab = d.tab; hp(); if (d.tab === 'community' && !S.communityData) S.communityLoading = false; render(); return scrollTo({ top: 0, behavior: 'instant' }); }
+  if (d.tab) { if (!$('#sd').hidden && $('#sd').classList.contains('open')) closeSheet(); if (d.tab !== S.tab) { (S.tabHist = S.tabHist || []).push(S.tab); if (S.tabHist.length > 20) S.tabHist.shift(); } S.tab = d.tab; hp(); if (d.tab === 'community' && !S.communityData) S.communityLoading = false; render(); return scrollTo({ top: 0, behavior: 'instant' }); }
   if (t.hasAttribute('data-cat')) { const cat=d.cat||''; S.cat = S.cat === cat ? '' : cat; hp(); return render(); }
   if (d.brand) { hp(); return openBrand(d.brand); }
   if (d.add) { const [c, p] = find(d.add); if (p) phase3Track('estimate', c.name, p.name); addLine(p, c); hp('medium'); toast(`«${p.name}» به برآورد اضافه شد`); return tabs(); }
@@ -1161,6 +1187,23 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => { const t=e.target; if(t && t.dataset && t.dataset.i==='wizard'){ S.wizard[t.dataset.k]=t.value; phase4Track('wizard','','', {query:S.wizard.problem}); render(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('mc')) { e.preventDefault(); openBrand(e.target.dataset.brand); } if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pr2')) { e.preventDefault(); openProd(e.target.dataset.prod); } });
+
+/* ---------- دکمه‌ی برگشت گوشی ---------- */
+const sheetOpen = () => { const sd = $('#sd'); return !!sd && !sd.hidden && sd.classList.contains('open'); };
+function canBack(sh) { return !!(sh || sheetOpen() || S.tab !== 'cat' || S.brand); }
+function syncBack(sh) { try { if (!TG || !TG.BackButton) return; canBack(sh) ? TG.BackButton.show() : TG.BackButton.hide(); } catch (e) {} }
+let lastBack = 0;
+function navBack() {
+  if (Date.now() - lastBack < 250) return true; lastBack = Date.now();
+  if (sheetOpen()) { S.back ? S.back() : closeSheet(); return true; }
+  if (S.tab !== 'cat') { const h = S.tabHist || []; let prev = h.pop(); while (prev === S.tab && h.length) prev = h.pop(); S.tab = prev && prev !== S.tab ? prev : 'cat'; hp(); render(); scrollTo({ top: 0, behavior: 'instant' }); return true; }
+  if (S.brand) { S.brand = ''; hp(); render(); return true; }
+  return false;
+}
+try { if (TG && TG.BackButton) TG.BackButton.onClick(() => { if (!navBack()) { try { TG.close(); } catch (e) {} } }); } catch (e) {}
+/* مرورگر و ژست‌های سیستمی: همیشه یک ورودی نگهبان جلوتر از ورودی اصلی می‌ماند */
+try { history.replaceState({ rq: 'root' }, ''); history.pushState({ rq: 'guard' }, ''); addEventListener('popstate', () => { if (navBack()) history.pushState({ rq: 'guard' }, ''); else { try { TG.close(); } catch (e) { history.back(); } } }); } catch (e) {}
+syncBack();
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
 addEventListener('online',()=>toast('اتصال اینترنت برقرار شد')); addEventListener('offline',()=>toast('حالت آفلاین؛ فقط اطلاعات ذخیره‌شده در دسترس است'));
 function syncThemeColor(theme) { const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#e9e5dd' : '#25292b'); }

@@ -4,3 +4,4 @@ html{scroll-behavior:auto!important}
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
 .catalog-product,.mc{content-visibility:auto;contain-intrinsic-size:auto 120px}
 .im.ld{animation:none!important}
+.pkr.on{border-color:var(--accent,#6FE3C4)!important;box-shadow:0 0 0 1px var(--accent,#6FE3C4) inset}
