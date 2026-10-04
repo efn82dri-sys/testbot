@@ -5,3 +5,5 @@ html{scroll-behavior:auto!important}
 .catalog-product,.mc{content-visibility:auto;contain-intrinsic-size:auto 120px}
 .im.ld{animation:none!important}
 .pkr.on{border-color:var(--accent,#6FE3C4)!important;box-shadow:0 0 0 1px var(--accent,#6FE3C4) inset}
+/* کارت عریض ابزارها: متن فقط در ناحیهٔ خودش، دور از نشان «n قلم» و فلش */
+@media(max-width:619px){.tb-card.tb-wide .tb-txt{flex:1 1 0;min-width:0;padding-left:116px}}
