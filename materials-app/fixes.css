@@ -1,0 +1,6 @@
+/* رفع کندی تب‌ها و تغییر تکه‌تکهٔ تم */
+html{scroll-behavior:auto!important}
+.theme-switching *,.theme-switching *::before,.theme-switching *::after{transition:none!important}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
+.catalog-product,.mc{content-visibility:auto;contain-intrinsic-size:auto 120px}
+.im.ld{animation:none!important}
