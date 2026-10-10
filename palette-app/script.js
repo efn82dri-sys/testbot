@@ -97,18 +97,31 @@ function currentTheme() {
 }
 
 function toggleTheme() {
+  const root = document.documentElement;
   const next = currentTheme() === 'dark' ? 'light' : 'dark';
   const apply = () => {
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem(STORAGE.THEME, next);
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem(STORAGE.THEME, next); } catch (e) {}
     if (tg?.setHeaderColor) {
       try { tg.setHeaderColor(next === 'dark' ? '#0C0E10' : '#F2EEE8'); } catch (e) {}
     }
   };
-  if (document.startViewTransition) {
-    document.startViewTransition(apply);
+  const finish = () => root.classList.remove('theme-switching');
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  // Match the Materials mini-app: freeze individual CSS transitions and swap
+  // the page as one View Transition, preventing surfaces from changing in patches.
+  root.classList.add('theme-switching');
+  if (document.startViewTransition && !reducedMotion) {
+    try {
+      document.startViewTransition(apply).finished.then(finish, finish);
+    } catch (e) {
+      apply();
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+    }
   } else {
     apply();
+    requestAnimationFrame(() => requestAnimationFrame(finish));
   }
   haptic.light();
 }
