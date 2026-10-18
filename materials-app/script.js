@@ -293,6 +293,7 @@ function openProd(pid) {
   ${S.edit ? `<div class="ft"><button type="button" class="act act-primary" data-a="upimg" data-id="${c.id}" data-pid="${p.id}">📷 افزودن عکس از ربات (${fa(imgs.length)}/۶)</button><button type="button" class="sq" data-ep="${p.id}">✎</button></div>` : ''}
   <div class="sd-bar" style="margin-top:12px;flex-wrap:wrap"><button type="button" class="act act-primary" data-add="${p.id}">＋ برآورد</button><button type="button" class="act" data-fav="${p.id}" aria-pressed="${on}">${on ? '♥ ذخیره‌شده' : '♡ ذخیره'}</button><button type="button" class="act" data-x="cmp" data-pid="${p.id}">⇄ مقایسه</button><button type="button" class="act" data-a="shareprod" data-pid="${p.id}">اشتراک</button><button type="button" class="act" data-x="quote-open" data-co="${esc(c.id)}" data-pid="${esc(p.id)}">استعلام قیمت</button>${safe(p.catalog) ? `<a class="act" data-stop href="${esc(safe(p.catalog))}" target="_blank" rel="noopener">${I.pdf}<span>کاتالوگ</span></a>` : ''}${safe(p.page) ? `<a class="act" data-stop href="${esc(safe(p.page))}" target="_blank" rel="noopener">صفحه‌ی رسمی</a>` : ''}</div>`);
   if(modelUrl && !customElements.get('model-viewer')) { const ms=document.createElement('script'); ms.type='module'; ms.src='https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js'; document.head.appendChild(ms); }
+  try { window.PakarPro && window.PakarPro.decorate && window.PakarPro.decorate(pid); } catch (e) {}
   const tr = $('#galT'); if (tr) tr.addEventListener('scroll', () => { const k = Math.round(Math.abs(tr.scrollLeft) / tr.clientWidth); document.querySelectorAll('#galD i').forEach((d, n) => d.classList.toggle('on', n === k)); }, { passive: true });
 }
 function phase3Track(event, c, p) { phase4Track(event,c,p); }
@@ -302,7 +303,7 @@ function libraryView() {
   if (!rows.length) return `<div class="empty"><div class="empty-icon">📚</div><h3>کتابخانه‌ی فایل‌های اجرایی</h3><p>دیتیل DWG/PDF، فمیلی رویت، فایل اسکچاپ، تکسچر و دفترچه‌ی محصول پس از ثبت ادمین اینجا نمایش داده می‌شود.</p></div>`;
   return `<div class="grp">${fa(rows.length)} فایل ثبت‌شده</div>`+rows.map(({c,p,d})=>`<div class="ln"><h4><span>${esc(d.title||d.file_name||'فایل اجرایی')}</span><em>${esc((d.type||'document').toUpperCase())}</em></h4><small>${esc(c.name)} · ${esc(p.name)}</small><div class="meta">${d.version?`<span>نسخه ${esc(d.version)}</span>`:''}${d.date?`<span>${esc(d.date)}</span>`:''}${d.size?`<span>${fa(Math.round(d.size/1024))} KB</span>`:''}</div><div class="ft"><button type="button" class="act act-primary" data-x="sendfile" data-docid="${esc(d.id)}">ارسال فایل به چت ربات</button><button type="button" class="act" data-prod="${esc(p.id)}">مشاهده محصول</button></div></div>`).join('');
 }
-const liveWorkshop = `<section class="rw-live" aria-label="کارگاه زنده پاکار">
+const liveWorkshop = (window.PakarLive&&window.PakarLive.html())||`<section class="rw-live" aria-label="کارگاه زنده پاکار">
       <div class="rw-live-head">
         <div>
           <span class="rw-kicker"><i></i> کارگاه زنده</span>
@@ -943,9 +944,10 @@ function paintCalc() {
 /* ---------- برگه‌ی پیشنهاد ---------- */
 const loadImg = u => new Promise(res => { const i = new Image(); const t = setTimeout(() => res(null), 6000); i.onload = () => { clearTimeout(t); res(i); }; i.onerror = () => { clearTimeout(t); res(null); }; i.src = u; });
 async function makeSheet(tk) {
-  const WD = 1240, HT = 1754, M = 72, IN = WD - 2 * M, F = "'Vazirmatn',Tahoma,sans-serif", INK = '#1A1714', DIM = '#5A5347', AC = '#0B8468', LN = '#DAD3C7';
+  const WD = 1240, HT = 1754, M = 72, IN = WD - 2 * M, F = "\"Kalameh\",Tahoma,sans-serif", INK = '#1A1714', DIM = '#5A5347', AC = '#0B8468', LN = '#DAD3C7';
   try {
-    await Promise.all([400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 28px Vazirmatn`)));
+    await Promise.all([400, 500, 600, 700, 800, 900].map(w => document.fonts.load(`${w} 28px ${F}`)));
+    await document.fonts.ready;
   } catch (e) {}
   const T = takeoff(tk), all = TIERS.map(([k, l]) => ({ k, l, ...takeoff(k) })), pages = []; let cv, x, y;
   const imgs = {}; await Promise.all(T.lines.map(async l => { const m = (l.p.images || [])[0]; imgs[l.p.id] = m ? await loadImg(mUrl(m, 't')) : null; }));
@@ -1125,7 +1127,7 @@ document.addEventListener('click', e => {
   if (d.cview) { S.catalogView=d.cview; return render(); }
   if (d.communityType) { S.communityType=d.communityType; return render(); }
   if (d.productJump) { const panel=$('#sdPanel'); const target=[...panel.querySelectorAll('.grp')].find(h=>h.textContent.trim().includes(d.productJump)); if(target) target.scrollIntoView({behavior:'smooth',block:'start'}); else toast('این بخش هنوز اطلاعات ثبت‌شده ندارد'); return; }
-  if (d.guidePrint) { const pair=find(d.guidePrint); if(!pair[1])return; const ins=pair[1].install||{}; const w=window.open('','_blank'); if(!w)return toast('اجازه‌ی بازشدن پنجره‌ی چاپ را بده'); w.document.write('<html lang="fa" dir="rtl"><meta charset="utf-8"><title>پرونده اجرا</title><style>body{font:14px sans-serif;line-height:2;padding:28px;color:#222}h1{font-size:22px}li{margin:8px 0}.warn{color:#a33}</style><h1>'+esc(pair[1].name)+'</h1><p>برند: '+esc(pair[0].name)+'</p><p>منبع: '+esc(ins.source||'ثبت نشده')+' | بازبین: '+esc(ins.verifiedBy||'ثبت نشده')+'</p><h2>مراحل اجرا</h2><ol>'+(ins.steps||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ol><h2 class="warn">خطاهای رایج</h2><ul>'+(ins.mistakes||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ul><p>این پرونده جایگزین دیتاشیت و تأیید طراح مسئول نیست.</p><script>window.onload=()=>window.print()<\/script></html>'); w.document.close(); return; }
+  if (d.guidePrint) { const pair=find(d.guidePrint); if(!pair[1])return; const ins=pair[1].install||{}; const w=window.open('','_blank'); if(!w)return toast('اجازه‌ی بازشدن پنجره‌ی چاپ را بده'); const fontBase=location.origin+'/materials/fonts/'; w.document.write('<html lang="fa" dir="rtl"><meta charset="utf-8"><title>پرونده اجرا</title><style>@font-face{font-family:Kalameh;src:url("'+fontBase+'KalamehWeb-Regular.woff") format("woff");font-weight:400}@font-face{font-family:Kalameh;src:url("'+fontBase+'KalamehWeb-Bold.woff") format("woff");font-weight:700}body{font-family:Kalameh,Tahoma,sans-serif;font-size:14px;line-height:2;padding:28px;color:#222}h1{font-size:22px}li{margin:8px 0}.warn{color:#a33}</style><h1>'+esc(pair[1].name)+'</h1><p>برند: '+esc(pair[0].name)+'</p><p>منبع: '+esc(ins.source||'ثبت نشده')+' | بازبین: '+esc(ins.verifiedBy||'ثبت نشده')+'</p><h2>مراحل اجرا</h2><ol>'+(ins.steps||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ol><h2 class="warn">خطاهای رایج</h2><ul>'+(ins.mistakes||[]).map(x=>'<li>'+esc(typeof x==='string'?x:(x.text||x.title||''))+'</li>').join('')+'</ul><p>این پرونده جایگزین دیتاشیت و تأیید طراح مسئول نیست.</p><script>document.fonts.ready.then(()=>window.print())<\/script></html>'); w.document.close(); return; }
   if (d.guideShare) { const pair=find(d.guideShare); if(!pair[1])return; const ins=pair[1].install||{}; const text='پرونده اجرا: '+pair[1].name+' — '+pair[0].name+'\nمنبع: '+(ins.source||'ثبت نشده')+'\nمراحل:\n'+(ins.steps||[]).map((x,i)=>(i+1)+'. '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n')+'\nخطاها:\n'+(ins.mistakes||[]).map(x=>'• '+(typeof x==='string'?x:(x.text||x.title||''))).join('\n'); const url='https://t.me/share/url?url='+encodeURIComponent(link(pair[1].id))+'&text='+encodeURIComponent(text); try{if(TG&&TG.openTelegramLink)TG.openTelegramLink(url);else window.open(url,'_blank','noopener');}catch(_){GenUIUnavailableGuideShare(text);} return; }
   if (d.logo) { S.brand = S.brand === d.logo ? '' : d.logo; hp(); return render(); }
   if (d.prod) { hp(); return openProd(d.prod); }
@@ -1206,7 +1208,24 @@ try { history.replaceState({ rq: 'root' }, ''); history.pushState({ rq: 'guard' 
 syncBack();
 addEventListener('scroll', () => { $('#toTop').hidden = scrollY < 500; }, { passive: true });
 addEventListener('online',()=>toast('اتصال اینترنت برقرار شد')); addEventListener('offline',()=>toast('حالت آفلاین؛ فقط اطلاعات ذخیره‌شده در دسترس است'));
-function syncThemeColor(theme) { const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#e9e5dd' : '#25292b'); }
+function syncThemeColor(theme) { const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme === 'light' ? '#f7f4ee' : '#25292b'); const cs = document.querySelector('meta[name="color-scheme"]'); if (cs) cs.setAttribute('content', theme === 'light' ? 'light' : 'dark'); }
+
+/* ---------- پل داخلی برای لایه‌ی Pro / Enterprise (متصل به state و handlerهای واقعی مینی‌اپ) ---------- */
+window.PakarCore = {
+  get D(){ return D; }, get S(){ return S; },
+  esc, fa, num, nz, safe, staleDays, validPrice, validEvidenceDate,
+  find, toast, sheet, closeSheet, openBrand, openProd, render, persist, saveData, phase3Track,
+  get TG(){ return TG; }, get TG_USER(){ return TG_USER; },
+  qty: l => qty(l),
+  estimateLines(){ return S.est.map(l => { const pair = find(l.pid); return { l, c: pair[0], p: pair[1], q: qty(l), price: l.price > 0 ? l.price : null }; }); },
+  estimateSummary(){ return summary(); },
+  addToEstimate(pid){ const pair = find(pid); if (!pair[1]) return false; addLine({ ...pair[1], mode: pair[1].mode || 'count', price: priceOf(pair[1]) }, pair[0], 1); tabs(); toast('به برآورد اضافه شد ✓'); return true; },
+  toggleCompare(pid){ const i = S.cmp.indexOf(pid); if (i >= 0) { S.cmp.splice(i, 1); persist2(); tabs(); toast('از مقایسه برداشته شد'); return false; } if (S.cmp.length >= 3) { toast('حداکثر ۳ محصول را می‌شود مقایسه کرد'); return false; } S.cmp.push(pid); persist2(); tabs(); toast('به مقایسه اضافه شد ✓'); return true; },
+  shareText(text){ const u = 'https://t.me/share/url?url=' + encodeURIComponent(`https://t.me/${S.bot}?start=${S.start}`) + '&text=' + encodeURIComponent(text); TG && TG.openTelegramLink ? TG.openTelegramLink(u) : window.open(u, '_blank'); },
+  /* اجرای handlerهای واقعی برنامه (مثل مدیریت تجربه‌ها) بدون کپی‌کردن منطق آن‌ها */
+  action(name, data = {}){ const b = document.createElement('button'); b.type = 'button'; b.dataset.x = name; Object.keys(data).forEach(k => b.dataset[k] = data[k]); b.style.display = 'none'; document.body.appendChild(b); b.click(); setTimeout(() => b.remove(), 0); }
+};
+if (window.PakarPro && window.PakarPro.refresh) window.PakarPro.refresh();
 try { const th = localStorage.getItem(K.th); if (th) document.documentElement.setAttribute('data-theme', th); } catch (e) {}
 syncThemeColor(document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
 
@@ -1235,5 +1254,5 @@ render();
 const deep = () => { try { const p = new URLSearchParams(location.search).get('p'); if (p && find(p)[1]) openProd(p); } catch (e) {} };
 addEventListener('error', e => { const i = e.target; if (!i || i.tagName !== 'IMG') return; if (!i.dataset.r) { i.dataset.r = '1'; i.src = i.src + (i.src.includes('?') ? '&' : '?') + 'r=' + Date.now(); } else { i.style.display = 'none'; i.parentElement && i.parentElement.classList.add('bad'); } }, true);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || !S.admin) return; const cp = S.curP, open = !$('#sd').hidden; reload().then(() => { render(); if (open && cp && find(cp)[1]) openProd(cp); }).catch(() => {}); });
-api('data').then(async r => { if(!r || !r.data) throw new Error('catalog unavailable'); D = normalizeCatalog(r.data); sv('rq.mat.catalog.cache',D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); clearTimeout(bootFailsafe); finishBoot('آماده‌ایم'); }).catch(() => { const cached=ld('rq.mat.catalog.cache',null); if(cached&&cached.companies){D=normalizeCatalog(cached);render();deep();clearTimeout(bootFailsafe);finishBoot('نسخه‌ی ذخیره‌شده آماده است');toast('نسخه‌ی ذخیره‌شده نمایش داده می‌شود؛ اتصال برقرار نیست');return;} fetch('/materials/data/materials.json',{cache:'no-store'}).then(r => r.json()).then(d => { D = normalizeCatalog(d); sv('rq.mat.catalog.cache',D); render(); deep(); clearTimeout(bootFailsafe); finishBoot('کاتالوگ آماده است'); }).catch(()=>{D={companies:[],packs:[]};render();clearTimeout(bootFailsafe);finishBoot('نمایش در حالت محدود');toast('اتصال برقرار نیست و داده‌ای برای نمایش ذخیره نشده');}); });
+api('data').then(async r => { if(!r || !r.data) throw new Error('catalog unavailable'); D = normalizeCatalog(r.data); sv('rq.mat.catalog.cache',D); S.admin = !!r.admin; S.bot = r.bot || 'irarchitps_bot'; S.start = r.start || 'materials'; await loadProjects(); render(); deep(); try { window.PakarPro && window.PakarPro.refresh && window.PakarPro.refresh(); } catch (e) {} clearTimeout(bootFailsafe); finishBoot('آماده‌ایم'); }).catch(() => { const cached=ld('rq.mat.catalog.cache',null); if(cached&&cached.companies){D=normalizeCatalog(cached);render();deep();clearTimeout(bootFailsafe);finishBoot('نسخه‌ی ذخیره‌شده آماده است');toast('نسخه‌ی ذخیره‌شده نمایش داده می‌شود؛ اتصال برقرار نیست');return;} fetch('/materials/data/materials.json',{cache:'no-store'}).then(r => r.json()).then(d => { D = normalizeCatalog(d); sv('rq.mat.catalog.cache',D); render(); deep(); clearTimeout(bootFailsafe); finishBoot('کاتالوگ آماده است'); }).catch(()=>{D={companies:[],packs:[]};render();clearTimeout(bootFailsafe);finishBoot('نمایش در حالت محدود');toast('اتصال برقرار نیست و داده‌ای برای نمایش ذخیره نشده');}); });
 })();

@@ -2,19 +2,26 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#25292b">
 <script>
-(function(){try{var k='rq.mat.theme',saved=localStorage.getItem(k),theme=saved||(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',theme);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',theme==='light'?'#e9e5dd':'#25292b');}catch(e){}})();
+(function(){try{var k='rq.mat.theme',saved=localStorage.getItem(k),theme=saved||(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',theme);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',theme==='light'?'#f7f4ee':'#25292b');var cs=document.querySelector('meta[name="color-scheme"]');if(cs)cs.setAttribute('content',theme);}catch(e){}})();
 </script>
 <title>مصالح و تجهیزات — پاکار</title>
 <!-- فونت کلمه به‌صورت محلی میزبانی می‌شود؛ وابستگی فونت خارجی وجود ندارد. -->
-<link rel="stylesheet" href="/materials/base.css?v=pakar-v8-20261004">
-<link rel="stylesheet" href="/materials/mat.css?v=pakar-v8-20261004">
-<link rel="stylesheet" href="/materials/glass.css?v=pakar-v8-20261004">
-<link rel="stylesheet" href="/materials/clay.css?v=pakar-v8-20261004">
-<link rel="stylesheet" href="/materials/premium.css?v=pakar-premium-v5">
-<link rel="stylesheet" href="/materials/fixes.css?v=pakar-fix-4">
+<link rel="stylesheet" href="/materials/base.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/print-kalameh.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/mat.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/glass.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/clay.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/theme-fixes.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/premium.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/fixes.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/light-mobile.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/upgrade.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/pakar-enterprise.css?v=pakar-port-20261019">
+<link rel="stylesheet" href="/materials/livesite.css?v=pakar-port-20261019">
 
 </head>
 <body>
@@ -91,6 +98,9 @@
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="/materials/script.js?v=pakar-fix-4" defer></script>
+<script src="/materials/livesite.js?v=pakar-port-20261019"></script>
+<script src="/materials/script.js?v=pakar-port-20261019" defer></script>
+<script src="/materials/pakar-pro.js?v=pakar-port-20261019" defer></script>
+<script src="/materials/pakar-enterprise.js?v=pakar-port-20261019" defer></script>
 </body>
 </html>
