@@ -17,7 +17,7 @@ const STORAGE = {
   FAVS:   'ravaq.palettes.favs',
   FILTER: 'ravaq.palettes.filter',
 };
-const DATA_URL = './data/palettes.json';
+const DATA_URL = '/palettes/data/palettes.json';
 
 /* ---------- Haptics ---------- */
 const haptic = {
