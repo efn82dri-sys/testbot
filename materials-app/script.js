@@ -35,8 +35,14 @@ const staleDays = js => {
 const safe = u => /^https?:\/\//i.test(u || '') ? u : '';
 const hp = t => { try { TG.HapticFeedback.impactOccurred(t || 'light'); } catch (e) {} };
 const K = { est: 'rq.mat.est', fav: 'rq.mat.fav', cfg: 'rq.mat.cfg', th: 'rq.mat.theme', rooms: 'rq.mat.rooms', scn: 'rq.mat.scn', px: 'rq.mat.px', cmp: 'rq.mat.cmp', w: 'rq.mat.w', dir: 'rq.mat.dir', proj: 'rq.mat.proj', cc: 'rq.mat.cc' };
-const ld = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
-const sv = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { try { toast('فضای ذخیره‌سازی پر است؛ داده‌ها فقط در همین نشست باقی می‌مانند'); } catch (_) {} return false; } };
+/* جداسازی داده‌ی هر کاربر: همه‌ی کلیدهای کاری با شناسه‌ی کاربر تلگرام پسوند می‌گیرند (تم و کش کاتالوگ مشترک می‌مانند) */
+const SHARED_KEYS = new Set(['rq.mat.theme', 'rq.mat.catalog.cache']);
+const USER_KEY = (() => { try { const id = TG && TG.initDataUnsafe && TG.initDataUnsafe.user && TG.initDataUnsafe.user.id; return id ? 'u' + id : 'guest'; } catch (_) { return 'guest'; } })();
+const nk = k => SHARED_KEYS.has(k) ? k : k + '.' + USER_KEY;
+/* انتقال یک‌باره‌ی داده‌ی قدیمی (بدون پسوند) به کاربر فعلی و حذف آن، تا به حساب دیگری روی همین دستگاه نشت نکند */
+(() => { try { const legacy = ['est','fav','cfg','rooms','scn','px','cmp','w','dir','proj','cc','profile','recent'].map(x => 'rq.mat.' + x); legacy.forEach(k => { const old = localStorage.getItem(k); if (old === null) return; if (USER_KEY !== 'guest' && localStorage.getItem(nk(k)) === null) localStorage.setItem(nk(k), old); localStorage.removeItem(k); }); } catch (_) {} })();
+const ld = (k, d) => { try { return JSON.parse(localStorage.getItem(nk(k))) ?? d; } catch (e) { return d; } };
+const sv = (k, v) => { try { localStorage.setItem(nk(k), JSON.stringify(v)); return true; } catch (e) { try { toast('فضای ذخیره‌سازی پر است؛ داده‌ها فقط در همین نشست باقی می‌مانند'); } catch (_) {} return false; } };
 const COL = ['#6FE3C4', '#E3B26F', '#8AA2FF', '#E36F9A', '#B58AFF', '#7FD1E8'];
 const TG_USER = (() => { try { return (TG && TG.initDataUnsafe && TG.initDataUnsafe.user) || {}; } catch (_) { return {}; } })();
 const PROFILE_KEY = 'rq.mat.profile';
@@ -573,7 +579,7 @@ async function saveProjects() {
   let arr=[...(S.projects||[])]; const i=arr.findIndex(x=>x.id===current.id); if(i>=0) arr[i]=current; else arr.unshift(current);
   try { const r=await api('projects',{method:'POST',body:JSON.stringify({projects:arr})}); if(!r.ok) return toast(r.error||'ذخیره انجام نشد'); S.projects=r.projects||arr; S.activeProject=current.id; toast('پروژه روی سرور ذخیره شد ✓'); render(); } catch(e) { toast('ذخیره‌ی سروری ناموفق بود؛ اتصال تلگرام را بررسی کن.'); }
 }
-async function loadProjects() { try { const r=await api('projects'); if(r.ok) S.projects=r.projects||[]; } catch(e) {} }
+async function loadProjects() { try { const r=await api('projects'); if(r.ok) S.projects=Array.isArray(r.projects)?r.projects:[]; else { S.projects=[]; if(r.error) toast(r.error); } } catch(e) { S.projects=[]; } }
 function quoteSheet(coId,pid) {
  const c=D.companies.find(x=>x.id===coId)||{}, p=(c.products||[]).find(x=>x.id===pid);
  sheet(`<h3>استعلام قیمت</h3><p class="hint">درخواست به مدیران پاکار ارسال می‌شود؛ قیمت یا موجودی تا زمان پاسخ، تأییدشده محسوب نمی‌شود.</p><label class="fl">برند<input id="qCompany" value="${esc(c.name||'')}" readonly></label><label class="fl">محصول<input id="qProduct" value="${esc(p?p.name:'')}" placeholder="نام محصول"></label><label class="fl">شهر<input id="qCity" placeholder="مثلاً مشهد"></label><label class="fl">مقدار و واحد<input id="qQty" placeholder="مثلاً ۲۰ متر مربع"></label><label class="fl">راه تماس (اختیاری)<input id="qContact" placeholder="شماره تماس یا ترجیح ارتباط"></label><label class="fl">توضیحات<textarea id="qNote" rows="3" placeholder="شرایط پروژه یا سوال شما"></textarea></label><div class="sd-bar"><button class="act" data-x="scok">انصراف</button><button class="act act-primary" data-x="quote-submit" data-co="${esc(c.name||'')}" data-pid="${esc(p?p.name:'')}">ارسال درخواست</button></div>`);

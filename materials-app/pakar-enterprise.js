@@ -1,6 +1,8 @@
 (() => {
   'use strict';
-  const KEY='pakar.enterprise.v1';
+  const UID=(()=>{try{const u=window.Telegram&&Telegram.WebApp&&Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user;return u&&u.id?'u'+u.id:'guest'}catch(_){return 'guest'}})();
+  const KEY='pakar.enterprise.v1.'+UID;
+  try{const old=localStorage.getItem('pakar.enterprise.v1');if(old!==null){if(UID!=='guest'&&localStorage.getItem(KEY)===null)localStorage.setItem(KEY,old);localStorage.removeItem('pakar.enterprise.v1')}}catch(_){}
   const state=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch(_){return {}}};
   const save=s=>{try{localStorage.setItem(KEY,JSON.stringify(s))}catch(_){}};
   const core=()=>window.PakarCore;
