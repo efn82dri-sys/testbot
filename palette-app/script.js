@@ -17,7 +17,9 @@ const STORAGE = {
   FAVS:   'ravaq.palettes.favs',
   FILTER: 'ravaq.palettes.filter',
 };
-const DATA_URL = '/palettes/data/palettes.json';
+// مسیر اصلی: API فشرده (gzip + ETag)؛ اگر نبود، فایل استاتیک
+const DATA_URLS = ['/palettes/api/data', '/palettes/data/palettes.json'];
+const PAGE_SIZE = 24;   // تعداد کارتی که در هر نوبت رندر می‌شود (به‌جای ۱۲۵۰ کارتِ یک‌جا)
 
 /* ---------- Haptics ---------- */
 const haptic = {
@@ -80,6 +82,8 @@ const state = {
   query: '',
   favsOnly: false,
   favs: new Set(JSON.parse(localStorage.getItem(STORAGE.FAVS) || '[]')),
+  items: [],   // نتیجه‌ی فیلترشده
+  shown: 0,    // چندتایش تا الان رندر شده
 };
 
 /* ---------- Theme ---------- */
@@ -253,8 +257,67 @@ function render() {
     return;
   }
 
-  list.innerHTML = items.map((p, i) => renderCard(p, i, total)).join('');
+  state.items = items;
+  state.shown = 0;
+  if (moreObserver) moreObserver.disconnect();
+  list.innerHTML = '';
+  updateCountPill();
+  appendChunk();
+}
+
+/* ---------- Progressive rendering ---------- */
+function updateCountPill() {
+  const pill = $('#countPill');
+  if (!pill) return;
+  const all = state.palettes.length;
+  const n = state.items.length;
+  pill.textContent = n === all
+    ? `${toPersian(all)} پالت رنگ`
+    : `${toPersian(n)} از ${toPersian(all)} پالت`;
+}
+
+function moreHtml() {
+  const left = state.items.length - state.shown;
+  const next = Math.min(PAGE_SIZE, left);
+  return `
+    <div class="more-wrap" id="moreWrap">
+      <button type="button" class="act act-primary" id="moreBtn">
+        <span>نمایش ${toPersian(next)} پالتِ بعدی</span>
+        <span class="more-left">(${toPersian(left)} باقی‌مانده)</span>
+      </button>
+    </div>`;
+}
+
+let moreObserver = null;
+function appendChunk() {
+  const list = $('#list');
+  const items = state.items;
+  const start = state.shown;
+  const end = Math.min(start + PAGE_SIZE, items.length);
+  if (start >= end) return;
+
+  const old = $('#moreWrap');
+  if (old) old.remove();
+
+  const total = items.length;
+  list.insertAdjacentHTML('beforeend',
+    items.slice(start, end).map((p, i) => renderCard(p, start + i, total)).join(''));
+  state.shown = end;
+  if (end < total) list.insertAdjacentHTML('beforeend', moreHtml());
+
   observeCards();
+  observeMore();
+}
+
+function observeMore() {
+  const el = $('#moreWrap');
+  if (!el || !('IntersectionObserver' in window)) return;
+  if (moreObserver) moreObserver.disconnect();
+  // پیش از رسیدن به انتهای لیست، دسته‌ی بعدی خودکار بارگذاری می‌شود
+  moreObserver = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) appendChunk();
+  }, { rootMargin: '900px 0px' });
+  moreObserver.observe(el);
 }
 
 function resetAllFilters() {
@@ -374,6 +437,9 @@ function bindEvents() {
 
   // List — swatches, favs, actions
   $('#list').addEventListener('click', async (e) => {
+    // Load more
+    if (e.target.closest('#moreBtn')) { appendChunk(); haptic.light(); return; }
+
     // Swatch copy
     const sw = e.target.closest('.sw');
     if (sw) {
@@ -469,10 +535,19 @@ async function loadPalettes() {
   list.innerHTML = '<div class="skel"></div><div class="skel"></div>';
 
   try {
-    const res = await fetch(DATA_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (!Array.isArray(data) || !data.length) throw new Error('empty');
+    let data = null, lastErr = null;
+    for (const url of DATA_URLS) {
+      try {
+        // no-cache = همیشه با سرور (ETag) چک شود؛ اگر تغییری نبود ۳۰۴ و بدون دانلودِ دوباره
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        if (!Array.isArray(json) || !json.length) throw new Error('empty');
+        data = json;
+        break;
+      } catch (err) { lastErr = err; }
+    }
+    if (!data) throw lastErr || new Error('load failed');
 
     // Normalize
     state.palettes = data.map((p, i) => ({
@@ -493,9 +568,6 @@ async function loadPalettes() {
       state.filter = '';
       localStorage.removeItem(STORAGE.FILTER);
     }
-
-    // Update count pill
-    $('#countPill').textContent = `${toPersian(state.palettes.length)} پالت رنگ`;
 
     renderChips();
     render();

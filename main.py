@@ -44,7 +44,7 @@ except Exception:
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatMemberStatus, ParseMode
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -136,6 +136,11 @@ PALETTE_START_PAYLOAD = (
     os.environ.get("PALETTE_START_PAYLOAD", "palette").strip().lower() or "palette"
 )
 PALETTE_ACCESS_FILE = Path(__file__).parent / "data" / "palette_access.json"
+
+# seed = فایلِ پالت‌هایی که همراهِ ریپو دیپلوی می‌شه (خارج از BACKUP_DIRS، پس بازیابیِ بکاپ بازنویسیش نمی‌کنه).
+# در هر استارت، پالت‌هایِ جدیدِ seed به دیتای زنده اضافه می‌شن (جزئیات: _palette_merge_seed).
+PALETTE_SEED_FILE = PALETTE_DIR / "seed" / "palettes.json"
+PALETTE_SEED_STATE_FILE = Path(__file__).parent / "data" / "palettes_seed_state.json"   # داخلِ DATA_DIR → بکاپ می‌شه
 
 # ---------- Mini App مستقل: پرامپت‌های معماری ----------
 # کاملاً مستقل از مینی‌اپِ پالت — پوشه، دیتا و پی‌لودِ خودش را دارد.
@@ -937,6 +942,79 @@ async def save_vip_categories(categories: list[dict]) -> None:
         VIP_CATEGORIES_FILE.parent.mkdir(exist_ok=True)
         VIP_CATEGORIES_FILE.write_text(json.dumps(categories, ensure_ascii=False, indent=2), encoding="utf-8")
 
+# ---------- پالت‌ها: اعتبارسنجی، ذخیره‌ی اتمیک، ادغامِ seed، بکاپِ خودکار ----------
+_HEX_COLOR_RE = re.compile(r"^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+
+def _norm_hex(value) -> str | None:
+    """'#abc' / 'A1B2C3' / '#a1b2c3' → '#A1B2C3'؛ نامعتبر → None."""
+    if not isinstance(value, str):
+        return None
+    m = _HEX_COLOR_RE.match(value.strip())
+    if not m:
+        return None
+    h = m.group(1)
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    return "#" + h.upper()
+
+def normalize_palette_entry(raw) -> dict | None:
+    """یک پالتِ خام را به ساختارِ استانداردِ مینی‌اپ تبدیل می‌کند؛ اگر قابل‌استفاده نباشد None."""
+    if not isinstance(raw, dict):
+        return None
+    pid = str(raw.get("id") or "").strip()
+    name = str(raw.get("name") or "").strip()
+    colors_raw = raw.get("colors")
+    if not pid or not name or not isinstance(colors_raw, list):
+        return None
+    colors = [c for c in (_norm_hex(x) for x in colors_raw) if c]
+    if len(colors) < 2:          # مینی‌اپ پالتِ کمتر از ۲ رنگ را نشان نمی‌دهد
+        return None
+    tags: list[str] = []
+    if isinstance(raw.get("tags"), list):
+        for t in raw["tags"]:
+            t = str(t).strip()
+            if t and t not in tags:
+                tags.append(t)
+    return {"id": pid, "name": name, "desc": str(raw.get("desc") or "").strip(), "tags": tags, "colors": colors}
+
+def normalize_palettes(parsed) -> tuple[list[dict], dict]:
+    """کلِ فایلِ JSON را اعتبارسنجی/نرمال می‌کند. موردهای خراب نادیده گرفته و گزارش می‌شوند (کلِ فایل رد نمی‌شود)."""
+    if isinstance(parsed, dict):
+        for key in ("palettes", "items", "data"):
+            if isinstance(parsed.get(key), list):
+                parsed = parsed[key]
+                break
+    stats = {"total": 0, "valid": 0, "invalid": 0, "duplicate": 0, "samples": []}
+    if not isinstance(parsed, list):
+        return [], stats
+    stats["total"] = len(parsed)
+    seen: set[str] = set()
+    out: list[dict] = []
+    for i, raw in enumerate(parsed):
+        item = normalize_palette_entry(raw)
+        if item is None:
+            stats["invalid"] += 1
+            if len(stats["samples"]) < 5:
+                label = (raw.get("id") or raw.get("name")) if isinstance(raw, dict) else None
+                stats["samples"].append(f"#{i + 1}" + (f" ({label})" if label else ""))
+            continue
+        if item["id"] in seen:
+            stats["duplicate"] += 1
+            continue
+        seen.add(item["id"])
+        out.append(item)
+    stats["valid"] = len(out)
+    return out, stats
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
 def load_palettes_data() -> list[dict]:
     if not PALETTES_DATA_FILE.exists():
         return []
@@ -946,12 +1024,72 @@ def load_palettes_data() -> list[dict]:
     except (json.JSONDecodeError, OSError):
         return []
 
-async def save_palettes_data(palettes: list[dict]) -> None:
+_palette_backup_sleeping = False
+_palette_backup_lock = asyncio.Lock()
+
+def _schedule_palette_backup(delay: float = 10.0) -> None:
+    """بعد از هر تغییرِ پالت‌ها یک بکاپِ تلگرام می‌گیرد (چند تغییرِ پشتِ‌هم = یک بکاپ).
+    بدونِ این، ری‌استارتِ ربات دیتا را از بکاپِ قدیمیِ پین‌شده برمی‌گرداند و تغییراتِ تازه از بین می‌رفت."""
+    global _palette_backup_sleeping
+    if _palette_backup_sleeping:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    _palette_backup_sleeping = True
+
+    async def _run() -> None:
+        global _palette_backup_sleeping
+        try:
+            await asyncio.sleep(delay)
+        finally:
+            _palette_backup_sleeping = False
+        try:
+            async with _palette_backup_lock:
+                await backup_data_dir_to_telegram()
+        except Exception:
+            logger.exception("بکاپِ خودکارِ پس از تغییرِ پالت‌ها ناموفق بود")
+
+    loop.create_task(_run())
+
+async def save_palettes_data(palettes: list[dict], *, backup: bool = True) -> None:
     async with _write_lock:
-        PALETTES_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PALETTES_DATA_FILE.write_text(json.dumps(palettes, ensure_ascii=False, indent=2), encoding="utf-8")
-    # هر تغییری در پالت‌ها بلافاصله در پس‌زمینه به بکاپِ تلگرام هم می‌ره، تا
-    # لازم نباشه ادمین بعدِ هر تغییر یادش بمونه دکمه‌ی «بکاپ دستی» رو بزنه.
+        _atomic_write_text(PALETTES_DATA_FILE, json.dumps(palettes, ensure_ascii=False, indent=2))
+    if backup:
+        _schedule_palette_backup()
+
+def _palette_merge_seed() -> int:
+    """فایلِ seed (palette-app/seed/palettes.json، داخلِ ریپو و خارج از بکاپ) را با دیتای زنده ادغام می‌کند.
+
+    چرا لازم است: در هر استارت، ربات پوشه‌ی دیتا را از بکاپِ پین‌شده‌ی تلگرام بازیابی و روی فایلِ ریپو
+    بازنویسی می‌کند؛ پس فایلی که فقط داخلِ ریپو بگذاری هیچ‌وقت به مینی‌اپ نمی‌رسید.
+    قانون: فقط پالت‌هایی اضافه می‌شوند که (۱) شناسه‌شان قبلاً از seed ادغام نشده و (۲) الان در لیست نیستند؛
+    پس حذف/ویرایشِ ادمین هرگز با دیپلوی برنمی‌گردد. تعدادِ پالت‌های اضافه‌شده را برمی‌گرداند."""
+    if not PALETTE_SEED_FILE.exists():
+        return 0
+    try:
+        seed, _stats = normalize_palettes(json.loads(PALETTE_SEED_FILE.read_text(encoding="utf-8-sig")))
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("palettes: خواندنِ seed ممکن نشد: %s", e)
+        return 0
+    if not seed:
+        return 0
+    try:
+        merged_ids = set(json.loads(PALETTE_SEED_STATE_FILE.read_text(encoding="utf-8")).get("merged", []))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        merged_ids = set()
+    live = load_palettes_data()
+    live_ids = {p.get("id") for p in live if isinstance(p, dict)}
+    fresh = [p for p in seed if p["id"] not in merged_ids and p["id"] not in live_ids]
+    if fresh:
+        _atomic_write_text(PALETTES_DATA_FILE, json.dumps(live + fresh, ensure_ascii=False, indent=2))
+    new_merged = merged_ids | {p["id"] for p in seed}
+    if new_merged != merged_ids:
+        _atomic_write_text(PALETTE_SEED_STATE_FILE, json.dumps({"merged": sorted(new_merged)}, ensure_ascii=False))
+    if fresh:
+        logger.info("palettes: %d پالتِ جدید از seed اضافه شد (مجموع %d)", len(fresh), len(live) + len(fresh))
+    return len(fresh)
 
 def load_prompts_data() -> list[dict]:
     if not PROMPTS_DATA_FILE.exists():
@@ -1623,31 +1761,85 @@ def admin_messaging_keyboard() -> InlineKeyboardMarkup:
         ]
     )
 
-def render_palette_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
-    palettes = load_palettes_data()
-    if palettes:
-        text = (
-            "🎨 <b>مدیریتِ پالت‌هایِ رنگی</b>\n\n"
-            f"تعداد فعلی: {to_persian_num(len(palettes))} پالت — همینی‌ست که توی مینی‌اپ نشون داده می‌شه.\n\n"
-            "با «➕ افزودن» یه پالتِ تازه اضافه کن، یا با لمسِ 🗑 جلویِ هرکدوم اون رو حذف کن."
-        )
-    else:
-        text = (
-            "🎨 <b>مدیریتِ پالت‌هایِ رنگی</b>\n\n"
-            "هنوز هیچ پالتی اضافه نشده.\n"
-            "با «➕ افزودن» اولین پالت رو بساز."
-        )
-    rows = []
+# رابطِ ادمین: وضعیتِ هر ادمین (صفحه + عبارتِ جست‌وجو). تلگرام حداکثر ۱۰۰ دکمه در هر پیام می‌پذیرد،
+# پس لیست حتماً صفحه‌بندی می‌شود (قبلاً برای هر پالت یک دکمه ساخته می‌شد و با ۱۰۰+ پالت کلِ منو از کار می‌افتاد).
+PALETTE_ADMIN_PAGE_SIZE = 8
+_pal_ui: dict[int, dict] = {}
+
+def _pal_ui_get(uid: int) -> dict:
+    return _pal_ui.setdefault(uid, {"page": 0, "q": ""})
+
+def _palette_cb_token(pid: str) -> str:
+    """callback_data حداکثر ۶۴ بایت است؛ شناسه‌ی بلند/غیرمعمول با هشِ کوتاه جایگزین می‌شود."""
+    if len(f"paladmin:delok:{pid}".encode("utf-8")) <= 64:
+        return pid
+    return "~" + hashlib.sha1(pid.encode("utf-8")).hexdigest()[:16]
+
+def _palette_resolve_token(token: str, palettes: list[dict]) -> dict | None:
+    if token.startswith("~"):
+        return next((p for p in palettes if _palette_cb_token(str(p.get("id"))) == token), None)
+    return next((p for p in palettes if p.get("id") == token), None)
+
+def _palette_admin_filter(palettes: list[dict], query: str) -> list[dict]:
+    q = (query or "").strip().lower()
+    if not q:
+        return palettes
+    out = []
     for p in palettes:
+        hay = " ".join([str(p.get("id", "")), str(p.get("name", "")), " ".join(map(str, p.get("tags") or []))]).lower()
+        if q in hay:
+            out.append(p)
+    return out
+
+def render_palette_admin_menu(page: int = 0, query: str = "") -> tuple[str, InlineKeyboardMarkup]:
+    all_palettes = load_palettes_data()
+    items = _palette_admin_filter(all_palettes, query)
+    per = PALETTE_ADMIN_PAGE_SIZE
+    total_pages = max(1, -(-len(items) // per))
+    page = max(0, min(page, total_pages - 1))
+    chunk = items[page * per:(page + 1) * per]
+
+    lines = ["🎨 <b>مدیریتِ پالت‌هایِ رنگی</b>", ""]
+    if all_palettes:
+        lines.append(f"کلِ پالت‌ها: <b>{to_persian_num(len(all_palettes))}</b> — همین‌ها توی مینی‌اپ نشون داده می‌شه.")
+    else:
+        lines.append("هنوز هیچ پالتی اضافه نشده. با «📥 افزودن از فایلِ JSON» یا «➕ افزودنِ تکی» شروع کن.")
+    if query:
+        lines.append(f"🔎 جست‌وجو: «{html_escape(query)}» — {to_persian_num(len(items))} نتیجه")
+    if items:
+        lines.append(f"صفحه‌ی {to_persian_num(page + 1)} از {to_persian_num(total_pages)}")
+    lines += ["", "برای حذفِ یک پالت روی 🗑 جلویِ اسمش بزن؛ برای افزودنِ دسته‌جمعی «📥 افزودن از فایلِ JSON» رو بزن."]
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for p in chunk:
+        name = str(p.get("name") or p.get("id") or "—")
+        name = name if len(name) <= 38 else name[:37] + "…"
         rows.append([InlineKeyboardButton(
-            text=f"🗑 {p.get('name', p.get('id', ''))}",
-            callback_data=f"paladmin:del:{p.get('id')}",
+            text=f"🗑 {name}",
+            callback_data=f"paladmin:del:{_palette_cb_token(str(p.get('id')))}",
             style="danger",
         )])
-    rows.append([InlineKeyboardButton(text="➕ افزودنِ پالتِ تازه", callback_data="paladmin:add", style="success")])
-    rows.append([InlineKeyboardButton(text="📥 جایگزینیِ کاملِ لیست از فایلِ JSON", callback_data="paladmin:import", style="primary")])
+    if total_pages > 1:
+        nav: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️ قبلی", callback_data=f"paladmin:pg:{page - 1}", style="primary"))
+        nav.append(InlineKeyboardButton(text=f"{to_persian_num(page + 1)}/{to_persian_num(total_pages)}", callback_data="paladmin:noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="بعدی ▶️", callback_data=f"paladmin:pg:{page + 1}", style="primary"))
+        rows.append(nav)
+    rows.append([
+        InlineKeyboardButton(text="➕ افزودنِ تکی", callback_data="paladmin:add", style="success"),
+        InlineKeyboardButton(text="🔎 جست‌وجو", callback_data="paladmin:search", style="primary"),
+    ])
+    if query:
+        rows.append([InlineKeyboardButton(text="✖️ پاک‌کردنِ جست‌وجو", callback_data="paladmin:clrq", style="primary")])
+    rows.append([InlineKeyboardButton(text="📥 افزودن از فایلِ JSON (بدونِ حذفِ قبلی‌ها)", callback_data="paladmin:merge", style="success")])
+    rows.append([
+        InlineKeyboardButton(text="♻️ جایگزینیِ کامل", callback_data="paladmin:import", style="danger"),
+        InlineKeyboardButton(text="📤 خروجیِ JSON", callback_data="paladmin:export", style="primary"),
+    ])
     rows.append([InlineKeyboardButton(text="🔙 بازگشت به منو", callback_data="admin:menu", style="primary")])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
 def render_prompts_admin_menu() -> tuple[str, InlineKeyboardMarkup]:
     prompts = load_prompts_data()
@@ -3459,6 +3651,7 @@ async def handle_all_admin_callbacks(callback: CallbackQuery, state: FSMContext)
 
     if action == "cat_palette":
         await callback.answer()
+        _pal_ui[callback.from_user.id] = {"page": 0, "q": ""}
         text, keyboard = render_palette_admin_menu()
         await callback.message.edit_text(text, reply_markup=keyboard)
         return
@@ -4215,22 +4408,121 @@ class PaletteManageStates(StatesGroup):
     waiting_tags = State()
     waiting_colors = State()
     waiting_import_file = State()
+    waiting_search = State()
 
-@dp.callback_query(F.data == "paladmin:import")
-async def cb_palette_import(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+async def _palette_edit_menu(callback: CallbackQuery) -> None:
+    ui = _pal_ui_get(callback.from_user.id)
+    text, keyboard = render_palette_admin_menu(ui["page"], ui["q"])
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
+
+async def _palette_admin_only(callback: CallbackQuery) -> bool:
+    if is_admin(callback.from_user.id):
+        return True
+    await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+    return False
+
+@dp.callback_query(F.data == "paladmin:noop")
+async def cb_palette_noop(callback: CallbackQuery):
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("paladmin:pg:"))
+async def cb_palette_page(callback: CallbackQuery):
+    if not await _palette_admin_only(callback):
         return
-    await state.set_state(PaletteManageStates.waiting_import_file)
+    try:
+        page = int(callback.data.split(":", 2)[2])
+    except ValueError:
+        page = 0
+    _pal_ui_get(callback.from_user.id)["page"] = max(0, page)
+    await callback.answer()
+    await _palette_edit_menu(callback)
+
+@dp.callback_query(F.data == "paladmin:search")
+async def cb_palette_search(callback: CallbackQuery, state: FSMContext):
+    if not await _palette_admin_only(callback):
+        return
+    await state.set_state(PaletteManageStates.waiting_search)
     await callback.message.edit_text(
-        "📥 <b>جایگزینیِ کاملِ لیستِ پالت‌ها</b>\n\n"
-        "فایلِ <code>palettes.json</code> رو به‌صورتِ داکیومنت (نه متن) بفرست.\n\n"
-        "⚠️ توجه: این کار کلِ لیستِ فعلیِ پالت‌ها رو با محتوایِ همین فایل جایگزین می‌کنه "
-        "(هرچی الان توی مینی‌اپه پاک و با این فایل عوض می‌شه).\n"
+        "🔎 <b>جست‌وجو در پالت‌ها</b>\n\n"
+        "بخشی از اسم، برچسب یا شناسه‌ی پالت رو بفرست (مثلاً «یشمی» یا «اتاق خواب»).\n"
         "(برای لغو، /cancel بفرستید)",
         reply_markup=admin_back_keyboard(),
     )
     await callback.answer()
+
+@dp.message(PaletteManageStates.waiting_search)
+async def palette_search_received(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    raw = (message.text or "").strip()
+    await state.clear()
+    ui = _pal_ui_get(message.from_user.id)
+    if raw and not raw.startswith("/"):
+        ui["q"], ui["page"] = raw[:60], 0
+    text, keyboard = render_palette_admin_menu(ui["page"], ui["q"])
+    await message.answer(text, reply_markup=keyboard)
+
+@dp.callback_query(F.data == "paladmin:clrq")
+async def cb_palette_clear_query(callback: CallbackQuery):
+    if not await _palette_admin_only(callback):
+        return
+    ui = _pal_ui_get(callback.from_user.id)
+    ui["q"], ui["page"] = "", 0
+    await callback.answer()
+    await _palette_edit_menu(callback)
+
+@dp.callback_query(F.data == "paladmin:export")
+async def cb_palette_export(callback: CallbackQuery):
+    if not await _palette_admin_only(callback):
+        return
+    palettes = load_palettes_data()
+    if not palettes:
+        await callback.answer("لیست خالیه.", show_alert=True)
+        return
+    await callback.answer("در حال ساختنِ فایل…")
+    payload = json.dumps(palettes, ensure_ascii=False, indent=2).encode("utf-8")
+    await callback.message.answer_document(
+        BufferedInputFile(payload, filename=f"palettes_{len(palettes)}.json"),
+        caption=f"📤 خروجیِ {to_persian_num(len(palettes))} پالت — می‌تونی ویرایشش کنی و دوباره از «افزودن از فایلِ JSON» بفرستی.",
+    )
+
+async def _palette_ask_import_file(callback: CallbackQuery, state: FSMContext, mode: str) -> None:
+    await state.set_state(PaletteManageStates.waiting_import_file)
+    await state.update_data(import_mode=mode)
+    if mode == "merge":
+        title = "📥 <b>افزودن از فایلِ JSON</b>"
+        note = (
+            "پالت‌هایِ جدیدِ فایل به لیست اضافه می‌شن. اگه شناسه‌ی (id) یه پالت قبلاً وجود داشته باشه، "
+            "با نسخه‌ی فایل به‌روز می‌شه. هیچ پالتِ دیگه‌ای حذف نمی‌شه."
+        )
+    else:
+        title = "♻️ <b>جایگزینیِ کاملِ لیستِ پالت‌ها</b>"
+        note = (
+            "⚠️ کلِ لیستِ فعلی پاک و با محتوایِ فایل عوض می‌شه "
+            "(یک نسخه‌ی پشتیبان از لیستِ قبلی نگه داشته می‌شه). برای اضافه‌کردنِ پالتِ جدید بدونِ حذفِ قبلی‌ها، «افزودن از فایل» رو بزن."
+        )
+    await callback.message.edit_text(
+        f"{title}\n\nفایلِ <code>.json</code> رو به‌صورتِ داکیومنت (نه متن) بفرست.\n\n{note}\n"
+        "(برای لغو، /cancel بفرستید)",
+        reply_markup=admin_back_keyboard(),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "paladmin:import")
+async def cb_palette_import(callback: CallbackQuery, state: FSMContext):
+    if not await _palette_admin_only(callback):
+        return
+    await _palette_ask_import_file(callback, state, "replace")
+
+@dp.callback_query(F.data == "paladmin:merge")
+async def cb_palette_merge(callback: CallbackQuery, state: FSMContext):
+    if not await _palette_admin_only(callback):
+        return
+    await _palette_ask_import_file(callback, state, "merge")
 
 @dp.message(PaletteManageStates.waiting_import_file, F.document)
 async def palette_import_file_received(message: Message, state: FSMContext):
@@ -4240,35 +4532,74 @@ async def palette_import_file_received(message: Message, state: FSMContext):
     if not (doc.file_name or "").lower().endswith(".json"):
         await message.answer("❌ فایل باید پسوندِ .json داشته باشه. دوباره امتحان کن یا /cancel بزن.")
         return
+    if (doc.file_size or 0) > 15 * 1024 * 1024:
+        await message.answer("❌ حجمِ فایل از ۱۵ مگابایت بیشتره. دوباره امتحان کن یا /cancel بزن.")
+        return
+    mode = (await state.get_data()).get("import_mode", "replace")
     try:
         file_bytes_io = await bot.download(doc.file_id)
-        raw = file_bytes_io.read().decode("utf-8")
-        parsed = json.loads(raw)
+        parsed = json.loads(file_bytes_io.read().decode("utf-8-sig"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        await message.answer(f"❌ فایل یک JSON معتبر نیست: {e}\nدوباره امتحان کن یا /cancel بزن.")
+        await message.answer(f"❌ فایل یک JSON معتبر نیست: {html_escape(str(e))}\nدوباره امتحان کن یا /cancel بزن.")
         return
     except Exception as e:
         logger.error("دانلودِ فایلِ ایمپورتِ پالت ناموفق بود: %s", e, exc_info=True)
         await message.answer("❌ دانلودِ فایل ناموفق بود. دوباره امتحان کن یا /cancel بزن.")
         return
 
-    if not isinstance(parsed, list) or not all(
-        isinstance(p, dict) and p.get("id") and p.get("name") and isinstance(p.get("colors"), list)
-        for p in parsed
-    ):
+    incoming, stats = normalize_palettes(parsed)
+    if not incoming:
         await message.answer(
-            "❌ ساختارِ فایل درست نیست — باید یک لیست از پالت‌ها باشه که هرکدوم حداقل "
-            "id، name و colors داشته باشه. دوباره امتحان کن یا /cancel بزن."
+            "❌ هیچ پالتِ معتبری توی فایل پیدا نشد. هر پالت باید <code>id</code>، <code>name</code> و حداقل ۲ رنگِ هگز در "
+            "<code>colors</code> داشته باشه. لیستِ فعلی دست‌نخورده موند.\nدوباره امتحان کن یا /cancel بزن."
         )
         return
 
-    await save_palettes_data(parsed)
+    live = load_palettes_data()
+    if mode == "merge":
+        idx = {p.get("id"): i for i, p in enumerate(live) if isinstance(p, dict)}
+        added = updated = same = 0
+        for item in incoming:
+            i = idx.get(item["id"])
+            if i is None:
+                live.append(item)
+                idx[item["id"]] = len(live) - 1
+                added += 1
+            elif live[i] != item:
+                live[i] = item
+                updated += 1
+            else:
+                same += 1
+        await save_palettes_data(live, backup=False)
+        summary = (
+            f"✅ <b>{to_persian_num(added)}</b> پالتِ جدید اضافه و <b>{to_persian_num(updated)}</b> پالت به‌روز شد "
+            f"({to_persian_num(same)} مورد بدونِ تغییر بود).\nمجموعِ فعلی: <b>{to_persian_num(len(live))}</b> پالت."
+        )
+    else:
+        if live:   # نسخه‌ی پشتیبان از لیستِ قبلی، تا جایگزینیِ اشتباهی قابل‌برگشت باشه
+            _atomic_write_text(PALETTES_DATA_FILE.with_name("palettes.prev.json"), json.dumps(live, ensure_ascii=False, indent=2))
+        await save_palettes_data(incoming, backup=False)
+        summary = f"✅ لیستِ پالت‌ها با <b>{to_persian_num(len(incoming))}</b> پالت از فایل جایگزین شد."
+
+    notes = []
+    if stats["invalid"]:
+        notes.append(f"⚠️ {to_persian_num(stats['invalid'])} مورد نامعتبر نادیده گرفته شد (نمونه: {html_escape('، '.join(stats['samples']))}).")
+    if stats["duplicate"]:
+        notes.append(f"⚠️ {to_persian_num(stats['duplicate'])} مورد با شناسه‌ی تکراری نادیده گرفته شد.")
+
     await state.clear()
-    await message.answer(
-        f"✅ لیستِ پالت‌ها با {to_persian_num(len(parsed))} پالت از فایل جایگزین شد.\n"
-        "همین الان توی مینی‌اپ در دسترسه و بکاپِ تلگرام هم به‌صورتِ خودکار به‌روز شد."
-    )
-    text, keyboard = render_palette_admin_menu()
+    ui = _pal_ui_get(message.from_user.id)
+    ui["q"], ui["page"] = "", 0
+    ok, backup_msg = await backup_data_dir_to_telegram()
+    if ok:
+        notes.append("🗄 بکاپِ تلگرام هم به‌روز شد، پس با ری‌استارتِ ربات هم از بین نمی‌ره.")
+    else:
+        notes.append(
+            "⚠️ بکاپِ تلگرام ناموفق بود: " + html_escape(backup_msg) +
+            "\nتا وقتی بکاپ نگرفته‌ای، ری‌استارتِ ربات ممکنه این تغییر رو به نسخه‌ی قبلیِ بکاپ برگردونه — از پنلِ ادمین «بکاپِ دستی» رو بزن."
+        )
+    await message.answer("\n".join([summary, ""] + notes))
+    text, keyboard = render_palette_admin_menu(0, "")
     await message.answer(text, reply_markup=keyboard)
 
 @dp.message(PaletteManageStates.waiting_import_file)
@@ -4298,19 +4629,39 @@ async def cb_palette_add(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("paladmin:del:"))
 async def cb_palette_delete(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        await callback.answer("⛔ دسترسی ندارید.", show_alert=True)
+    """مرحله‌ی اول: تأیید (با ۱۲۵۰ پالت، یک لمسِ اشتباه نباید چیزی پاک کنه)."""
+    if not await _palette_admin_only(callback):
         return
-    pal_id = callback.data.split(":", 2)[2]
-    palettes = load_palettes_data()
-    remaining = [p for p in palettes if p.get("id") != pal_id]
-    if len(remaining) == len(palettes):
+    token = callback.data.split(":", 2)[2]
+    p = _palette_resolve_token(token, load_palettes_data())
+    if not p:
         await callback.answer("این پالت دیگر یافت نشد.", show_alert=True)
+        await _palette_edit_menu(callback)
         return
-    await save_palettes_data(remaining)
+    swatches = " ".join(str(c) for c in (p.get("colors") or []))
+    await callback.message.edit_text(
+        f"🗑 <b>حذفِ پالت</b>\n\n«{html_escape(str(p.get('name', '')))}»\n<code>{html_escape(swatches)}</code>\n\nمطمئنی حذف بشه؟",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ بله، حذف کن", callback_data=f"paladmin:delok:{token}", style="danger"),
+            InlineKeyboardButton(text="↩️ انصراف", callback_data="paladmin:pg:" + str(_pal_ui_get(callback.from_user.id)["page"]), style="primary"),
+        ]]),
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("paladmin:delok:"))
+async def cb_palette_delete_confirm(callback: CallbackQuery):
+    if not await _palette_admin_only(callback):
+        return
+    token = callback.data.split(":", 2)[2]
+    palettes = load_palettes_data()
+    p = _palette_resolve_token(token, palettes)
+    if not p:
+        await callback.answer("این پالت دیگر یافت نشد.", show_alert=True)
+        await _palette_edit_menu(callback)
+        return
+    await save_palettes_data([x for x in palettes if x is not p])
     await callback.answer("🗑 حذف شد.")
-    text, keyboard = render_palette_admin_menu()
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await _palette_edit_menu(callback)
 
 @dp.message(PaletteManageStates.waiting_name)
 async def palette_name_received(message: Message, state: FSMContext):
@@ -4412,6 +4763,7 @@ async def palette_colors_received(message: Message, state: FSMContext):
         f"✅ پالتِ «{html_escape(name)}» با {to_persian_num(len(colors))} رنگ اضافه شد.\n"
         "همین الان توی مینی‌اپ در دسترسه — نیازی به ری‌استارتِ ربات نیست."
     )
+    _pal_ui[message.from_user.id] = {"page": 0, "q": ""}
     text, keyboard = render_palette_admin_menu()
     await message.answer(text, reply_markup=keyboard)
 
@@ -9127,7 +9479,34 @@ async def handle_miniapp_page(request: web.Request) -> web.Response:
 
 async def handle_palette_page(request: web.Request) -> web.Response:
     html_path = PALETTE_DIR / "index.html"
-    return web.Response(text=html_path.read_text(encoding="utf-8"), content_type="text/html")
+    return web.Response(
+        text=html_path.read_text(encoding="utf-8"), content_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+_palette_payload_cache: dict = {"sig": None, "body": b"[]", "etag": '"empty"'}
+
+def _palette_payload() -> tuple[bytes, str]:
+    """بدنه‌ی JSONِ پالت‌ها + ETag؛ تا وقتی فایل عوض نشده از حافظه سرو می‌شه."""
+    try:
+        st = PALETTES_DATA_FILE.stat()
+    except OSError:
+        return b"[]", '"empty"'
+    sig = (st.st_mtime_ns, st.st_size)
+    if _palette_payload_cache["sig"] != sig:
+        body = PALETTES_DATA_FILE.read_bytes()
+        _palette_payload_cache.update(sig=sig, body=body, etag='"' + hashlib.sha1(body).hexdigest()[:20] + '"')
+    return _palette_payload_cache["body"], _palette_payload_cache["etag"]
+
+async def handle_palette_data(request: web.Request) -> web.Response:
+    """دیتای پالت‌ها: فشرده (gzip) و با ETag — فایلِ ~۱ مگابایتی روی موبایل چند برابر سریع‌تر لود می‌شه."""
+    body, etag = _palette_payload()
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if request.headers.get("If-None-Match") == etag:
+        return web.Response(status=304, headers=headers)
+    resp = web.Response(body=body, content_type="application/json", charset="utf-8", headers=headers)
+    resp.enable_compression()
+    return resp
 
 async def handle_prompts_page(request: web.Request) -> web.Response:
     html_path = PROMPTS_DIR / "index.html"
@@ -9284,6 +9663,14 @@ async def on_startup(app: web.Application):
     storage.reload()
     status_icon = "✅" if restored_ok else "⚠️"
     await _notify_backup_admin(f"{status_icon} بازیابیِ خودکارِ دیتا در استارتاپ:\n{restore_msg}")
+    # پالت‌هایِ جدیدِ seed را بعد از بازیابیِ بکاپ ادغام می‌کنیم (وگرنه بکاپِ قدیمی فایلِ دیپلوی‌شده را بازنویسی می‌کرد)
+    try:
+        _added_palettes = _palette_merge_seed()
+        if _added_palettes:
+            _schedule_palette_backup(delay=20)
+            await _notify_backup_admin(f"🎨 {_added_palettes} پالتِ جدید از seed به مینی‌اپ اضافه شد.")
+    except Exception as e:
+        logger.warning("ادغام seed پالت‌ها ناموفق بود: %s", e)
     cache_users()
 
     # بررسیِ فعال‌بودنِ Topics روی گروهِ NOTIFY_CHAT_ID (لازمه‌یِ صندوقِ ورودیِ مبتنی بر تاپیک)
@@ -10271,6 +10658,7 @@ def create_app() -> web.Application:
     app.router.add_get("/miniapp/api/data", handle_miniapp_data)
     app.router.add_post("/miniapp/api/action", handle_miniapp_action)
     app.router.add_get("/palettes", handle_palette_page)
+    app.router.add_get("/palettes/api/data", handle_palette_data)
     app.router.add_static("/palettes/", path=PALETTE_DIR, name="palette_assets")
     app.router.add_get("/prompts", handle_prompts_page)
     app.router.add_post("/prompts/api/send", handle_prompt_send)
