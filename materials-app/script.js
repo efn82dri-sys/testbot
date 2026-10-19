@@ -195,7 +195,7 @@ function manageView() {
  const products=[]; D.companies.forEach(c=>(c.products||[]).forEach(p=>products.push({c,p})));
  const missingImage=products.filter(x=>!(x.p.images||[]).length && !externalProductImage(x.p)); const needsWork=products.filter(x=>(!(x.p.images||[]).length && !externalProductImage(x.p)) || (!x.p.source && !(x.p.specs||[]).length)); const pending=(S.communityData&&S.communityData.items||[]).filter(x=>x.status==='pending').length;
  return `<div class="admin-welcome"><span class="eyebrow">میزکار مدیر</span><h2>مدیریت محتوا، بدون گشتن در منوها</h2><p>کارهای مهم را از اینجا شروع کن. تغییرات فقط پس از ذخیره روی کاتالوگ اعمال می‌شوند.</p><div class="admin-metrics"><div><b>${fa(D.companies.length)}</b><small>برند</small></div><div><b>${fa(products.length)}</b><small>محصول</small></div><div><b>${fa(missingImage.length)}</b><small>بدون تصویر</small></div><div><b>${S.communityData ? fa(pending) : '—'}</b><small>تجربه‌ی در انتظار</small></div></div></div>
- <div class="admin-actions"><button class="admin-action admin-action-primary" data-x="catalog-upload"><b>آپلود کاتالوگ از فایل</b><small>ارسال فایل JSON در چت ربات و افزودن گروهی محصولات بدون دیپلوی مجدد</small><span>انتخاب فایل از طریق چت ربات ←</span></button><button class="admin-action" data-x="quick-products"><b>افزودن سریع چند محصول</b><small>ثبت چند محصول در یک فرم کوتاه؛ بدون بازکردن فرم بلند برای هرکدام</small><span>شروع افزودن سریع ←</span></button><button class="admin-action" data-x="admin-catalog"><b>۱. ویرایش برندها و محصولات</b><small>افزودن محصول، تصویر، مشخصات و فایل</small><span>ورود به کاتالوگ ←</span></button><button class="admin-action" data-x="community-admin"><b>۲. بررسی تجربه‌های کاربران</b><small>تأیید، رد یا مدیریت نشان کارشناسی</small><span>بررسی ارسال‌ها ←</span></button><button class="admin-action" data-tab="market"><b>۳. شاخص بازار</b><small>بازدیدها، جست‌وجوهای بی‌نتیجه و استعلام‌ها</small><span>مشاهده گزارش ←</span></button><button class="admin-action" data-tab="sponsor"><b>۴. گزارش حامیان</b><small>رویدادهای ثبت‌شده برای برندهای حامی</small><span>مشاهده گزارش ←</span></button></div>
+ <div class="admin-actions"><button class="admin-action admin-action-primary" data-x="catalog-upload"><b>آپلود کاتالوگ از فایل</b><small>ارسال فایل JSON در چت ربات و افزودن گروهی محصولات بدون دیپلوی مجدد</small><span>انتخاب فایل از طریق چت ربات ←</span></button><button class="admin-action" data-x="quick-products"><b>افزودن سریع چند محصول</b><small>ثبت چند محصول در یک فرم کوتاه؛ بدون بازکردن فرم بلند برای هرکدام</small><span>شروع افزودن سریع ←</span></button><button class="admin-action" data-x="admin-catalog"><b>۱. ویرایش برندها و محصولات</b><small>افزودن محصول، تصویر، مشخصات و فایل</small><span>ورود به کاتالوگ ←</span></button><button class="admin-action" data-x="community-admin"><b>۲. بررسی تجربه‌های کاربران</b><small>تأیید، رد یا مدیریت نشان کارشناسی</small><span>بررسی ارسال‌ها ←</span></button><button class="admin-action" data-tab="market"><b>۳. شاخص بازار</b><small>بازدیدها، جست‌وجوهای بی‌نتیجه و استعلام‌ها</small><span>مشاهده گزارش ←</span></button><button class="admin-action" data-tab="sponsor"><b>۴. گزارش حامیان</b><small>رویدادهای ثبت‌شده برای برندهای حامی</small><span>مشاهده گزارش ←</span></button><button class="admin-action" data-x="admin-dims"><b>۵. بازبینی ابعاد و محاسبه</b><small>محصولاتی که متره فضا و ماشین‌حساب تخصصی برایشان دقیق نیست</small><span>مشاهده و اصلاح ←</span></button></div>
  <div class="grp">موارد نیازمند تکمیل</div>${needsWork.length?needsWork.slice(0,10).map(({c,p})=>`<div class="ln admin-missing"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><div class="meta"><span>تصویر ندارد</span>${!p.source&&!(p.specs||[]).length?'<span>منبع/مشخصات ناقص</span>':''}</div><div class="ft"><button class="act act-primary" data-prod="${esc(p.id)}">بازکردن محصول</button><button class="act" data-x="admin-edit-product" data-id="${esc(c.id)}" data-pid="${esc(p.id)}">ویرایش اطلاعات</button></div></div>`).join(''):'<div class="empty"><p>همه‌ی محصولات تصویر دارند. برای انتشار، منبع و مشخصات فنی را هم بررسی کن.</p></div>'}
  <div class="ft"><button class="act act-primary" data-x="admin-save">ذخیره‌ی تغییرات</button><button class="act" data-x="admin-refresh">بازخوانی از سرور</button></div>`;
 }
@@ -626,7 +626,7 @@ function summary() {
 
 /* ---------- فرم ادمین ---------- */
 const CF = [['name', 'نام برند'], ['en', 'نام لاتین'], ['cat', 'دسته‌بندی'], ['desc', 'توضیح کوتاه', 'area'], ['site', 'وب‌سایت رسمی (https://…)'], ['catalog', 'لینک کاتالوگ (https://…)'], ['featuresT', 'ویژگی‌های برند — هر خط یک مورد', 'area'], ['linksT', 'لینک‌های مفید — هر خط: «عنوان | https://…»', 'area'], ['sponsor', 'حامی پاکار', 'chk']];
-const QPF = [['name','نام محصول'],['group','گروه'],['unit','واحد فروش'],['price','قیمت (اختیاری)'],['page','لینک رسمی محصول (اختیاری)'],['source','منبع اطلاعات (اختیاری)']];
+const QPF = [['name','نام محصول'],['group','گروه'],['unit','واحد فروش'],['price','قیمت (اختیاری)'],['page','لینک رسمی محصول (اختیاری)'],['source','منبع اطلاعات (اختیاری)'],['calcUnit','واحد ابعاد','sel',[['cm','سانتی‌متر'],['mm','میلی‌متر'],['m','متر']]],['calcL','طول بلوک/پانل (اختیاری)'],['calcH','ارتفاع (اختیاری)'],['calcT','ضخامت (اختیاری)']];
 const PF = [
   ['name', 'نام محصول'],
   ['group', 'گروه'],
@@ -659,7 +659,16 @@ const PF = [
   ['installSource', 'منبع آموزش اجرا', 'area'],
   ['installVideoUrl', 'لینک ویدیوی کوتاه اجرا (HTTPS)', 'area'],
   ['installVerifiedBy', 'نام بازبین متخصص (پس از تأیید)', 'area'],
-  ['installVerifiedAt', 'تاریخ بازبینی', 'area'], ['installStandard', 'استاندارد / بند مرجع (با ذکر منبع)', 'area']
+  ['installVerifiedAt', 'تاریخ بازبینی', 'area'], ['installStandard', 'استاندارد / بند مرجع (با ذکر منبع)', 'area'],
+  ['calcKind', 'نوع ماشین‌حساب تخصصی', 'sel', [['', 'خودکار (از نام و واحد)'], ['block', 'بلوک و ملات'], ['floor', 'کف سبک / حجمی'], ['gyp', 'گچ و پانل'], ['none', 'بدون ماشین‌حساب']], 'calc'],
+  ['calcUnit', 'واحد ابعاد پایین', 'sel', [['cm', 'سانتی‌متر'], ['mm', 'میلی‌متر'], ['m', 'متر']], 'calc'],
+  ['calcL', 'طول بلوک / پانل', '', null, 'calc'],
+  ['calcH', 'ارتفاع بلوک / پانل (جهت عمودی روی دیوار)', '', null, 'calc'],
+  ['calcT', 'ضخامت (ضخامت دیوار با این بلوک)', '', null, 'calc'],
+  ['calcDensity', 'چگالی — kg/m³ (محصول حجمی)', '', null, 'calc'],
+  ['calcBagL', 'حجم هر کیسه — لیتر', '', null, 'calc'],
+  ['calcBagKg', 'وزن هر کیسه / بسته — kg', '', null, 'calc'],
+  ['calcRef', 'مصرف مرجع گچ — kg بر م² به‌ازای هر ۱cm', '', null, 'calc']
 ];
 const SPEC_TPL = [
   [/سبکدانه|سبک‌سازی|عایق|کف‌سازی|ژئوتکنیک|زیرساخت|کشاورز/, ['چگالی', 'ضریب هدایت حرارتی', 'مقاومت فشاری', 'جذب آب', 'رده‌ی آتش', 'دانه‌بندی', 'وزن هر کیسه']],
@@ -671,9 +680,11 @@ const specTplFor = (...ts) => { for (const t of ts) { const m = SPEC_TPL.find(x 
 function form(title, F, v, ok, back, val) {
   const isP = F === PF;
   const fieldHtml = ([k, l, t, o]) => `<label class="fl" style="min-width:${t === 'area' ? '100%' : '140px'}"><span>${l.replace(/\n/g, '<br>')}</span>${t === 'area' ? `<textarea data-f="${k}" rows="2">${esc(v[k])}</textarea>` : t === 'sel' ? `<select data-f="${k}">${o.map(x => `<option value="${x[0]}" ${v[k] === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>` : t === 'chk' ? `<input type="checkbox" data-f="${k}" ${v[k] ? 'checked' : ''} style="width:24px;height:24px">` : `<input data-f="${k}" value="${esc(v[k])}">`}</label>`;
-  const coreCount = isP ? 10 : F.length;
-  const coreFields = F.slice(0, coreCount), advancedFields = F.slice(coreCount);
-  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">${title}</h3><p class="hint">${isP ? 'برای ثبت اولیه فقط نام محصول کافی است. اطلاعات ناموجود را خالی بگذار؛ مشخصات حدسی وارد نکن.' : 'فقط فیلدهای ضروری را تکمیل کن؛ اطلاعات بیشتر را می‌توانی بعداً اضافه کنی.'}</p><div class="rw">${coreFields.map(fieldHtml).join('')}</div>${advancedFields.length ? `<details class="form-advanced"><summary>اطلاعات تکمیلی <small>استاندارد، مشخصات، آموزش اجرا و گواهی‌ها</small></summary><div class="rw">${advancedFields.map(fieldHtml).join('')}</div></details>` : ''}${isP ? '<div class="ft"><button type="button" class="act" data-a="spectpl">＋ درج قالب مشخصات این گروه</button></div>' : ''}<div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
+  const calcFields = isP ? F.filter(f => f[4] === 'calc') : [], rest = F.filter(f => f[4] !== 'calc');
+  const coreCount = isP ? 10 : rest.length;
+  const coreFields = rest.slice(0, coreCount), advancedFields = rest.slice(coreCount);
+  const calcSection = calcFields.length ? `<details class="form-advanced" open><summary>ابعاد و اندازه <small>برای متره فضا و محاسبه‌ی تخصصی</small></summary><p class="hint">این اعداد را از کاتالوگ یا دیتاشیت وارد کن؛ متره فضا و ماشین‌حساب دقیقاً از همین‌ها استفاده می‌کنند. خالی‌گذاشتن مجاز است؛ حدس نزن.</p><div class="rw">${calcFields.map(fieldHtml).join('')}</div></details>` : '';
+  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">${title}</h3><p class="hint">${isP ? 'برای ثبت اولیه فقط نام محصول کافی است. اطلاعات ناموجود را خالی بگذار؛ مشخصات حدسی وارد نکن.' : 'فقط فیلدهای ضروری را تکمیل کن؛ اطلاعات بیشتر را می‌توانی بعداً اضافه کنی.'}</p><div class="rw">${coreFields.map(fieldHtml).join('')}</div>${calcSection}${advancedFields.length ? `<details class="form-advanced"><summary>اطلاعات تکمیلی <small>استاندارد، مشخصات، آموزش اجرا و گواهی‌ها</small></summary><div class="rw">${advancedFields.map(fieldHtml).join('')}</div></details>` : ''}${isP ? '<div class="ft"><button type="button" class="act" data-a="spectpl">＋ درج قالب مشخصات این گروه</button></div>' : ''}<div class="sd-bar" style="margin-top:14px"><button type="button" class="act act-primary" data-a="fok">ذخیره</button><button type="button" class="act" data-a="fno">انصراف</button></div>`, back);
   S.ok = ok; S.val = val || null;
 }
 const readForm = () => { const o = {}; document.querySelectorAll('#sdPanel [data-f]').forEach(e => o[e.dataset.f] = e.type === 'checkbox' ? e.checked : e.value.trim()); return o; };
@@ -700,6 +711,7 @@ const cleanP = o => {
     model3d: ('model3dUrl' in o) ? (safe(o.model3dUrl) ? { url: safe(o.model3dUrl) } : null) : (o.model3d || null),
     install: { steps: String(o.installStepsT || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,20), mistakes: String(o.installMistakesT || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,20).map(line=>{const a=line.split('|').map(v=>v.trim());return a.length>=2&&['بحرانی','مهم','جزئی','critical','important','minor'].includes(a[0].toLowerCase())?{severity:({'بحرانی':'critical','مهم':'important','جزئی':'minor','critical':'critical','important':'important','minor':'minor'})[a[0].toLowerCase()],text:a[1],consequence:a.slice(2).join(' | ')}:line}), source: String(o.installSource||'').trim().slice(0,250), video_url: safe(o.installVideoUrl), verifiedBy: String(o.installVerifiedBy||'').trim().slice(0,120), verifiedAt: String(o.installVerifiedAt||'').trim().slice(0,30), standard: String(o.installStandard||'').trim().slice(0,180) }
   };
+  Object.assign(r, calcFromForm(o)); syncDimSpec(r);
   if (!r.confidence && (r.specs.length || r.standards.length || r.features.length || r.price || r.speed || r.durability)) r.confidence = 'review';
   ['specsT', 'featuresT', 'standardsT', 'techCertNo', 'techCertUntil', 'feHesab', 'model3dUrl', 'installStepsT', 'installMistakesT', 'installSource', 'installVideoUrl', 'installVerifiedBy', 'installVerifiedAt', 'installStandard'].forEach(k => delete r[k]);
   return r;
@@ -908,28 +920,120 @@ function densHint() {
 }
 
 /* ---------- پل متره فضا ← محاسبات تخصصی ---------- */
-const calcKind = p => p.mode === 'vol' ? 'floor' : (p.mode === 'area' && /پانل|گچی/.test(p.name)) ? 'gyp' : (/بلوک/.test(p.name) && p.unit === 'عدد') ? 'block' : /گچ/.test(p.name + ' ' + (p.group || '')) ? 'gyp' : null;
-const dimsOf = p => { const dg = t => String(t).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace('٫', '.'); const src = [...(p.specs || []).map(x => x.v), p.name]; for (const t of src) { const m = dg(t).match(/(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)\s*[×xX]\s*(\d+(?:\.\d+)?)/); if (m) return { bl: m[1], bt: m[2], bh: m[3] }; } return null; };
+/* ---------- شناسنامه‌ی محاسباتی محصول: ابعاد و اندازه‌ی ساختاریافته ---------- */
+const CALC_NUM = ['calcL', 'calcH', 'calcT', 'calcDensity', 'calcBagKg', 'calcBagL', 'calcRef'];
+const UNIT_CM = { cm: 1, mm: 0.1, m: 100 };
+const UNIT_FA = { cm: 'سانتی‌متر', mm: 'میلی‌متر', m: 'متر' };
+const DIM_SPEC_KEY = 'ابعاد ثبت‌شده برای محاسبه';
+const inferMode = u => { u = String(u || ''); return /متر\s*مکعب|مترمکعب|م³|m3/i.test(u) ? 'vol' : /متر\s*مربع|مترمربع|م²|m2/i.test(u) ? 'area' : 'count'; };
+const inferSurf = (name, group) => { const t = String(name || '') + ' ' + String(group || ''); if (/سقف|کاذب/.test(t) && !/کف/.test(t)) return 'ceiling'; if (/کف|پارکت|موزاییک|سبکدانه/.test(t)) return 'floor'; if (/بلوک|تیغه|دیوار|پانل|گچ|نما/.test(t)) return 'wall'; return ''; };
+const calcKind = p => {
+  if (p.calcKind === 'none') return null;
+  if (p.calcKind === 'block' || p.calcKind === 'floor' || p.calcKind === 'gyp') return p.calcKind;
+  return p.mode === 'vol' ? 'floor' : (p.mode === 'area' && /پانل|گچی/.test(p.name)) ? 'gyp' : (/بلوک/.test(p.name) && p.unit === 'عدد') ? 'block' : /گچ/.test(p.name + ' ' + (p.group || '')) ? 'gyp' : null;
+};
+const cmStr = n => (n > 0 ? String(+(+n).toFixed(3)) : '');
+function dimsOf(p) {
+  const f = k => P(p[k]);
+  if (f('calcL') || f('calcH') || f('calcT')) { const m = UNIT_CM[p.calcUnit] || 1; return { bl: f('calcL') * m, bh: f('calcH') * m, bt: f('calcT') * m, src: 'field', guess: false }; }
+  const dg = t => String(t).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫]/g, '.');
+  const unitOf = t => /میلی|mm/i.test(t) ? 'mm' : /سانتی|cm/i.test(t) ? 'cm' : /\d\s*(?:متر|m)(?![\u0600-\u06FFa-z])/i.test(t) ? 'm' : '';
+  const src = [...(p.specs || []).map(x => x.v), p.name];
+  for (const raw of src) {
+    const t = dg(raw), n = '(\\d+(?:\\.\\d+)?)';
+    const L = t.match(new RegExp('طول\\D{0,8}' + n)), H = t.match(new RegExp('ارتفاع\\D{0,8}' + n)), T = t.match(new RegExp('(?:ضخامت|عمق)\\D{0,8}' + n));
+    if ([L, H, T].filter(Boolean).length >= 2) { const m = UNIT_CM[unitOf(t) || 'cm']; return { bl: L ? +L[1] * m : 0, bh: H ? +H[1] * m : 0, bt: T ? +T[1] * m : 0, src: 'labeled', guess: false, unit: unitOf(t) || 'cm' }; }
+  }
+  for (const raw of src) {
+    const t = dg(raw), m = t.match(/(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*[×xX*]\s*(\d+(?:\.\d+)?)/);
+    if (m) { const u = unitOf(t), k = UNIT_CM[u || 'cm']; return { bl: +m[1] * k, bt: +m[2] * k, bh: +m[3] * k, src: 'text', guess: true, unit: u || 'cm', unitKnown: !!u, raw: m[0] }; }
+  }
+  return null;
+}
+const calcFromForm = o => {
+  const r = {};
+  CALC_NUM.forEach(k => { if (k in o) { const n = num(o[k]); r[k] = n > 0 ? n : null; } });
+  if ('calcUnit' in o) r.calcUnit = UNIT_CM[o.calcUnit] ? o.calcUnit : 'cm';
+  if ('calcKind' in o) r.calcKind = ['block', 'floor', 'gyp', 'none'].includes(o.calcKind) ? o.calcKind : '';
+  return r;
+};
+const syncDimSpec = p => {
+  p.specs = (p.specs || []).filter(s => s.k !== DIM_SPEC_KEY);
+  const u = UNIT_CM[p.calcUnit] ? p.calcUnit : 'cm', parts = [];
+  if (P(p.calcL)) parts.push('طول ' + P(p.calcL)); if (P(p.calcT)) parts.push('ضخامت ' + P(p.calcT)); if (P(p.calcH)) parts.push('ارتفاع ' + P(p.calcH));
+  if (parts.length) p.specs.push({ k: DIM_SPEC_KEY, v: parts.join(' × ') + ' ' + UNIT_FA[u] });
+  return p;
+};
 function roomMats() {
   const m = {};
-  S.rooms.forEach(r => { const g = geom(r), n = Math.max(1, P(r.n) || 1); r.items.forEach(it => { const [c, p] = find(it.pid); if (!p) return; const on = SURF[it.on] ? it.on : defSurf(p), e = m[p.id] || (m[p.id] = { p, c, area: 0, rooms: [], on, th: 0 }); e.area += g[on] * n; if (!e.rooms.includes(r.name)) e.rooms.push(r.name); if (P(it.th)) e.th = P(it.th); }); });
+  S.rooms.forEach(r => {
+    const g = geom(r), n = Math.max(1, P(r.n) || 1);
+    r.items.forEach(it => {
+      const [c, p] = find(it.pid); if (!p) return;
+      const on = SURF[it.on] ? it.on : defSurf(p), key = p.id + '|' + on;
+      const e = m[key] || (m[key] = { p, c, area: 0, rooms: [], on, th: 0, gross: 0, open: 0 });
+      e.area += g[on] * n;
+      if (on === 'wall') { e.gross += g.gross * n; e.open += Math.min(g.open, g.gross) * n; }
+      if (!e.rooms.includes(r.name)) e.rooms.push(r.name);
+      if (P(it.th)) e.th = P(it.th);
+    });
+  });
   return Object.values(m);
 }
-function ccFill(pid) {
-  const e = roomMats().find(x => x.p.id === pid); if (!e) return false;
-  const p = e.p, k = calcKind(p), A = String(R2(e.area)), w = String(P(S.cfg.waste)), v = S.cc.v;
-  if (!k) { S.cc.from = { pid, name: p.name, area: e.area, surf: e.on, rooms: e.rooms, none: 1 }; persist2(); return true; }
-  if (k === 'block') { const d = dimsOf(p) || {}; Object.assign(v.block, { A, o: '0', bl: d.bl || '', bt: d.bt || '', bh: d.bh || '', w }); }
-  else if (k === 'floor') Object.assign(v.floor, { A, T: String(e.th || p.def || ''), w });
-  else if (p.mode === 'area') Object.assign(v.gyp, { Ap: A, po: '0', w });
-  else Object.assign(v.gyp, { A, w });
-  S.cc.k = k; S.cc.from = { pid, name: p.name, area: e.area, surf: e.on, rooms: e.rooms, dims: k === 'block' && !!dimsOf(p) }; persist2(); return true;
+function ccFill(pid, on) {
+  const e = roomMats().find(x => x.p.id === pid && (!on || x.on === on)); if (!e) return false;
+  const p = e.p, k = calcKind(p), A = String(R2(e.area)), w = String(P(S.cfg.waste)), v = S.cc.v, d = dimsOf(p), miss = [];
+  const base = { pid, cid: e.c.id, name: p.name, area: e.area, surf: e.on, rooms: e.rooms, gross: e.gross, open: e.open, kind: k, src: d ? d.src : '', guess: !!(d && d.guess), unitKnown: d ? d.unitKnown !== false : true, raw: d && d.raw || '' };
+  if (!k) { S.cc.from = { ...base, none: 1 }; persist2(); return true; }
+  if (k === 'block') {
+    if (!(d && d.bl)) miss.push('طول بلوک'); if (!(d && d.bh)) miss.push('ارتفاع بلوک'); if (!(d && d.bt)) miss.push('ضخامت بلوک');
+    Object.assign(v.block, { A, o: '0', bl: cmStr(d && d.bl), bt: cmStr(d && d.bt), bh: cmStr(d && d.bh), w });
+  } else if (k === 'floor') {
+    const th = e.th || P(p.def); if (!th) miss.push('ضخامت لایه'); if (!P(p.calcDensity)) miss.push('چگالی (kg/m³)');
+    Object.assign(v.floor, { A, T: th ? String(th) : '', dl: P(p.calcDensity) ? String(P(p.calcDensity)) : '', bag: P(p.calcBagL) ? String(P(p.calcBagL)) : '', w });
+  } else if (p.mode === 'area') {
+    if (!(d && d.bl)) miss.push('طول/عرض پانل'); if (!(d && d.bh)) miss.push('ارتفاع پانل');
+    Object.assign(v.gyp, { Ap: A, po: '0', pw: d && d.bl ? cmStr(d.bl / 100) : '', ph: d && d.bh ? cmStr(d.bh / 100) : '', w });
+  } else {
+    if (!P(p.calcRef)) miss.push('مصرف مرجع (kg/m² برای هر ۱cm)'); if (!P(p.calcBagKg)) miss.push('وزن کیسه (kg)');
+    Object.assign(v.gyp, { A, ref: P(p.calcRef) ? String(P(p.calcRef)) : '', bag: P(p.calcBagKg) ? String(P(p.calcBagKg)) : '', w });
+  }
+  S.cc.k = k; S.cc.from = { ...base, miss }; persist2(); return true;
 }
 function ccRoomPanel() {
   const ms = roomMats(), f = S.cc.from;
   if (!S.rooms.length || !ms.length) return `<div class="empty"><div class="empty-icon">📐</div><p>هنوز مصالحی در متره فضا ثبت نشده. اول اتاق و مصالح را در متره فضا وارد کن؛ بعد اینجا با یک لمس محاسبه می‌شود.</p><button type="button" class="act act-primary" data-tab="room">رفتن به متره فضا</button></div>`;
-  const info = f ? `<div class="hint" style="margin:8px 0">${f.none ? `برای «${esc(f.name)}» ماشین‌حساب اختصاصی نداریم؛ مقدار آن در متره فضا حساب می‌شود.` : `پر شد از متره فضا: ${esc(SURF[f.surf])} = <b>${nf(f.area)} م²</b> (${esc(f.rooms.join('، '))}) — ضایعات ${fa(P(S.cfg.waste))}٪${f.dims === false ? ' — ابعاد بلوک در شناسنامه نیست؛ دستی وارد کن.' : ''}`}</div>` : '';
-  return `<div class="grp">پروژه: ${esc(S.proj.name || 'بدون نام')}</div><p class="hint">مصالحی که در متره فضا استفاده کرده‌ای؛ یکی را بزن تا متراژ خالص و ابعاد خودکار پر شود.</p>${ms.map(e => `<button type="button" class="pkr ${f && f.pid === e.p.id ? 'on' : ''}" data-x="ccfrom" data-pid="${e.p.id}">${thumb(e.c, e.p)}<span><b>${esc(e.p.name)}</b><small>${esc(SURF[e.on])}: ${nf(e.area)} م² · ${esc(e.rooms.join('، '))}</small></span></button>`).join('')}${info}`;
+  let info = '';
+  if (f) {
+    const wallLine = f.surf === 'wall' && f.gross > 0 ? `<br>دیوار ناخالص ${nf(f.gross)} − بازشو ${nf(f.open)} = خالص <b>${nf(f.area)} م²</b>` : '';
+    const head = f.none ? `برای «${esc(f.name)}» ماشین‌حساب اختصاصی نداریم؛ مقدار آن در متره فضا حساب می‌شود.` : `پر شد از متره فضا: ${esc(SURF[f.surf])} = <b>${nf(f.area)} م²</b> (${esc(f.rooms.join('، '))}) — ضایعات ${fa(P(S.cfg.waste))}٪${wallLine}`;
+    const srcNote = f.none ? '' : f.src === 'field' ? '<br>ابعاد و اطلاعات فنی: از شناسنامه‌ی محصول ✓' : f.src === 'labeled' ? '<br>ابعاد: از مشخصات محصول (با برچسب طول/ارتفاع/ضخامت) ✓' : f.src === 'text' ? `<br><b>⚠ ابعاد از متن «${esc(f.raw)}» حدس زده شد</b> (ترتیب فرض‌شده: طول × ضخامت × ارتفاع${f.unitKnown ? '' : '، واحد: سانتی‌متر'}). قبل از اعتماد به نتیجه بررسی کن.` : '';
+    const miss = f.miss && f.miss.length ? `<br><b>ثبت نشده در شناسنامه:</b> ${f.miss.map(esc).join('، ')}؛ در کادرهای پایین دستی وارد کن.` : '';
+    const edit = !f.none && S.admin && ((f.miss && f.miss.length) || f.guess) ? `<div style="margin-top:8px"><button type="button" class="act" data-x="admin-edit-product" data-id="${esc(f.cid)}" data-pid="${esc(f.pid)}" data-ret="calc" data-on="${esc(f.surf)}">ثبت / اصلاح ابعاد در شناسنامه‌ی محصول</button></div>` : '';
+    info = `<div class="hint" style="margin:8px 0">${head}${srcNote}${miss}${edit}</div>`;
+  }
+  return `<div class="grp">پروژه: ${esc(S.proj.name || 'بدون نام')}</div><p class="hint">مصالحی که در متره فضا استفاده کرده‌ای؛ یکی را بزن تا متراژ خالص و ابعاد از شناسنامه‌ی محصول پر شود.</p>${ms.map(e => `<button type="button" class="pkr ${f && f.pid === e.p.id && f.surf === e.on ? 'on' : ''}" data-x="ccfrom" data-pid="${e.p.id}" data-on="${e.on}">${thumb(e.c, e.p)}<span><b>${esc(e.p.name)}</b><small>${esc(SURF[e.on])}: ${nf(e.area)} م² · ${esc(e.rooms.join('، '))}</small></span></button>`).join('')}${info}`;
+}
+/* ---------- بازبینی ابعاد و تنظیمات محاسبه‌ی محصولات (مدیر) ---------- */
+function prodIssues(p) {
+  const out = [], k = calcKind(p), d = dimsOf(p), fix = {};
+  const im = inferMode(p.unit); if (im !== 'count' && (p.mode || 'count') === 'count') { out.push(`واحد «${p.unit}» ولی نوع محاسبه «تعدادی» است`); fix.mode = im; }
+  const is = inferSurf(p.name, p.group); if (is && p.surf && p.surf !== is && (p.surf === 'floor' && is !== 'floor')) { out.push(`سطح پیش‌فرض «${SURF[p.surf]}» با نوع محصول نمی‌خواند (پیشنهاد: ${SURF[is]})`); fix.surf = is; }
+  if (k === 'block') { if (!d) out.push('ابعاد بلوک ثبت نشده'); else if (d.guess) { out.push(`ابعاد حدسی ${d.raw} — تأیید نشده`); fix.dims = d; } else if (!(d.bl && d.bh && d.bt)) out.push('طول/ارتفاع/ضخامت کامل نیست'); }
+  if (k === 'gyp' && p.mode === 'area' && !(d && d.bl && d.bh)) out.push('ابعاد پانل ثبت نشده');
+  if (k === 'gyp' && p.mode !== 'area' && !(P(p.calcRef) && P(p.calcBagKg))) out.push('مصرف مرجع یا وزن کیسه ثبت نشده');
+  if (k === 'floor' && !P(p.calcDensity)) out.push('چگالی ثبت نشده');
+  return { out, fix };
+}
+function dimsAudit() {
+  const rows = [];
+  D.companies.forEach(c => (c.products || []).forEach(p => { const r = prodIssues(p); if (r.out.length) rows.push({ c, p, ...r }); }));
+  const fixable = rows.filter(r => r.fix.mode || r.fix.surf || (r.fix.dims && r.fix.dims.unitKnown)).length;
+  sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">بازبینی ابعاد و محاسبه‌ی محصولات</h3><p class="hint">محصولاتی که متره فضا یا محاسبه‌ی تخصصی با اطلاعات فعلی‌شان جواب دقیق نمی‌دهد. ${fa(rows.length)} مورد پیدا شد.</p>${fixable ? `<button type="button" class="act act-primary" data-x="dims-fixall">اصلاح خودکار موارد مطمئن (${fa(fixable)})</button><p class="hint">فقط نوع محاسبه/سطح و ابعادی که واحدش در متن آمده (مثل «سانتی‌متر») اصلاح می‌شود؛ ترتیب فرض‌شده: طول × ضخامت × ارتفاع.</p>` : ''}${rows.slice(0, 60).map(({ c, p, out, fix }) => `<div class="ln admin-missing"><h4><span>${esc(p.name)}</span><em>${esc(c.name)}</em></h4><div class="meta">${out.map(x => `<span>${esc(x)}</span>`).join('')}</div><div class="ft"><button type="button" class="act" data-x="admin-edit-product" data-id="${esc(c.id)}" data-pid="${esc(p.id)}" data-ret="dims">ویرایش</button>${fix.dims && fix.dims.unitKnown ? `<button type="button" class="act" data-x="dims-accept" data-id="${esc(c.id)}" data-pid="${esc(p.id)}">تأیید ابعاد پیشنهادی</button>` : ''}</div></div>`).join('') || '<div class="empty"><p>همه‌ی محصولات قابل‌محاسبه کامل‌اند ✓</p></div>'}${rows.length > 60 ? `<p class="hint">${fa(rows.length - 60)} مورد دیگر هم هست؛ بعد از رفع این‌ها دوباره باز کن.</p>` : ''}`);
+}
+function applyDimsFix(p, fix, withDims) {
+  if (fix.mode) p.mode = fix.mode; if (fix.surf) p.surf = fix.surf;
+  if (withDims && fix.dims) { const u = fix.dims.unit || 'cm'; p.calcUnit = u; const m = 1 / UNIT_CM[u]; p.calcL = +(fix.dims.bl * m).toFixed(3); p.calcT = +(fix.dims.bt * m).toFixed(3); p.calcH = +(fix.dims.bh * m).toFixed(3); p.specs = (p.specs || []).filter(s => s.k !== DIM_SPEC_KEY); p.specs.push({ k: DIM_SPEC_KEY, v: `طول ${p.calcL} × ضخامت ${p.calcT} × ارتفاع ${p.calcH} ${UNIT_FA[u]}` }); }
 }
 function calcView() {
   const k = S.cc.k, d = CDEF[k], v = S.cc.v[k], dh = k === 'floor' ? densHint() : null;
@@ -1020,7 +1124,7 @@ document.addEventListener('click', async e => {
     case 'quick-products': {
       if (!S.admin) return toast('دسترسی مدیر لازم است');
       const opts = D.companies.map(co=>`<option value="${esc(co.id)}">${esc(co.name)}</option>`).join('');
-      return sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">افزودن سریع محصولات</h3><p class="hint">هر خط یک محصول؛ قالب: نام محصول | گروه | واحد | قیمت (اختیاری) | لینک صفحه رسمی (اختیاری). فقط نام ضروری است؛ قیمت یا منبع را حدس نزن.</p><label class="fl"><span>برند</span><select id="quickProductBrand">${opts}</select></label><label class="fl" style="margin-top:10px"><span>فهرست محصولات</span><textarea id="quickProductLines" rows="7" placeholder="مثال:
+      return sheet(`<h3 style="margin:4px 0 6px;color:var(--ink)">افزودن سریع محصولات</h3><p class="hint">هر خط یک محصول؛ قالب: نام محصول | گروه | واحد | قیمت | لینک صفحه رسمی | طول | ارتفاع | ضخامت | واحد ابعاد (cm یا mm یا m). فقط نام ضروری است؛ ابعاد را فقط اگر در کاتالوگ آمده وارد کن؛ قیمت یا منبع را حدس نزن.</p><label class="fl"><span>برند</span><select id="quickProductBrand">${opts}</select></label><label class="fl" style="margin-top:10px"><span>فهرست محصولات</span><textarea id="quickProductLines" rows="7" placeholder="مثال:
 بلوک سبک | دیوار | عدد
 چسب کاشی | چسب و ملات | کیسه | 250000 | https://example.com/product"></textarea></label><div class="hint">می‌توانی ۴، ۱۰ یا بیشتر محصول را یک‌جا وارد کنی. اطلاعات ناقص بعداً از بخش ویرایش تکمیل می‌شود.</div><div class="sd-bar"><button class="act act-primary" data-x="quick-products-save">ثبت محصولات</button><button class="act" data-x="fno">انصراف</button></div>`);
     }
@@ -1034,7 +1138,8 @@ document.addEventListener('click', async e => {
         const parts=line.split('|').map(x=>x.trim()); const name=(parts[0]||'').slice(0,180); if(!name) continue;
         if(existing.has(nz(name))) continue;
         const price=parts[3] ? num(parts[3]) : 0; const page=parts[4] ? safe(parts[4]) : '';
-        made.push({id:uid(),name,group:(parts[1]||'سایر').slice(0,80),unit:(parts[2]||'عدد').slice(0,40),desc:'',price:price>0?price:null,mode:'count',perM2:null,catalog:'',page,availability:'',confidence:'review',source:'',lastVerified:'',features:[],specs:[],standards:[],speed:null,durability:null,def:null,surf:'floor'});
+        const unit=(parts[2]||'عدد').slice(0,40), gname=(parts[1]||'سایر').slice(0,80), du=String(parts[8]||'').toLowerCase(), np={id:uid(),name,group:gname,unit,desc:'',price:price>0?price:null,mode:inferMode(unit),perM2:null,catalog:'',page,availability:'',confidence:'review',source:'',lastVerified:'',features:[],specs:[],standards:[],speed:null,durability:null,def:null,surf:inferSurf(name,gname),...calcFromForm({calcL:parts[5],calcH:parts[6],calcT:parts[7],calcUnit:UNIT_CM[du]?du:'cm'})};
+        syncDimSpec(np); made.push(np);
         existing.add(nz(name));
       }
       if(!made.length) return toast('محصول جدیدی پیدا نشد؛ نام‌ها ممکن است تکراری باشند');
@@ -1043,10 +1148,13 @@ document.addEventListener('click', async e => {
       closeSheet(); S.tab='manage'; render(); toast(`${fa(made.length)} محصول ثبت شد؛ مشخصات ناقص را بعداً تکمیل کن`); return;
     }
     case 'catalog-upload': { if (!S.admin) return toast('دسترسی مدیر لازم است'); return reqUpload('catalog', '', ''); }
+    case 'admin-dims': if (!S.admin) return toast('دسترسی مدیر لازم است'); return dimsAudit();
+    case 'dims-accept': { if (!S.admin) return toast('دسترسی مدیر لازم است'); const co = D.companies.find(x => x.id === d.id), p = co && (co.products || []).find(x => x.id === d.pid); if (!p) return; const r = prodIssues(p); if (r.fix.dims) applyDimsFix(p, { dims: r.fix.dims }, true); saveData(); return dimsAudit(); }
+    case 'dims-fixall': { if (!S.admin) return toast('دسترسی مدیر لازم است'); let n = 0; D.companies.forEach(c => (c.products || []).forEach(p => { const r = prodIssues(p), dm = r.fix.dims && r.fix.dims.unitKnown ? r.fix.dims : null; if (r.fix.mode || r.fix.surf || dm) { applyDimsFix(p, { mode: r.fix.mode, surf: r.fix.surf, dims: dm }, true); n++; } })); saveData(); toast(`${fa(n)} محصول اصلاح شد`); return dimsAudit(); }
     case 'admin-catalog': (S.tabHist = S.tabHist || []).push(S.tab); S.tab='cat'; S.edit=true; render(); toast('حالت ویرایش فعال شد'); return;
     case 'admin-save': return saveData();
     case 'admin-refresh': return reload().then(()=>{render();toast('اطلاعات از سرور به‌روز شد')}).catch(()=>toast('بازخوانی ناموفق بود'));
-    case 'admin-edit-product': { const co=D.companies.find(x=>x.id===d.id); const p=co&&(co.products||[]).find(x=>x.id===d.pid); if(!co||!p)return; return form('ویرایش محصول', PF, {...p,specsT:specsText(p.specs),featuresT:(p.features||[]).join('\n'),standardsT:standardsText(p.standards),techCertNo:(p.techCert&&p.techCert.no)||'',techCertUntil:(p.techCert&&p.techCert.until)||'',feHesab:p.feHesab||'',model3dUrl:p.model3d&&typeof p.model3d==='object'?(p.model3d.url||''):(typeof p.model3d==='string'?p.model3d:''),installStepsT:(p.install&&p.install.steps||[]).join('\n'),installMistakesT:(p.install&&p.install.mistakes||[]).map(x=>typeof x==='string'?x:[({critical:'بحرانی',important:'مهم',minor:'جزئی'}[x.severity]||'مهم'),x.text||x.title||'',x.consequence||''].filter(Boolean).join(' | ')).join('\n'),installSource:p.install&&p.install.source||'',installVideoUrl:p.install&&p.install.video_url||'',installVerifiedBy:p.install&&p.install.verifiedBy||'',installVerifiedAt:p.install&&p.install.verifiedAt||'',installStandard:p.install&&p.install.standard||''}, o=>{Object.assign(p,cleanP(o));saveData();},()=>{S.tab='manage';render();},valP); }
+    case 'admin-edit-product': { const co=D.companies.find(x=>x.id===d.id); const p=co&&(co.products||[]).find(x=>x.id===d.pid); if(!co||!p)return; return form('ویرایش محصول', PF, {...p,specsT:specsText(p.specs),featuresT:(p.features||[]).join('\n'),standardsT:standardsText(p.standards),techCertNo:(p.techCert&&p.techCert.no)||'',techCertUntil:(p.techCert&&p.techCert.until)||'',feHesab:p.feHesab||'',model3dUrl:p.model3d&&typeof p.model3d==='object'?(p.model3d.url||''):(typeof p.model3d==='string'?p.model3d:''),installStepsT:(p.install&&p.install.steps||[]).join('\n'),installMistakesT:(p.install&&p.install.mistakes||[]).map(x=>typeof x==='string'?x:[({critical:'بحرانی',important:'مهم',minor:'جزئی'}[x.severity]||'مهم'),x.text||x.title||'',x.consequence||''].filter(Boolean).join(' | ')).join('\n'),installSource:p.install&&p.install.source||'',installVideoUrl:p.install&&p.install.video_url||'',installVerifiedBy:p.install&&p.install.verifiedBy||'',installVerifiedAt:p.install&&p.install.verifiedAt||'',installStandard:p.install&&p.install.standard||''}, o=>{Object.assign(p,cleanP(o));saveData();},()=>{ if (d.ret === 'dims') { dimsAudit(); return; } if (d.ret === 'calc') { ccFill(d.pid, d.on); S.tab = 'calc'; render(); return; } S.tab='manage'; render(); },valP); }
     case 'radd': S.rooms.push(newRoom(S.rooms.length + 1)); break;
     case 'rn': if (r) r.n = Math.max(1, (P(r.n) || 1) + Number(d.d)); break;
     case 'rdup': if (r) { const c = JSON.parse(JSON.stringify(r)); c.id = uid(); c.name = r.name + ' (کپی)'; c.items.forEach(i => (i.id = uid())); S.rooms.splice(S.rooms.indexOf(r) + 1, 0, c); } break;
@@ -1070,7 +1178,7 @@ document.addEventListener('click', async e => {
     case 'dir': S.dir[d.k] = S.dir[d.k] === 'hi' ? 'lo' : S.dir[d.k] === 'lo' ? '' : 'hi'; persist2(); return paintCmp();
     case 'cc': S.cc.k = d.k; S.cc.from = null; persist2(); return render();
     case 'ccsrc': S.cc.src = d.s; persist2(); return render();
-    case 'ccfrom': { if (!ccFill(d.pid)) return; S.cc.src = 'room'; if (S.tab !== 'calc') { (S.tabHist = S.tabHist || []).push(S.tab); S.tab = 'calc'; } hp('medium'); render(); return toast('متراژ و ابعاد از متره فضا پر شد'); }
+    case 'ccfrom': { if (!ccFill(d.pid, d.on)) return; S.cc.src = 'room'; if (S.tab !== 'calc') { (S.tabHist = S.tabHist || []).push(S.tab); S.tab = 'calc'; } hp('medium'); render(); return toast(S.cc.from && S.cc.from.miss && S.cc.from.miss.length ? 'متراژ پر شد؛ بعضی ابعاد در شناسنامه نیست' : 'متراژ و ابعاد از متره فضا و شناسنامه پر شد'); }
     case 'cfill': { const h = densHint(); if (h) { S.cc.v.floor.dl = String(h.v); persist2(); render(); toast('چگالی از شناسنامه برداشته شد'); } return; }
     case 'sendfile': { try { const r=await api('send-file',{method:'POST',body:JSON.stringify({doc_id:d.docid})}); if(r.ok){toast('فایل در چت ربات ارسال شد');hp('medium');} else toast(r.error||'ارسال فایل ناموفق بود'); } catch(e){toast('خطا در ارسال فایل');} return; }
     case 'project-save': return saveProjects();
@@ -1176,8 +1284,8 @@ document.addEventListener('click', e => {
     case 'spectpl': { const ta = document.querySelector('#sdPanel [data-f=specsT]'); if (!ta) return; const g = (document.querySelector('#sdPanel [data-f=group]') || {}).value || '', nm = (document.querySelector('#sdPanel [data-f=name]') || {}).value || '', co = D.companies.find(x => x.id === S.cur) || {}; const have = ta.value.split('\n').map(l => l.split(/[:：]/)[0].trim()); const add = specTplFor(g + ' ' + nm, co.cat).filter(k => !have.includes(k)).map(k => k + ': '); ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n' : '') + add.join('\n'); ta.rows = 8; hp(); return toast('عنوان‌ها درج شد؛ فقط مقدارهایی را که داری پر کن، بقیه خالی بماند'); }
     case 'dealers-edit': { const raw=(c.dealers||[]).map(x=>[x.city||'',x.name||'',x.phone||'',x.address||''].join(' | ')).join('\n'); const val=prompt('هر نمایندگی در یک خط با قالب شهر | نام | تلفن | نشانی\nبرای پاک‌کردن، ورودی را خالی بگذار.',raw); if(val===null)return; c.dealers=val.split('\n').map(line=>line.split('|').map(x=>x.trim())).filter(a=>a[1]).slice(0,100).map(a=>({city:(a[0]||'').slice(0,80),name:(a[1]||'').slice(0,100),phone:(a[2]||'').slice(0,40),address:(a[3]||'').slice(0,200)})); saveData(); return openBrand(c.id); }
     case 'delco': if (confirm('این برند و همه‌ی محصولاتش حذف شود؟')) { D.companies = D.companies.filter(x => x !== c); saveData(); closeSheet(); render(); } return;
-    case 'addp': return form('افزودن سریع محصول', QPF, { group: 'سایر', unit: 'عدد' }, o => { c.products.push({ id: uid(), name: String(o.name||'').trim(), group: String(o.group||'سایر').trim(), unit: String(o.unit||'عدد').trim(), desc: '', price: num(o.price)||null, mode: 'count', perM2: null, catalog: '', page: safe(o.page), availability: '', confidence: 'review', source: String(o.source||'').trim().slice(0,250), lastVerified: '', features: [], specs: [], standards: [], speed: null, durability: null, def: null, surf: 'floor' }); saveData(); }, () => openBrand(c.id));
-    case 'fok': { const o = readForm(); if (!o.name) return toast('نام را وارد کن'); const er = S.val && S.val(o); if (er) return toast(er); const b = S.back, ok = S.ok; ok(o); if (b) b(); else closeSheet(); return render(); }
+    case 'addp': return form('افزودن سریع محصول', QPF, { group: 'سایر', unit: 'عدد' }, o => { c.products.push({ id: uid(), name: String(o.name||'').trim(), group: String(o.group||'سایر').trim(), unit: String(o.unit||'عدد').trim(), desc: '', price: num(o.price)||null, mode: inferMode(o.unit), perM2: null, catalog: '', page: safe(o.page), availability: '', confidence: 'review', source: String(o.source||'').trim().slice(0,250), lastVerified: '', features: [], specs: [], standards: [], speed: null, durability: null, def: null, surf: inferSurf(o.name, o.group), ...calcFromForm(o) }); syncDimSpec(c.products[c.products.length - 1]); saveData(); }, () => openBrand(c.id));
+    case 'fok': { const o = readForm(); if (!o.name) return toast('نام را وارد کن'); const er = S.val && S.val(o); if (er) return toast(er); const b = S.back, ok = S.ok; ok(o); if (b) { const snap = $('#sdPanel').innerHTML; try { b(); } catch (e) {} if (sheetOpen() && $('#sdPanel').innerHTML === snap) closeSheet(); } else closeSheet(); return render(); }
     case 'fno': { const b = S.back; if (b) { const snap = $('#sdPanel').innerHTML; try { b(); } catch (e) {} if (sheetOpen() && $('#sdPanel').innerHTML === snap) closeSheet(); } else closeSheet(); return; }
   }
 });
