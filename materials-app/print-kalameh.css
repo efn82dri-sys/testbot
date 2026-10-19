@@ -1,7 +1,0 @@
-/* Print/export typography: keep all browser-generated reports on Kalameh. */
-@page { size: A4; margin: 12mm; }
-@media print {
-  html, body, body *, button, input, select, textarea {
-    font-family: "Kalameh", Tahoma, sans-serif !important;
-  }
-}
