@@ -81,5 +81,6 @@
 - حذف: همه‌ی قواعد CSS قدیمی تجربه‌ها (`experience-*`, `community-*`, `featured-experience*`, `my-experience*`, `field-metric*`, `field-section-*`, `field-search`, `field-loading*`, `field-hero*`) از فایل‌های CSS قدیمی.
 - انجام‌شده: متن کامل بدون «ادامه»، فید ۴ لایه‌ای، تب‌های متحرک، جست‌وجوی debounce، Skeleton، Stagger Reveal، Optimistic UI برای «مفید»، Reaction Burst، Count Roll، Haptics، ذخیره‌ی محلی، اشتراک با لینک عمیق `startapp=exp_<id>`، قرص «تجربه‌ی تازه» (Poll ۶۰ ثانیه‌ای)، حالت خالی متحرک، حذف `prompt()` مدیر، انتخاب مصالح از کاتالوگ و پیش‌نویس خودکار در فرم ثبت، حذف فیلد `rating`.
 - «من هم دیدم» و «هشدار جدی» فقط وقتی ظاهر می‌شوند که سرور فیلد `reactions` را برگرداند (قرارداد بخش ۷ نقشه‌راه).
-- انجام‌نشده (نیاز به API سرور): فاز ۳ گفتگو و پاسخ، آپلود عکس، Follow-up، نمایه‌ی ریسک، سؤال هفته، ترند.
+- گفتگو و پاسخ: رابط کامل است (صفحه‌ی گفتگو، خط رشته، Mention، گزارش، BackButton)؛ سرور باید `SERVER-API-REPLIES-FA.md` را پیاده کند.
+- انجام‌نشده (نیاز به API سرور): آپلود عکس، Follow-up، نمایه‌ی ریسک، سؤال هفته، ترند.
 - `?v=` به `pakar-user-20261021` افزایش یافت.
