@@ -1,6 +1,6 @@
 /* پاکار — تم لایت روی گوشی/تبلت (آخرین فایل CSS؛ با اولویت بالاتر از بقیه)
    هدف: یک پالت یکدست، سطوح کاملاً مات، بدون هیچ بلور پس‌زمینه. */
-@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse){
   html:root[data-theme="light"]{
     color-scheme:light;
     --bg:#f7f4ee !important; --bg-solid:#f7f4ee !important;
@@ -9,14 +9,10 @@
     background:#f7f4ee !important;
   }
   html:root[data-theme="light"] body{background:#f7f4ee !important;background-color:#f7f4ee !important}
-  html:root[data-theme="light"] .bg,
-  html:root[data-theme="light"] .grain,
-  html:root[data-theme="light"] .orb{display:none !important}
+  html:root[data-theme="light"] .bg,html:root[data-theme="light"] .grain,html:root[data-theme="light"] .orb{display:none !important}
 
   /* هیچ بلوری، هیچ‌جا */
-  html:root[data-theme="light"] *,
-  html:root[data-theme="light"] *::before,
-  html:root[data-theme="light"] *::after{
+  html:root[data-theme="light"] *,html:root[data-theme="light"] *::before,html:root[data-theme="light"] *::after{
     -webkit-backdrop-filter:none !important; backdrop-filter:none !important;
   }
 
@@ -34,33 +30,13 @@
   html:root[data-theme="light"] .bottom-nav .nav-neon{display:none !important}
 
   /* کارت‌ها و پنل‌ها: سفید مات */
-  html:root[data-theme="light"] .hero,
-  html:root[data-theme="light"] .pal,
-  html:root[data-theme="light"] .card,
-  html:root[data-theme="light"] .mc,
-  html:root[data-theme="light"] .product-card,
-  html:root[data-theme="light"] .material-card,
-  html:root[data-theme="light"] .project-card,
-  html:root[data-theme="light"] .experience-card,
-  html:root[data-theme="light"] .profile-card,
-  html:root[data-theme="light"] .projects-summary,
-  html:root[data-theme="light"] .tool-card,
-  html:root[data-theme="light"] .tb-card,
-  html:root[data-theme="light"] .guide-card,
-  html:root[data-theme="light"] .glass-panel,
-  html:root[data-theme="light"] .admin-panel,
-  html:root[data-theme="light"] .admin-welcome,
-  html:root[data-theme="light"] .product-summary,
-  html:root[data-theme="light"] .product-tabbar{
+  html:root[data-theme="light"] .hero,html:root[data-theme="light"] .pal,html:root[data-theme="light"] .card,html:root[data-theme="light"] .mc,html:root[data-theme="light"] .product-card,html:root[data-theme="light"] .material-card,html:root[data-theme="light"] .project-card,html:root[data-theme="light"] .profile-card,html:root[data-theme="light"] .projects-summary,html:root[data-theme="light"] .tool-card,html:root[data-theme="light"] .tb-card,html:root[data-theme="light"] .guide-card,html:root[data-theme="light"] .glass-panel,html:root[data-theme="light"] .admin-panel,html:root[data-theme="light"] .admin-welcome,html:root[data-theme="light"] .product-summary,html:root[data-theme="light"] .product-tabbar{
     background:#ffffff !important; background-image:none !important;
     border-color:rgba(75,63,48,.12) !important;
   }
   html:root[data-theme="light"] .filters{background:transparent !important;background-image:none !important;border:0 !important;box-shadow:none !important}
 
-  html:root[data-theme="light"] .logos,
-  html:root[data-theme="light"] .chips,
-  html:root[data-theme="light"] .idx,
-  html:root[data-theme="light"] .wrap{background:transparent !important;background-image:none !important}
+  html:root[data-theme="light"] .logos,html:root[data-theme="light"] .chips,html:root[data-theme="light"] .idx,html:root[data-theme="light"] .wrap{background:transparent !important;background-image:none !important}
 
   /* صفحه‌ی جزئیات (sheet) و پرده‌ی پشتش */
   html:root[data-theme="light"] .sd-scrim{background:rgba(30,27,22,.45) !important}
@@ -73,11 +49,10 @@
 /* ============================================================
    دور دوم رفع مشکل تم لایت روی گوشی (اندروید)
    ============================================================ */
-@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse){
   /* نوار چسبانِ جست‌وجو/فیلتر: لایه‌های محو و بلورِ قدیمیِ ::before/::after
      روی گوشی یک مستطیل رنگ‌پریده و لبه‌دار می‌ساختند. جایشان یک سطح مات ساده. */
-  html:root[data-theme="light"] .filters::before,
-  html:root[data-theme="light"] .filters::after{display:none !important;content:none !important}
+  html:root[data-theme="light"] .filters::before,html:root[data-theme="light"] .filters::after{display:none !important;content:none !important}
   html:root[data-theme="light"] .filters{
     background:#f7f4ee !important; background-image:none !important;
     box-shadow:0 0 0 14px #f7f4ee !important; border:0 !important; border-radius:0 !important;
@@ -88,10 +63,8 @@
     background:#ffffff !important; background-image:none !important;
     border:1px solid rgba(75,63,48,.14) !important; box-shadow:none !important;
   }
-  html:root[data-theme="light"] .search-wrap::before,
-  html:root[data-theme="light"] .search-wrap::after{display:none !important}
-  html:root[data-theme="light"] .search-wrap input,
-  html:root[data-theme="light"] .search-wrap #search{
+  html:root[data-theme="light"] .search-wrap::before,html:root[data-theme="light"] .search-wrap::after{display:none !important}
+  html:root[data-theme="light"] .search-wrap input,html:root[data-theme="light"] .search-wrap #search{
     background:transparent !important; border:0 !important; box-shadow:none !important;
   }
 

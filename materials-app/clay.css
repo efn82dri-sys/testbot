@@ -1,5 +1,5 @@
 /* RAWAQ Claymorphism Design System — readability-first responsive refresh */
-:root, :root[data-theme="light"], :root:not([data-theme="dark"]){
+:root,:root[data-theme="light"],:root:not([data-theme="dark"]){
  --bg:#e9e5dd;--bg-elev:#f5f1e9;--bg-sunk:#dcd6cc;--glass:#f1ede5;--glass-strong:#faf7f0;
  --line:rgba(100,83,61,.14);--line-soft:rgba(100,83,61,.09);--ink:#29251f;--ink-dim:#5c554b;--ink-faint:#71695d;
  --accent:#167c67;--accent-deep:#116753;--accent-ink:#fff;--accent-text:#116d5a;
@@ -28,8 +28,8 @@ body{background:var(--bg)!important;color:var(--ink);font-family:'Kalameh', syst
 #search{font-family:inherit!important;font-size:15px!important;font-weight:600!important;color:var(--ink)!important}#search::placeholder{color:var(--ink-faint)!important;font-weight:500}
 .chip,.logos button,.logos a{border-radius:14px!important;background:var(--bg-elev)!important;border:1px solid var(--line-soft)!important;box-shadow:var(--shadow-sm)!important;color:var(--ink-dim)!important;font-weight:700!important;min-height:36px}
 .chip.active,.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 12%,var(--bg-elev))!important;border-color:color-mix(in srgb,var(--accent) 35%,var(--line))!important;color:var(--accent-text)!important;box-shadow:inset 2px 2px 4px rgba(60,50,35,.08)!important}
-.list{gap:20px!important}.pal,.product-card,.material-card,.card,.project-card,.experience-card,.profile-card,.projects-summary,.tool-card,.guide-card,.cmp,.gal,.sd-panel,.modal-panel,.admin-panel{background:var(--bg-elev)!important;border:1px solid var(--line-soft)!important;border-radius:24px!important;box-shadow:var(--shadow-md)!important;color:var(--ink)!important;overflow:hidden}
-.pal{padding:clamp(16px,2.5vw,24px)!important}.pal-head{gap:12px!important}.pal-title-wrap{min-width:0}.pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-weight:850!important;font-size:clamp(17px,2vw,21px)!important;line-height:1.65!important;color:var(--ink)!important}.pal-desc,.meta,.hint,.profile-note,.project-meta,.experience-context{color:var(--ink-dim)!important;font-size:13px!important;line-height:1.9!important}
+.list{gap:20px!important}.pal,.product-card,.material-card,.card,.project-card,.profile-card,.projects-summary,.tool-card,.guide-card,.cmp,.gal,.sd-panel,.modal-panel,.admin-panel{background:var(--bg-elev)!important;border:1px solid var(--line-soft)!important;border-radius:24px!important;box-shadow:var(--shadow-md)!important;color:var(--ink)!important;overflow:hidden}
+.pal{padding:clamp(16px,2.5vw,24px)!important}.pal-head{gap:12px!important}.pal-title-wrap{min-width:0}.pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-weight:850!important;font-size:clamp(17px,2vw,21px)!important;line-height:1.65!important;color:var(--ink)!important}.pal-desc,.meta,.hint,.profile-note,.project-meta{color:var(--ink-dim)!important;font-size:13px!important;line-height:1.9!important}
 .pal-counter,.pill,.badge,.tag,.status,.meta-pill{border-radius:12px!important;background:var(--bg)!important;border:1px solid var(--line-soft)!important;color:var(--ink-dim)!important;font-weight:750!important;padding:5px 10px!important}
 button,.button,a.button,input,select,textarea{font-family:inherit}button{font-weight:750}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent)!important;outline-offset:3px}
 button:not(:disabled){transition:transform .18s ease,box-shadow .18s ease,background .18s ease}button:not(:disabled):active{transform:translateY(1px) scale(.985)}
@@ -42,38 +42,37 @@ button.secondary,.btn-secondary,.admin-action,.pal-actions button,.project-actio
 .toast{border-radius:16px!important;background:var(--ink)!important;color:var(--bg-elev)!important;box-shadow:var(--shadow-md)!important;font-weight:750}
 /* Keep data-dense areas clear rather than over-inflated */
 table{border-collapse:separate!important;border-spacing:0!important;width:100%;overflow:hidden;border-radius:14px}th{font-weight:850!important;color:var(--ink)!important;background:var(--bg-sunk)!important}td,th{padding:10px 12px!important;border-bottom:1px solid var(--line-soft)!important;text-align:right;font-size:13px;line-height:1.8}small,.small{color:var(--ink-dim)}strong,b{font-weight:850}
-@media(max-width:600px){body{font-size:14px}.wrap{padding-inline:12px}.hero{border-radius:24px!important;padding:22px 17px!important}.hero h1{font-size:26px!important;line-height:1.65!important}.hero p{font-size:14px!important}.filters{padding:12px!important;border-radius:21px!important}.pal,.product-card,.material-card,.project-card,.experience-card,.profile-card,.projects-summary{border-radius:20px!important}.pal{padding:15px!important}.pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-size:17px!important}.bottom-nav{border-radius:21px!important}.bottom-item span:last-child{font-size:12px!important}.idx{gap:8px!important}.idx button,.idx [role="tab"]{min-height:42px!important;padding-inline:11px!important}}
+@media(max-width:600px){body{font-size:14px}.wrap{padding-inline:12px}.hero{border-radius:24px!important;padding:22px 17px!important}.hero h1{font-size:26px!important;line-height:1.65!important}.hero p{font-size:14px!important}.filters{padding:12px!important;border-radius:21px!important}.pal,.product-card,.material-card,.project-card,.profile-card,.projects-summary{border-radius:20px!important}.pal{padding:15px!important}.pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-size:17px!important}.bottom-nav{border-radius:21px!important}.bottom-item span:last-child{font-size:12px!important}.idx{gap:8px!important}.idx button,.idx [role="tab"]{min-height:42px!important;padding-inline:11px!important}}
 @media(max-width:360px){.hero h1{font-size:23px!important}.pal{padding:12px!important}.bottom-item span:last-child{font-size:12px!important}.filters{padding:10px!important}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
 
 
 /* Consolidated accessibility rules; kept in the primary design system to avoid a fifth CSS patch layer. */
 /* Accessibility corrections for Ravaq. Keep selectors scoped; avoid global sizing that breaks chips/steppers. */
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body, input, select, textarea, button { font-family: 'Kalameh', system-ui, sans-serif; }
-body { font-size: 15px; }
-:root[data-theme="light"], :root:not([data-theme="dark"]) {
+html{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body,input,select,textarea,button{ font-family: 'Kalameh', system-ui, sans-serif; }
+body{ font-size: 15px; }
+:root[data-theme="light"],:root:not([data-theme="dark"]){
   --ink-faint: #55534f;
   --accent-text: #155f52;
 }
-:root[data-theme="dark"] { --ink-faint: #a49b8e; }
+:root[data-theme="dark"]{ --ink-faint: #a49b8e; }
 /* Minimum readable size for content text; preserve tiny decorative text in the live-workshop illustration. */
-small, .small, .meta, .catalog-badges, .fresh, .confidence, .hint, .foot { font-size: 12px; }
-button, input, select, textarea { font-size: inherit; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
-[role="button"]:focus-visible, [tabindex]:focus-visible {
+small,.small,.meta,.catalog-badges,.fresh,.confidence,.hint,.foot{ font-size: 12px; }
+button,input,select,textarea{ font-size: inherit; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[role="button"]:focus-visible,[tabindex]:focus-visible{
   outline: 3px solid var(--accent-text, #155f52);
   outline-offset: 3px;
 }
 /* Only icon-only controls get the 44px touch target; chips and steppers keep their layout. */
-.icon-btn, .sq, .search-clear, .to-top { min-width: 44px; min-height: 44px; }
-@media (max-width: 420px) {
-  .hero { padding-top: 16px; }
-  .catalog-product { gap: 8px; }
-  .catalog-product-actions { gap: 4px; }
-  .catalog-controls { min-width: 0; }
-  .catalog-controls select[data-csort] { min-width: 0; width: 100%; }
+.icon-btn,.sq,.search-clear,.to-top{ min-width: 44px; min-height: 44px; }
+@media (max-width: 420px){
+  .hero{ padding-top: 16px; }
+  .catalog-product{ gap: 8px; }
+  .catalog-product-actions{ gap: 4px; }
+  .catalog-controls{ min-width: 0; }
+  .catalog-controls select[data-csort]{ min-width: 0; width: 100%; }
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }

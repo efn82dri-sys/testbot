@@ -238,8 +238,7 @@ body{
 }
 
 /* Cards: one visual language */
-.pal,.product-card,.material-card,.card,.project-card,.experience-card,
-.profile-card,.projects-summary,.tool-card,.guide-card,.admin-panel{
+.pal,.product-card,.material-card,.card,.project-card,.profile-card,.projects-summary,.tool-card,.guide-card,.admin-panel{
   background:var(--rq-surface)!important;
   border:1px solid var(--rq-border)!important;
   border-radius:var(--rq-radius-lg)!important;
@@ -254,7 +253,7 @@ body{
   line-height:1.55!important;
   font-weight:850!important;
 }
-.pal-desc,.meta,.hint,.profile-note,.project-meta,.experience-context{
+.pal-desc,.meta,.hint,.profile-note,.project-meta{
   color:var(--rq-muted)!important;
 }
 .meta span,.pill,.badge,.tag,.status,.meta-pill,.cf{
@@ -474,7 +473,7 @@ body{font-weight:400!important;letter-spacing:0!important}
 .section-head,.list-head,.grp{font-weight:600!important}
 .grp{font-weight:600!important}
 .pal-title-wrap h2,.pal-title-wrap h3,.pal h2,.pal h3{font-weight:600!important}
-.pal-desc,.meta,.hint,.profile-note,.project-meta,.experience-context{font-weight:400!important}
+.pal-desc,.meta,.hint,.profile-note,.project-meta{font-weight:400!important}
 .meta span,.pill,.badge,.tag,.status,.meta-pill,.cf{font-weight:500!important}
 .pr2 h4{font-weight:600!important}
 .pr2 .pc{font-weight:600!important}

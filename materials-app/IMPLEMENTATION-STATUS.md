@@ -75,3 +75,11 @@
 - Added locally hosted Kalameh Web WOFF files for Medium (500), SemiBold (600), Bold (700–800), and Black (900–1000).
 - Main application typography now uses the `Kalameh` family; no Google Fonts request is needed.
 - Font loading and visual layout still require confirmation in Telegram WebView on target devices.
+
+## بازطراحی تب «تجربه‌ها» (نقشه‌راه پاکار، فازهای ۰ تا ۲)
+- جدید: `experiences.js` و `experiences.css` (بدون `!important`)؛ منطق `communityView` و `community-*` از `script.js` به ماژول منتقل شد و در `script.js` فقط stub باقی مانده.
+- حذف: همه‌ی قواعد CSS قدیمی تجربه‌ها (`experience-*`, `community-*`, `featured-experience*`, `my-experience*`, `field-metric*`, `field-section-*`, `field-search`, `field-loading*`, `field-hero*`) از فایل‌های CSS قدیمی.
+- انجام‌شده: متن کامل بدون «ادامه»، فید ۴ لایه‌ای، تب‌های متحرک، جست‌وجوی debounce، Skeleton، Stagger Reveal، Optimistic UI برای «مفید»، Reaction Burst، Count Roll، Haptics، ذخیره‌ی محلی، اشتراک با لینک عمیق `startapp=exp_<id>`، قرص «تجربه‌ی تازه» (Poll ۶۰ ثانیه‌ای)، حالت خالی متحرک، حذف `prompt()` مدیر، انتخاب مصالح از کاتالوگ و پیش‌نویس خودکار در فرم ثبت، حذف فیلد `rating`.
+- «من هم دیدم» و «هشدار جدی» فقط وقتی ظاهر می‌شوند که سرور فیلد `reactions` را برگرداند (قرارداد بخش ۷ نقشه‌راه).
+- انجام‌نشده (نیاز به API سرور): فاز ۳ گفتگو و پاسخ، آپلود عکس، Follow-up، نمایه‌ی ریسک، سؤال هفته، ترند.
+- `?v=` به `pakar-user-20261021` افزایش یافت.

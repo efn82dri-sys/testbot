@@ -35,23 +35,7 @@
 }
 
 /* Core surfaces */
-:root[data-theme="light"] .app-bar,
-:root[data-theme="light"] .bottom-nav,
-:root[data-theme="light"] .hero,
-:root[data-theme="light"] .filters,
-:root[data-theme="light"] .pal,
-:root[data-theme="light"] .product-card,
-:root[data-theme="light"] .material-card,
-:root[data-theme="light"] .card,
-:root[data-theme="light"] .project-card,
-:root[data-theme="light"] .experience-card,
-:root[data-theme="light"] .profile-card,
-:root[data-theme="light"] .projects-summary,
-:root[data-theme="light"] .tool-card,
-:root[data-theme="light"] .guide-card,
-:root[data-theme="light"] .admin-panel,
-:root[data-theme="light"] .admin-welcome,
-:root[data-theme="light"] .admin-action{
+:root[data-theme="light"] .app-bar,:root[data-theme="light"] .bottom-nav,:root[data-theme="light"] .hero,:root[data-theme="light"] .filters,:root[data-theme="light"] .pal,:root[data-theme="light"] .product-card,:root[data-theme="light"] .material-card,:root[data-theme="light"] .card,:root[data-theme="light"] .project-card,:root[data-theme="light"] .profile-card,:root[data-theme="light"] .projects-summary,:root[data-theme="light"] .tool-card,:root[data-theme="light"] .guide-card,:root[data-theme="light"] .admin-panel,:root[data-theme="light"] .admin-welcome,:root[data-theme="light"] .admin-action{
   color:var(--ink,#29251f)!important;
   border-color:var(--line,rgba(100,83,61,.14))!important;
 }
@@ -59,19 +43,7 @@
 :root[data-theme="light"] .app-bar{
   background:rgba(244,241,235,.90)!important;
 }
-:root[data-theme="light"] .hero,
-:root[data-theme="light"] .pal,
-:root[data-theme="light"] .product-card,
-:root[data-theme="light"] .material-card,
-:root[data-theme="light"] .card,
-:root[data-theme="light"] .project-card,
-:root[data-theme="light"] .experience-card,
-:root[data-theme="light"] .profile-card,
-:root[data-theme="light"] .projects-summary,
-:root[data-theme="light"] .tool-card,
-:root[data-theme="light"] .guide-card,
-:root[data-theme="light"] .admin-panel,
-:root[data-theme="light"] .admin-welcome{
+:root[data-theme="light"] .hero,:root[data-theme="light"] .pal,:root[data-theme="light"] .product-card,:root[data-theme="light"] .material-card,:root[data-theme="light"] .card,:root[data-theme="light"] .project-card,:root[data-theme="light"] .profile-card,:root[data-theme="light"] .projects-summary,:root[data-theme="light"] .tool-card,:root[data-theme="light"] .guide-card,:root[data-theme="light"] .admin-panel,:root[data-theme="light"] .admin-welcome{
   background:var(--bg-elev,#f5f1e9)!important;
 }
 
@@ -81,54 +53,28 @@
 }
 
 /* Text and controls */
-:root[data-theme="light"] .brand,
-:root[data-theme="light"] .hero h1,
-:root[data-theme="light"] .hero p,
-:root[data-theme="light"] .pal h2,
-:root[data-theme="light"] .pal h3,
-:root[data-theme="light"] .pal-title-wrap h2,
-:root[data-theme="light"] .pal-title-wrap h3,
-:root[data-theme="light"] .admin-welcome h2,
-:root[data-theme="light"] .admin-action b,
-:root[data-theme="light"] .admin-action{
+:root[data-theme="light"] .brand,:root[data-theme="light"] .hero h1,:root[data-theme="light"] .hero p,:root[data-theme="light"] .pal h2,:root[data-theme="light"] .pal h3,:root[data-theme="light"] .pal-title-wrap h2,:root[data-theme="light"] .pal-title-wrap h3,:root[data-theme="light"] .admin-welcome h2,:root[data-theme="light"] .admin-action b,:root[data-theme="light"] .admin-action{
   color:var(--ink,#29251f)!important;
 }
-:root[data-theme="light"] .pal-desc,
-:root[data-theme="light"] .meta,
-:root[data-theme="light"] .hint,
-:root[data-theme="light"] .profile-note,
-:root[data-theme="light"] .project-meta,
-:root[data-theme="light"] .experience-context,
-:root[data-theme="light"] .admin-welcome p,
-:root[data-theme="light"] .admin-action small{
+:root[data-theme="light"] .pal-desc,:root[data-theme="light"] .meta,:root[data-theme="light"] .hint,:root[data-theme="light"] .profile-note,:root[data-theme="light"] .project-meta,:root[data-theme="light"] .admin-welcome p,:root[data-theme="light"] .admin-action small{
   color:var(--ink-dim,#5c554b)!important;
 }
-:root[data-theme="light"] input,
-:root[data-theme="light"] select,
-:root[data-theme="light"] textarea,
-:root[data-theme="light"] #search{
+:root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea,:root[data-theme="light"] #search{
   color:#29251f!important;
   background:#f8f5ef!important;
   border-color:rgba(75,63,48,.16)!important;
   caret-color:#167c67;
 }
-:root[data-theme="light"] input::placeholder,
-:root[data-theme="light"] textarea::placeholder,
-:root[data-theme="light"] #search::placeholder{
+:root[data-theme="light"] input::placeholder,:root[data-theme="light"] textarea::placeholder,:root[data-theme="light"] #search::placeholder{
   color:#777066!important;
   opacity:1!important;
 }
-:root[data-theme="light"] .icon-btn,
-:root[data-theme="light"] .search-clear,
-:root[data-theme="light"] .to-top,
-:root[data-theme="light"] .chip,
-:root[data-theme="light"] .admin-action{
+:root[data-theme="light"] .icon-btn,:root[data-theme="light"] .search-clear,:root[data-theme="light"] .to-top,:root[data-theme="light"] .chip,:root[data-theme="light"] .admin-action{
   background:#f5f1e9!important;
   color:#3f3931!important;
   border-color:rgba(75,63,48,.14)!important;
 }
-:root[data-theme="light"] .chip.active,
-:root[data-theme="light"] .chip[aria-pressed="true"]{
+:root[data-theme="light"] .chip.active,:root[data-theme="light"] .chip[aria-pressed="true"]{
   color:#116d5a!important;
   background:#e8f4ef!important;
   border-color:#9bcfbe!important;
@@ -150,8 +96,7 @@
 :root[data-theme="light"] .sd-scrim{
   background:rgba(46,41,34,.34)!important;
 }
-:root[data-theme="light"] .sd-panel,
-:root[data-theme="light"] .modal-panel{
+:root[data-theme="light"] .sd-panel,:root[data-theme="light"] .modal-panel{
   background:#f8f5ef!important;
   color:#29251f!important;
   border-color:rgba(75,63,48,.15)!important;
@@ -201,7 +146,7 @@
    solid light surface show. NOTE: the selector is html[data-theme] —
    the old ':root[...] html' selector could never match anything.
    ============================================================ */
-@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+@media (max-width: 900px), (hover: none) and (pointer: coarse){
   html[data-theme="light"]{
     color-scheme:light;
     --bg:#ffffff !important;
@@ -217,13 +162,10 @@
     background-color:#ffffff !important;
   }
   html[data-theme="light"] .bg{display:none !important}
-  html[data-theme="light"] *,
-  html[data-theme="light"] *::before,
-  html[data-theme="light"] *::after{
+  html[data-theme="light"] *,html[data-theme="light"] *::before,html[data-theme="light"] *::after{
     -webkit-backdrop-filter:none !important;
     backdrop-filter:none !important;
   }
-  html[data-theme="light"] .app-bar,
-  html[data-theme="light"] .bottom-nav{background:#ffffff !important}
+  html[data-theme="light"] .app-bar,html[data-theme="light"] .bottom-nav{background:#ffffff !important}
   html[data-theme="light"] .sd-scrim{background:rgba(30,27,22,.42) !important}
 }
