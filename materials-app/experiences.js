@@ -311,11 +311,11 @@
     th.busy = true; th.replies.push(tmp); th.err = null; paintReplies(); ta.value = ''; autoGrow(ta); setReplying(null);
     const sc = $('.exp-th-scroll'); if (sc) sc.scrollTo({ top: sc.scrollHeight, behavior: reduced() ? 'auto' : 'smooth' }); haptic('light');
     try {
-      const r = await C().api('community', { method: 'POST', body: JSON.stringify({ action: 'reply', id, text, reply_to: th.to || undefined }) });
+      const r = await C().api('community-reply', { method: 'POST', body: JSON.stringify({ id, text, reply_to: th.to || undefined }) });
       if (!r || !r.ok) throw new Error((r && r.error) || 'x');
       const i = th.replies.indexOf(tmp); if (i >= 0) th.replies[i] = { ...tmp, ...(r.reply || {}), pending: false };
       store.patch(id, { reply_count: th.replies.length }); th.last = id; hnote('success'); track('exp_reply');
-    } catch (e) { th.replies = th.replies.filter(x => x !== tmp); ta.value = text; autoGrow(ta); toast((e && e.message && e.message !== 'x') ? e.message : 'ارسال نشد؛ متن شما نگه داشته شد'); hnote('error'); }
+    } catch (e) { th.replies = th.replies.filter(x => x !== tmp); ta.value = text; autoGrow(ta); toast('ثبت پاسخ روی سرور هنوز فعال نیست؛ متن شما نگه داشته شد'); hnote('error'); }
     th.busy = false; th.to = null; paintReplies(); autoGrow(ta);
   }
   function setReplying(u) { th.to = u ? u.rid : null; const el = $('#expReplying'); if (el) el.innerHTML = u ? `<div class="exp-replying"><span>پاسخ به ${esc(u.name)}</span><button type="button" data-exp="reply-cancel" aria-label="لغو">✕</button></div>` : ''; }
@@ -330,7 +330,7 @@
     if (k === 'reply-cancel') return setReplying(null);
     if (k === 'quick') { const ta = $('#expRText'); ta.value = (ta.value ? ta.value + ' ' : '') + t.dataset.t; ta.focus(); return autoGrow(ta); }
     if (k === 'reply-to') { const ta = $('#expRText'), u = t.dataset.u; setReplying({ rid: t.dataset.rid, name: u || 'کاربر' }); if (u && !ta.value.includes('@' + u)) ta.value = '@' + u.replace(/\s+/g, '_') + ' ' + ta.value; ta.focus(); return autoGrow(ta); }
-    if (k === 'report') { try { const r = await C().api('community', { method: 'POST', body: JSON.stringify({ action: 'report', id: th.id, reply_id: t.dataset.rid, reason: 'user_report' }) }); toast(r && r.ok ? 'گزارش ثبت شد؛ ممنون' : 'گزارش ثبت نشد'); } catch (_) { toast('گزارش ثبت نشد'); } }
+    if (k === 'report') { try { const r = await C().api('community-report', { method: 'POST', body: JSON.stringify({ id: th.id, reply_id: t.dataset.rid, reason: 'user_report' }) }); toast(r && r.ok ? 'گزارش ثبت شد؛ ممنون' : 'گزارش ثبت نشد'); } catch (_) { toast('گزارش ثبت نشد'); } }
   });
 
   /* ---------- لینک عمیق: startapp=exp_<id> ---------- */

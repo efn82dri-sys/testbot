@@ -5,10 +5,12 @@
 | روش | مسیر | ورودی | خروجی |
 |---|---|---|---|
 | GET | `community-thread?id=<postId>` | — | `{ok, replies:[{id,user,username,author_photo_url,text,created_at,expert_verified,is_author}]}` (به ترتیب زمان) |
-| POST | `community` | `{action:'reply', id, text, reply_to?}` | `{ok, reply:{...همان شکل بالا}}` یا `{ok:false, error}` |
-| POST | `community` | `{action:'report', id, reply_id, reason}` | `{ok}` |
+| POST | `community-reply` | `{id, text, reply_to?}` | `{ok, reply:{...همان شکل بالا}}` یا `{ok:false, error}` |
+| POST | `community-report` | `{id, reply_id, reason}` | `{ok}` |
 
 در پاسخ فهرست `community` برای هر پست اضافه کن: `reply_count` و `reply_preview:[{user,photo}]` (حداکثر ۳).
 قواعد پیشنهادی: متن ۲ تا ۸۰۰ نویسه، حداکثر ۵ پاسخ در دقیقه برای هر `user_id`، انتشار فوری، پنهان‌شدن خودکار پس از ۳ گزارش و اعلان به مدیر.
 `is_author` یعنی پاسخ‌دهنده همان نویسنده‌ی پست است. هویت از `initData` تلگرام تأیید شود (مثل مسیرهای فعلی).
 اگر سرور این مسیرها را نداشته باشد، گفتگو پیام «در دسترس نیست» نشان می‌دهد و متن کاربر پاک نمی‌شود.
+
+**مهم:** مسیر `community` فقط برای ثبت تجربه‌ی جدید است و هر POST ناشناس را با اعتبارسنجی «حداقل ۲۰ حرف» رد می‌کند؛ به همین دلیل پاسخ‌ها مسیر جداگانه‌ی `community-reply` دارند.
