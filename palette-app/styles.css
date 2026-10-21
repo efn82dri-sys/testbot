@@ -576,16 +576,45 @@ button { cursor: pointer; border: none; background: none; }
 .sw:hover { transform: translateY(-6px); box-shadow: var(--shadow-md); }
 .sw:active { transform: translateY(-2px) scale(.98); }
 
-.sw-hex {
+.sw {
+  container-type: inline-size;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+.sw-codes {
   position: relative; z-index: 2;
-  font-size: 11px; font-weight: 700;
-  letter-spacing: .3px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  max-width: 100%;
   direction: ltr;
-  font-variant-numeric: tabular-nums;
-  opacity: .9;
+  pointer-events: none;
+}
+/* کد نمادینِ رویت: فقط نمایشی، غیرقابل انتخاب و کپی */
+.sw-rvt {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  font-size: clamp(7.5px, 12cqw, 10px);
+  line-height: 1.15;
+  white-space: nowrap;
+  opacity: .62;
+  -webkit-user-select: none; user-select: none;
+}
+.sw-rvt i {
+  font-style: normal; font-weight: 800;
+  font-size: .82em; letter-spacing: .12em;
+  padding: 0 .45em;
+  border: 1px solid currentColor; border-radius: 99px;
+  opacity: .85;
+}
+.sw-rvt b { font-weight: 600; letter-spacing: 0; }
+/* کد RGB: همان که با ضربه کپی می‌شود */
+.sw-rgb {
+  font-size: clamp(8px, 14.5cqw, 11px);
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  opacity: .92;
   transition: opacity var(--dur-fast) var(--ease);
 }
-.sw:hover .sw-hex { opacity: 1; }
+.sw:hover .sw-rgb { opacity: 1; }
 
 .sw-check {
   position: absolute; inset: 0; z-index: 3;
@@ -742,14 +771,12 @@ button { cursor: pointer; border: none; background: none; }
   .pal h2 { font-size: 16.5px; }
   .pal-desc { font-size: 13px; }
   .sw { min-height: 96px; border-radius: 12px; }
-  .sw-hex { font-size: 10px; }
   .swatches { gap: 6px; }
   .filters { top: 60px; }
 }
 
 @media (max-width: 360px) {
-  .sw { min-height: 88px; padding: 8px 6px; }
-  .sw-hex { font-size: 9.5px; letter-spacing: .1px; }
+  .sw { min-height: 96px; padding: 8px 4px; }
   .swatches { gap: 5px; }
 }
 

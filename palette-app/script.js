@@ -38,6 +38,19 @@ function textColor(hex) {
   return yiq >= 150 ? '#1A1714' : '#F5EFE3';
 }
 
+/* ---------- Color formats ---------- */
+function hexToRgbArr(hex) {
+  return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+}
+// کدی که با ضربه روی رنگ کپی می‌شود
+function rgbText(hex) {
+  return hexToRgbArr(hex).join(', ');
+}
+// کد نمادینِ رویت (فقط نمایشی، قابل کپی نیست): همان نام‌گذاریِ رنگ‌های سفارشی در رویت، مثل 166-138-100
+function revitCode(hex) {
+  return hexToRgbArr(hex).map(v => String(v).padStart(3, '0')).join('-');
+}
+
 function toPersian(n) {
   return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
 }
@@ -165,6 +178,8 @@ function matchesQuery(p, q) {
   if (p.name.toLowerCase().includes(lq)) return true;
   if ((p.desc || '').toLowerCase().includes(lq)) return true;
   if (p.colors.some(c => c.toLowerCase().includes(lq))) return true;
+  const nq = lq.replace(/[\s,\-]+/g, ' ');
+  if (/\d/.test(nq) && p.colors.some(c => hexToRgbArr(c).join(' ').includes(nq))) return true;
   if ((p.tags || []).some(t => t.toLowerCase().includes(lq))) return true;
   return false;
 }
@@ -190,12 +205,19 @@ const ICONS = {
 
 function renderCard(p, idx, total) {
   const fav = isFav(p.id);
-  const swatchesHtml = p.colors.map(c => `
-    <button type="button" class="sw" data-hex="${c}" style="--sw-bg:${c};--sw-ink:${textColor(c)}" aria-label="کپی کد ${c}">
-      <span class="sw-hex" dir="ltr">${c}</span>
+  const swatchesHtml = p.colors.map(c => {
+    const rgb = rgbText(c);
+    const rvt = revitCode(c);
+    return `
+    <button type="button" class="sw" data-hex="${c}" data-rgb="${rgb}" style="--sw-bg:${c};--sw-ink:${textColor(c)}" aria-label="کپی کد RGB ${rgb} (کد رویت ${rvt})">
+      <span class="sw-codes" dir="ltr">
+        <span class="sw-rvt" aria-hidden="true"><i>RVT</i><b>${rvt}</b></span>
+        <span class="sw-rgb">${rgb.replace(/, /g, ',')}</span>
+      </span>
       <span class="sw-check" aria-hidden="true">${ICONS.check}<span>کپی شد</span></span>
     </button>
-  `).join('');
+  `;
+  }).join('');
 
   return `
     <article class="pal" data-id="${p.id}" data-idx="${idx}">
@@ -443,12 +465,12 @@ function bindEvents() {
     // Swatch copy
     const sw = e.target.closest('.sw');
     if (sw) {
-      const hex = sw.dataset.hex;
-      const ok = await copyText(hex);
+      const rgb = sw.dataset.rgb;
+      const ok = await copyText(rgb);
       if (ok) {
         sw.classList.add('copied');
         haptic.success();
-        showToast(`کد ${hex} کپی شد`);
+        showToast(`کد RGB کپی شد: ${rgb}`);
         setTimeout(() => sw.classList.remove('copied'), 1100);
       } else {
         showToast('کپی نشد — دستی امتحان کن');
