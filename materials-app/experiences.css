@@ -34,15 +34,15 @@
 .exp-grid{position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--ink-faint) 13%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--ink-faint) 13%,transparent) 1px,transparent 1px);background-size:19px 19px;-webkit-mask-image:linear-gradient(135deg,#000,transparent 90%);mask-image:linear-gradient(135deg,#000,transparent 90%);opacity:.8;pointer-events:none}
 .exp-kick{position:relative;flex:1;padding-inline-start:8px;display:flex;align-items:center;gap:8px;font:700 10px ui-monospace,monospace;letter-spacing:.1em;color:var(--ink-faint)}
 .exp-kick i{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
-.exp-herotxt{position:relative}
+.exp-herotxt{position:relative;z-index:3;max-width:66%}
 .exp-hero h2{position:relative;margin:6px 0 4px;font-size:20px;line-height:1.4;font-weight:900;color:var(--ink)}
 .exp-hero h2 em{font-style:normal;color:var(--accent-text)}
-.exp-hero p{position:relative;margin:0;font-size:13px;line-height:1.8;color:var(--ink-dim);max-width:34ch}
-.exp-tile{position:absolute;width:40px;height:40px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:4px;box-shadow:7px 9px 0 color-mix(in srgb,var(--bg-solid,#000) 20%,transparent),0 10px 24px color-mix(in srgb,var(--bg-solid,#000) 22%,transparent);transform:rotate(30deg) skew(-8deg,-8deg);animation:exp-float 5.2s ease-in-out infinite}
+.exp-hero p{position:relative;margin:0;font-size:13px;line-height:1.8;color:var(--ink-dim)}
+.exp-tile{position:absolute;z-index:1;width:40px;height:40px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:4px;box-shadow:7px 9px 0 color-mix(in srgb,var(--bg-solid,#000) 20%,transparent),0 10px 24px color-mix(in srgb,var(--bg-solid,#000) 22%,transparent);transform:rotate(30deg) skew(-8deg,-8deg);animation:exp-float 5.2s ease-in-out infinite}
 .exp-tile::after{content:"";position:absolute;inset:6px;border:1px solid color-mix(in srgb,var(--ink-faint) 28%,transparent)}
-.exp-tile.a{top:14%;inset-inline-end:26%;background:linear-gradient(145deg,#d9c6a5,#89765c)}
-.exp-tile.b{top:46%;inset-inline-end:48%;width:30px;height:30px;background:linear-gradient(145deg,#aab6b3,#536d69);animation-delay:-2s;animation-duration:6s}
-.exp-tile.c{top:52%;inset-inline-end:10%;width:24px;height:24px;background:linear-gradient(145deg,#d77c58,#984d36);animation-delay:-1s;animation-duration:5.8s}
+.exp-tile.a{top:16%;inset-inline-end:15%;background:linear-gradient(145deg,#d9c6a5,#89765c)}
+.exp-tile.b{top:42%;inset-inline-end:3%;width:30px;height:30px;background:linear-gradient(145deg,#aab6b3,#536d69);animation-delay:-2s;animation-duration:6s}
+.exp-tile.c{top:56%;inset-inline-end:20%;width:24px;height:24px;background:linear-gradient(145deg,#d77c58,#984d36);animation-delay:-1s;animation-duration:5.8s}
 @keyframes exp-float{0%,100%{translate:0 0}50%{translate:0 -6px}}
 .exp-level{position:absolute;inset-inline:16px;bottom:10px;display:flex;align-items:center;gap:10px;height:26px;border-top:1px solid var(--accent);border-bottom:1px solid var(--line);font:700 10px ui-monospace,monospace;letter-spacing:.06em;color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .exp-level i{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
