@@ -42,14 +42,6 @@ function textColor(hex) {
 function hexToRgbArr(hex) {
   return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 }
-// کدی که با ضربه روی رنگ کپی می‌شود
-function rgbText(hex) {
-  return hexToRgbArr(hex).join(', ');
-}
-// کد نمادینِ رویت (فقط نمایشی، قابل کپی نیست): همان نام‌گذاریِ رنگ‌های سفارشی در رویت، مثل 166-138-100
-function revitCode(hex) {
-  return hexToRgbArr(hex).map(v => String(v).padStart(3, '0')).join('-');
-}
 
 function toPersian(n) {
   return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
@@ -206,13 +198,12 @@ const ICONS = {
 function renderCard(p, idx, total) {
   const fav = isFav(p.id);
   const swatchesHtml = p.colors.map(c => {
-    const rgb = rgbText(c);
-    const rvt = revitCode(c);
+    const [r, g, b] = hexToRgbArr(c);
     return `
-    <button type="button" class="sw" data-hex="${c}" data-rgb="${rgb}" style="--sw-bg:${c};--sw-ink:${textColor(c)}" aria-label="کپی کد RGB ${rgb} (کد رویت ${rvt})">
+    <button type="button" class="sw" data-hex="${c}" style="--sw-bg:${c};--sw-ink:${textColor(c)}" aria-label="کپی کد ${c} (کد رویت ${r} ${g} ${b})">
       <span class="sw-codes" dir="ltr">
-        <span class="sw-rvt" aria-hidden="true"><i>RVT</i><b>${rvt}</b></span>
-        <span class="sw-rgb">${rgb.replace(/, /g, ',')}</span>
+        <span class="sw-rvt" aria-hidden="true"><b>${r}</b><b>${g}</b><b>${b}</b></span>
+        <span class="sw-hex">${c}</span>
       </span>
       <span class="sw-check" aria-hidden="true">${ICONS.check}<span>کپی شد</span></span>
     </button>
@@ -465,12 +456,12 @@ function bindEvents() {
     // Swatch copy
     const sw = e.target.closest('.sw');
     if (sw) {
-      const rgb = sw.dataset.rgb;
-      const ok = await copyText(rgb);
+      const hex = sw.dataset.hex;
+      const ok = await copyText(hex);
       if (ok) {
         sw.classList.add('copied');
         haptic.success();
-        showToast(`کد RGB کپی شد: ${rgb}`);
+        showToast(`کد ${hex} کپی شد`);
         setTimeout(() => sw.classList.remove('copied'), 1100);
       } else {
         showToast('کپی نشد — دستی امتحان کن');
