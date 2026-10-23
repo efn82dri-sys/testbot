@@ -381,6 +381,65 @@ function renderChips() {
   `).join('');
 }
 
+/* ---------- Category switching ---------- */
+function setFilter(tag, enterFrom = 0) {
+  state.filter = tag;
+  localStorage.setItem(STORAGE.FILTER, tag);
+  renderChips();
+  render();
+  const active = $('#chips .chip.active');
+  if (active) active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  if (enterFrom) {
+    const list = $('#list');
+    list.style.setProperty('--swipe-from', `${enterFrom}px`);
+    list.classList.remove('swipe-in');
+    void list.offsetWidth;               // restart animation
+    list.classList.add('swipe-in');
+  }
+}
+
+function bindCategorySwipe() {
+  const MIN_DX = 56;          // حداقل کشیدن افقی (px)
+  const MAX_MS = 800;         // حداکثر مدت حرکت
+  const RATIO  = 1.6;         // افقی باید حداقل ۱٫۶ برابر عمودی باشد
+  let t0 = null;
+
+  const ignore = (el) => !!el.closest('.chips, input, textarea, .search-wrap, .toast, #toTop');
+
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || ignore(e.target)) { t0 = null; return; }
+    const t = e.touches[0];
+    t0 = { x: t.clientX, y: t.clientY, time: Date.now() };
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', () => { t0 = null; }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!t0) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - t0.x;
+    const dy = t.clientY - t0.y;
+    const dt = Date.now() - t0.time;
+    t0 = null;
+    if (dt > MAX_MS || Math.abs(dx) < MIN_DX || Math.abs(dx) < Math.abs(dy) * RATIO) return;
+
+    const cats = ['', ...state.tags];
+    const i = Math.max(0, cats.indexOf(state.filter));
+    // در حالت راست‌به‌چپ، دسته‌ی بعدی سمت چپ است: کشیدن به راست = بعدی
+    const rtl = getComputedStyle(document.documentElement).direction === 'rtl';
+    const forward = rtl ? dx > 0 : dx < 0;
+    const j = i + (forward ? 1 : -1);
+    if (j < 0 || j >= cats.length) { haptic.light(); return; }   // انتهای فهرست
+
+    // اگر کاربر پایین صفحه است، به ابتدای لیست برگردد
+    const top = $('#list').offsetTop - 100;
+    if (window.scrollY > top) window.scrollTo({ top, behavior: 'auto' });
+
+    setFilter(cats[j], dx > 0 ? -36 : 36);
+    haptic.select();
+  }, { passive: true });
+}
+
 /* ---------- Event Delegation ---------- */
 function bindEvents() {
   // App bar
@@ -440,13 +499,12 @@ function bindEvents() {
   $('#chips').addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
-    const tag = chip.dataset.tag;
-    state.filter = tag;
-    localStorage.setItem(STORAGE.FILTER, tag);
-    renderChips();
-    render();
+    setFilter(chip.dataset.tag);
     haptic.select();
   });
+
+  // Swipe between categories (horizontal finger drag)
+  bindCategorySwipe();
 
   // List — swatches, favs, actions
   $('#list').addEventListener('click', async (e) => {

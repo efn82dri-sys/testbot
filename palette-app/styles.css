@@ -752,6 +752,15 @@ button { cursor: pointer; border: none; background: none; }
   }
 }
 
+/* ---------- Category swipe animation ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .list.swipe-in { animation: swipeIn 260ms var(--ease, cubic-bezier(.16,1,.3,1)) both; }
+}
+@keyframes swipeIn {
+  from { opacity: 0; transform: translateX(var(--swipe-from, 0)); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
   .wrap { padding: 0 16px 80px; }
